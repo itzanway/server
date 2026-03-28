@@ -39,6 +39,7 @@ if($mysql_errno)
 if(!$mysql_errno)
 {
   disconnect checkcon123456789;
+  --source include/wait_until_disconnected.inc
 }
 
 connection default;
@@ -82,6 +83,7 @@ if($mysql_errno)
 if(!$mysql_errno)
 {
   disconnect checkcon123456789a;
+  --source include/wait_until_disconnected.inc
 }
 
 connection default;

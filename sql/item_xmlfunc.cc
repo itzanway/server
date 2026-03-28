@@ -66,7 +66,7 @@ typedef struct my_xml_node_st
 typedef struct my_xpath_lex_st
 {
   int        term;  /* token type, see MY_XPATH_LEX_XXXXX below */
-  const char *beg;  /* beginning of the token                   */
+  const char *beg;  /* beginnign of the token                   */
   const char *end;  /* end of the token                         */
 } MY_XPATH_LEX;
 
@@ -176,8 +176,8 @@ public:
       }
     }
 
-    // Make sure we never return {Ptr=nullptr, str_length=0}
-    str->copy("", 0, collation.collation);
+    str->length(0);
+    str->set_charset(collation.collation);
     for (uint i=0 ; i < numnodes; i++)
     {
       if(active[i])
@@ -189,7 +189,7 @@ public:
     }
     return str;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     max_length= MAX_BLOB_WIDTH;
     collation.collation= pxml->charset();
@@ -481,7 +481,7 @@ public:
   {
     return nodeset->copy(*native_cache);
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { max_length= MAX_BLOB_WIDTH; return FALSE; }
 protected:
   Item *shallow_copy(THD *thd) const override
@@ -500,7 +500,7 @@ public:
   {
     return { STRING_WITH_LEN("xpath_position") };
   }
-  bool fix_length_and_dec(THD *thd) override { max_length=10; return FALSE; }
+  bool fix_length_and_dec() override { max_length=10; return FALSE; }
   longlong val_int() override
   {
     args[0]->val_native(current_thd, &tmp_native_value);
@@ -525,7 +525,7 @@ public:
   {
     return { STRING_WITH_LEN("xpath_count") };
   }
-  bool fix_length_and_dec(THD *thd) override { max_length=10; return FALSE; }
+  bool fix_length_and_dec() override { max_length=10; return FALSE; }
   longlong val_int() override
   {
     uint predicate_supplied_context_size;
@@ -786,7 +786,7 @@ bool Item_nodeset_func_ancestorbyname::val_native(THD *thd, Native *nodeset)
   {
     /*
        Go to the root and add all nodes on the way.
-       Don't add the root if context is the root itself
+       Don't add the root if context is the root itelf
     */
     MY_XML_NODE *self= &nodebeg[flt->num];
     if (need_self && validname(self))
@@ -1050,7 +1050,7 @@ static Item *create_comparator(MY_XPATH *xpath,
     else
       my_printf_error(ER_UNKNOWN_ERROR,
                       "XPATH error: "
-                      "comparison of two nodesets is not supported: '%.32sT'",
+                      "comparison of two nodesets is not supported: '%.32T'",
                       MYF(0), context->beg);
 
     return 0; // TODO: Comparison of two nodesets
@@ -1060,7 +1060,7 @@ static Item *create_comparator(MY_XPATH *xpath,
     /*
      Compare a node set to a scalar value.
      We just create a fake Item_string_xml_non_const() argument,
-     which will be filled to the particular value
+     which will be filled to the partular value
      in a loop through all of the nodes in the node set.
     */
 
@@ -1249,13 +1249,13 @@ my_xpath_keyword(MY_XPATH *x,
 
 static Item *create_func_true(MY_XPATH *xpath, Item **args, uint nargs)
 {
-  return (Item*) Item_true;
+  return (Item*) &Item_true;
 }
 
 
 static Item *create_func_false(MY_XPATH *xpath, Item **args, uint nargs)
 {
-  return (Item*) Item_false;
+  return (Item*) &Item_false;
 }
 
 
@@ -2583,7 +2583,7 @@ static int my_xpath_parse_Number(MY_XPATH *xpath)
   
   SYNOPSYS
     
-    The keywords AND, OR, MOD, DIV are valid identifiers
+    The keywords AND, OR, MOD, DIV are valid identitiers
     when they are in identifier context:
     
     SELECT
@@ -2710,7 +2710,7 @@ my_xpath_parse_VariableReference(MY_XPATH *xpath)
         my_printf_error(ER_UNKNOWN_ERROR, "Unknown XPATH variable at: '%.*s'",
                         MYF(0), len, dollar_pos);
       else
-        my_printf_error(ER_UNKNOWN_ERROR, "Unknown XPATH variable at: '%.32sT'",
+        my_printf_error(ER_UNKNOWN_ERROR, "Unknown XPATH variable at: '%.32T'",
                         MYF(0), dollar_pos);
     }
   }
@@ -2785,7 +2785,7 @@ my_xpath_parse(MY_XPATH *xpath, const char *str, const char *strend)
 }
 
 
-bool Item_xml_str_func::fix_length_and_dec(THD *thd)
+bool Item_xml_str_func::fix_length_and_dec()
 {
   max_length= MAX_BLOB_WIDTH;
   return agg_arg_charsets_for_comparison(collation, args, arg_count);
@@ -2846,7 +2846,7 @@ bool Item_xml_str_func::fix_fields(THD *thd, Item **ref)
       my_printf_error(ER_UNKNOWN_ERROR, "XPATH syntax error: '%.*s'",
                       MYF(0), clen, xpath.lasttok.beg);
     else
-      my_printf_error(ER_UNKNOWN_ERROR, "XPATH syntax error: '%.32sT'",
+      my_printf_error(ER_UNKNOWN_ERROR, "XPATH syntax error: '%.32T'",
                       MYF(0), xpath.lasttok.beg);
 
     return true;
@@ -3086,26 +3086,6 @@ String *Item_func_xml_extractvalue::val_str(String *str)
     return 0;
   }
   return res;  
-}
-
-
-const Type_handler *Item_func_xml_update::xml_handler= NULL;
-
-
-bool Item_func_xml_update::fix_length_and_dec(THD *thd)
-{
-  static LEX_CSTRING name= {STRING_WITH_LEN("XMLTYPE")};
-
-  if (!xml_handler)
-    xml_handler= Type_handler::handler_by_name(thd, name);
-
-  return Item_xml_str_func::fix_length_and_dec(thd);
-}
-
-
-const Type_handler *Item_func_xml_update::type_handler() const
-{
-  return xml_handler ? xml_handler : Item_xml_str_func::type_handler();
 }
 
 

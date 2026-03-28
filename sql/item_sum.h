@@ -19,10 +19,12 @@
 
 /* classes for sum functions */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface			/* gcc class implementation */
+#endif
+
 #include <my_tree.h>
 #include "sql_udf.h"                            /* udf_handler */
-#include "item.h"
-#include "spatial.h"                            // Geometry_buffer, Geometry
 
 class Item_sum;
 class Aggregator_distinct;
@@ -71,7 +73,7 @@ public:
 
   /**
     Called when we need to wipe out all the data from the aggregator :
-    all the values accumulated and all the state.
+    all the values acumulated and all the state.
     Cleans up the internal structures and resets them to their initial state.
   */
   virtual void clear() = 0;
@@ -137,7 +139,7 @@ class Window_spec;
   The general rule to detect whether a set function is legal in a query with
   nested subqueries is much more complicated.
 
-  Consider the following query:
+  Consider the the following query:
     SELECT t1.a FROM t1 GROUP BY t1.a
       HAVING t1.a > ALL (SELECT t2.c FROM t2 WHERE SUM(t1.b) < t2.c).
   The set function SUM(b) is used here in the WHERE clause of the subquery.
@@ -306,7 +308,7 @@ class Window_spec;
   The implementation takes into account the used strategy:
   - Items resolved at optimization phase return 0 from Item_sum::used_tables().
   - Items that depend on the number of join output records, but not columns of
-  any particular table (like COUNT(*)), return 0 from Item_sum::used_tables(),
+  any particular table (like COUNT(*)), returm 0 from Item_sum::used_tables(),
   but still return false from Item_sum::const_item().
 */
 
@@ -354,7 +356,7 @@ public:
     CUME_DIST_FUNC, NTILE_FUNC, FIRST_VALUE_FUNC, LAST_VALUE_FUNC,
     NTH_VALUE_FUNC, LEAD_FUNC, LAG_FUNC, PERCENTILE_CONT_FUNC,
     PERCENTILE_DISC_FUNC, SP_AGGREGATE_FUNC, JSON_ARRAYAGG_FUNC,
-    JSON_OBJECTAGG_FUNC, GEOMETRY_COLLECT_FUNC
+    JSON_OBJECTAGG_FUNC
   };
 
   Item **ref_by; /* pointer to a ref to the object used to register it */
@@ -435,7 +437,6 @@ public:
     case UDF_SUM_FUNC:
     case GROUP_CONCAT_FUNC:
     case JSON_ARRAYAGG_FUNC:
-    case GEOMETRY_COLLECT_FUNC:
       return true;
     default:
       return false;
@@ -467,7 +468,7 @@ public:
     Updated value is then saved in the field.
   */
   virtual void update_field()=0;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     set_maybe_null();
     null_value=1;
@@ -705,7 +706,7 @@ public:
   Aggregator_type Aggrtype() override { return DISTINCT_AGGREGATOR; }
 
   bool setup(THD *) override;
-  void clear() override;
+  void clear() override; 
   bool add() override;
   void endup() override;
   my_decimal *arg_val_decimal(my_decimal * value) override;
@@ -799,7 +800,7 @@ public:
   {
     return get_date_from_int(thd, ltime, fuzzydate);
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     max_length=21;
@@ -807,9 +808,6 @@ public:
     null_value=0;
     return false;
   }
-  // block standard processor for never null
-  bool add_maybe_null_after_ora_join_processor(void *arg) override
-  { return 0; }
 };
 
 
@@ -825,7 +823,7 @@ protected:
   my_decimal direct_sum_decimal;
   my_decimal dec_buffs[2];
   uint curr_dec_buff;
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
 
 public:
   Item_sum_sum(THD *thd, Item *item_par, bool distinct):
@@ -972,7 +970,7 @@ public:
 
   void fix_length_and_dec_double();
   void fix_length_and_dec_decimal();
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   enum Sumfunctype sum_func () const override
   {
     return has_with_distinct() ? AVG_DISTINCT_FUNC : AVG_FUNC;
@@ -1057,7 +1055,7 @@ public:
 class Item_sum_variance :public Item_sum_double
 {
   Stddev m_stddev;
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
 
 public:
   uint sample;
@@ -1178,7 +1176,7 @@ public:
     cmp_sign(item->cmp_sign), was_values(item->was_values)
   { }
   bool fix_fields(THD *, Item **) override;
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   void setup_hybrid(THD *thd, Item *item, Item *value_arg);
   void clear() override;
   void direct_add(Item *item);
@@ -1193,10 +1191,8 @@ public:
   {
     return get_arg(0)->real_type_handler();
   }
-  const Type_extra_attributes type_extra_attributes() const override
-  {
-    return args[0]->type_extra_attributes();
-  }
+  const TYPELIB *get_typelib() const override
+  { return args[0]->get_typelib(); }
   void update_field() override;
   void min_max_update_str_field();
   void min_max_update_real_field();
@@ -1276,7 +1272,7 @@ public:
   void update_field() override;
   const Type_handler *type_handler() const override
   { return &type_handler_ulonglong; }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     if (args[0]->check_type_can_return_int(func_name_cstring()))
       return true;
@@ -1285,9 +1281,6 @@ public:
     null_value= 0;
     return FALSE;
   }
-  // block standard processor for never null
-  bool add_maybe_null_after_ora_join_processor(void *arg) override
-  { return 0; }
   void cleanup() override
   {
     bits= reset_bits;
@@ -1473,7 +1466,7 @@ public:
   {
     return create_table_field_from_handler(root, table);
   }
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   bool fix_fields(THD *thd, Item **ref) override;
   LEX_CSTRING func_name_cstring() const override;
   const Type_handler *type_handler() const override;
@@ -1781,7 +1774,7 @@ class Item_sum_udf_float :public Item_udf_sum
   my_decimal *val_decimal(my_decimal *) override;
   const Type_handler *type_handler() const override
   { return &type_handler_double; }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { fix_num_length_and_dec(); return FALSE; }
   Item *copy_or_same(THD* thd) override;
 
@@ -1811,7 +1804,7 @@ public:
       return &type_handler_ulonglong;
     return &type_handler_slonglong;
   }
-  bool fix_length_and_dec(THD *thd) override { decimals=0; max_length=21; return FALSE; }
+  bool fix_length_and_dec() override { decimals=0; max_length=21; return FALSE; }
   Item *copy_or_same(THD* thd) override;
 
 protected:
@@ -1855,7 +1848,7 @@ public:
   my_decimal *val_decimal(my_decimal *dec) override;
   const Type_handler *type_handler() const override
   { return string_type_handler(); }
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   Item *copy_or_same(THD* thd) override;
 
 protected:
@@ -1888,7 +1881,7 @@ public:
   my_decimal *val_decimal(my_decimal *) override;
   const Type_handler *type_handler() const override
   { return &type_handler_newdecimal; }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { fix_num_length_and_dec(); return FALSE; }
   Item *copy_or_same(THD* thd) override;
 
@@ -1968,7 +1961,7 @@ public:
     { DBUG_ASSERT(fixed()); null_value=1; return 0; }
   double val_real() { DBUG_ASSERT(fixed()); null_value=1; return 0.0; }
   longlong val_int() { DBUG_ASSERT(fixed()); null_value=1; return 0; }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { base_flags|= item_base_t::MAYBE_NULL; max_length=0; return FALSE; }
   enum Sumfunctype sum_func () const { return UDF_SUM_FUNC; }
   void clear() {}
@@ -1993,65 +1986,9 @@ int dump_leaf_key(void* key_arg,
                   void* item_arg);
 C_MODE_END
 
-class Item_sum_str : public Item_sum
+class Item_func_group_concat : public Item_sum
 {
-public:
-  Item_sum_str(THD *thd)
-    : Item_sum(thd)
-  {}
-
-  Item_sum_str(THD *thd, Item_sum_str *item)
-    : Item_sum(thd, item)
-  {}
-
-  Item_sum_str(THD *thd, Item *item_par)
-    : Item_sum(thd, item_par)
-  {}
-
-  bool fix_fields(THD *, Item **) override;
-
-  longlong val_int() override
-  {
-    String *res;
-    char *end_ptr;
-    int error;
-    if (!(res= val_str(&str_value)))
-      return (longlong) 0;
-    end_ptr= (char*) res->ptr()+ res->length();
-    return my_strtoll10(res->ptr(), &end_ptr, &error);
-  }
-
-  double val_real() override
-  {
-    int error;
-    const char *end;
-    String *res;
-    if (!(res= val_str(&str_value)))
-      return 0.0;
-    end= res->ptr() + res->length();
-    return (my_strtod(res->ptr(), (char**) &end, &error));
-  }
-
-  my_decimal *val_decimal(my_decimal *decimal_value) override
-  {
-    return val_decimal_from_string(decimal_value);
-  }
-
-  bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate) override
-  {
-    return get_date_from_string(thd, ltime, fuzzydate);
-  }
-
-  void no_rows_in_result() override {}
-  void reset_field() override { DBUG_ASSERT(0); }        // not used
-  void update_field() override { DBUG_ASSERT(0); }       // not used
-
 protected:
-  virtual bool fix_fields_impl(THD *, Item **) = 0;
-};
-
-class Item_func_group_concat : public Item_sum_str
-{
   TMP_TABLE_PARAM *tmp_table_param;
   String result;
   String *separator;
@@ -2131,8 +2068,27 @@ class Item_func_group_concat : public Item_sum_str
   virtual String *get_str_from_field(Item *i, Field *f, String *tmp,
                                      const uchar *key, size_t offset)
     { return f->val_str(tmp, key + offset); }
+  virtual void cut_max_length(String *result,
+                              uint old_length, uint max_length) const;
   bool uses_non_standard_aggregator_for_distinct() const override
     { return distinct; }
+
+public:
+  // Methods used by ColumnStore
+  bool get_distinct() const { return distinct; }
+  uint get_count_field() const { return arg_count_field; }
+  uint get_order_field() const { return arg_count_order; }
+  const String* get_separator() const { return separator; }
+  ORDER** get_order() const { return order; }
+
+public:
+  Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
+                         bool is_distinct, List<Item> *is_select,
+                         const SQL_I_List<ORDER> &is_order, String *is_separator,
+                         bool limit_clause, Item *row_limit, Item *offset_limit);
+
+  Item_func_group_concat(THD *thd, Item_func_group_concat *item);
+  ~Item_func_group_concat();
   void cleanup() override;
 
   enum Sumfunctype sum_func () const override {return GROUP_CONCAT_FUNC;}
@@ -2152,34 +2108,45 @@ class Item_func_group_concat : public Item_sum_str
   {
     return add(skip_nulls());
   }
-  bool fix_fields_impl(THD *,Item **) override;
+  void reset_field() override { DBUG_ASSERT(0); }        // not used
+  void update_field() override { DBUG_ASSERT(0); }       // not used
+  bool fix_fields(THD *,Item **) override;
   bool setup(THD *thd) override;
   void make_unique() override;
+  double val_real() override
+  {
+    int error;
+    const char *end;
+    String *res;
+    if (!(res= val_str(&str_value)))
+      return 0.0;
+    end= res->ptr() + res->length();
+    return (my_strtod(res->ptr(), (char**) &end, &error));
+  }
+  longlong val_int() override
+  {
+    String *res;
+    char *end_ptr;
+    int error;
+    if (!(res= val_str(&str_value)))
+      return (longlong) 0;
+    end_ptr= (char*) res->ptr()+ res->length();
+    return my_strtoll10(res->ptr(), &end_ptr, &error);
+  }
+  my_decimal *val_decimal(my_decimal *decimal_value) override
+  {
+    return val_decimal_from_string(decimal_value);
+  }
+  bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate) override
+  {
+    return get_date_from_string(thd, ltime, fuzzydate);
+  }
+  String *val_str(String *str) override;
   Item *copy_or_same(THD* thd) override;
+  void no_rows_in_result() override {}
   void print(String *str, enum_query_type query_type) override;
   bool change_context_processor(void *cntx) override
     { context= (Name_resolution_context *)cntx; return FALSE; }
-
-protected:
-  virtual void cut_max_length(String *result,
-                              uint old_length, uint max_length) const;
-  String *val_str(String *str) override;
-
-public:
-  // Methods used by ColumnStore
-  bool get_distinct() const { return distinct; }
-  uint get_count_field() const { return arg_count_field; }
-  uint get_order_field() const { return arg_count_order; }
-  const String* get_separator() const { return separator; }
-  ORDER** get_order() const { return order; }
-
-  Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
-                         bool is_distinct, List<Item> *is_select,
-                         const SQL_I_List<ORDER> &is_order, String *is_separator,
-                         bool limit_clause, Item *row_limit, Item *offset_limit);
-
-  Item_func_group_concat(THD *thd, Item_func_group_concat *item);
-  ~Item_func_group_concat();
   qsort_cmp2 get_comparator_function_for_distinct();
   qsort_cmp2 get_comparator_function_for_order_by();
   uchar* get_record_pointer();
@@ -2190,49 +2157,4 @@ protected:
   { return get_item_copy<Item_func_group_concat>(thd, this); }
 };
 
-
-class Item_func_collect : public Item_sum_str
-{
-  uint32 srid;
-  bool has_cached_result;
-  String cached_result;
-  MEM_ROOT *mem_root;
-  bool is_distinct;
-  List<String> geometries;
-  String value;
-  const uint group_collect_max_len;
-
-  void clear() override;
-  bool add() override;
-  void cleanup() override;
-  void remove() override;
-  bool list_contains_element(String* wkb);
-
-  enum Sumfunctype sum_func () const override
-  {
-    return GEOMETRY_COLLECT_FUNC;
-  }
-  const Type_handler *type_handler() const override;
-  String *val_str(String*str) override;
-  LEX_CSTRING func_name_cstring() const override
-  {
-    return { STRING_WITH_LEN("st_collect(") };
-  }
-  Item *copy_or_same(THD* thd) override;
-  bool supports_removal() const override
-  {
-    return true;
-  }
-  bool is_null() override { update_null_value(); return null_value; }
-
-  bool fix_fields_impl(THD *thd,Item **) override;
-
-public:
-  Item_func_collect(THD *thd, bool is_distinct, Item *item_par);
-  Item_func_collect(THD *thd, bool is_distinct, Item_func_collect *item);
-
-protected:
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_collect>(thd, this); }
-};
 #endif /* ITEM_SUM_INCLUDED */

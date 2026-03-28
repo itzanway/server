@@ -22,6 +22,7 @@ select * from performance_schema.setup_instruments;
 
 select * from performance_schema.setup_actors;
 select * from performance_schema.setup_objects;
+select * from performance_schema.setup_timers;
 
 # Expect INSERT to fail with an error
 

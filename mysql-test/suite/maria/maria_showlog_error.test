@@ -13,7 +13,7 @@ connect (admin, localhost, root,,test,,);
 connection default;
 --enable_reconnect
 
-# cleanup before this test
+# cleunup before this test
 -- source include/maria_empty_logs.inc
 
 connection default;
@@ -23,7 +23,7 @@ remove_file $MYSQLD_DATADIR/$MARIA_LOG/aria_log.00000001;
 --replace_regex /Size unknown ; .*aria_log.00000001/Size unknown ; aria_log.00000001/
 show engine aria logs;
 
-# cleanup after this test
+# cleunup after this test
 -- source include/maria_empty_logs.inc
 
 disconnect admin;

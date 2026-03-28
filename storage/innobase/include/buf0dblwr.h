@@ -53,9 +53,9 @@ class buf_dblwr_t
     element* buf_block_arr;
   };
 
-  /** the page number of the first doublewrite block (block_size pages) */
+  /** the page number of the first doublewrite block (block_size() pages) */
   page_id_t block1{0, 0};
-  /** the page number of the second doublewrite block (block_size pages) */
+  /** the page number of the second doublewrite block (block_size() pages) */
   page_id_t block2{0, 0};
 
   /** mutex protecting the data members below */
@@ -74,22 +74,6 @@ class buf_dblwr_t
   slot slots[2];
   slot *active_slot;
 
-  /** Size of the doublewrite block in pages */
-  uint32_t block_size;
-
-public:
-  /** Values of use */
-  enum usage {
-    /** Assume that writes are atomic */
-    USE_NO= 0,
-    /** Use the doublewrite buffer with full durability */
-    USE_YES,
-    /** Durable writes to the doublewrite buffer, not to data files */
-    USE_FAST
-  };
-  /** The value of innodb_doublewrite */
-  ulong use;
-private:
   /** Initialise the persistent storage of the doublewrite buffer.
   @param header   doublewrite page header in the TRX_SYS page */
   inline void init(const byte *header) noexcept;
@@ -111,7 +95,7 @@ public:
   /** @return the number of completed batches */
   ulint batches() const noexcept
   { mysql_mutex_assert_owner(&mutex); return writes_completed; }
-  /** @return the number of override final pages written */
+  /** @return the number of final pages written */
   ulint written() const noexcept
   { mysql_mutex_assert_owner(&mutex); return pages_written; }
   /** Release the mutex */
@@ -142,6 +126,9 @@ public:
   @param request  the completed batch write request */
   void flush_buffered_writes_completed(const IORequest &request) noexcept;
 
+  /** Size of the doublewrite block in pages */
+  uint32_t block_size() const noexcept { return FSP_EXTENT_SIZE; }
+
   /** Schedule a page write. If the doublewrite memory buffer is full,
   flush_buffered_writes() will be invoked to make space.
   @param request    asynchronous write request
@@ -152,19 +139,6 @@ public:
   bool is_created() const noexcept
   { return UNIV_LIKELY(block1 != page_id_t(0, 0)); }
 
-  /** @return whether the doublewrite buffer is in use */
-  bool in_use() const { return is_created() && use; }
-  /** @return whether fsync() is needed on non-doublewrite pages */
-  bool need_fsync() const { return use < USE_FAST; }
-
-  void set_use(ulong use)
-  {
-    ut_ad(use <= USE_FAST);
-    mysql_mutex_lock(&mutex);
-    this->use= use;
-    mysql_mutex_unlock(&mutex);
-  }
-
   /** @return whether a page identifier is part of the doublewrite buffer */
   bool is_inside(const page_id_t id) const noexcept
   {
@@ -173,8 +147,8 @@ public:
     ut_ad(block1 < block2);
     if (id < block1)
       return false;
-    return id < block1 + block_size ||
-      (id >= block2 && id < block2 + block_size);
+    const uint32_t size= block_size();
+    return id < block1 + size || (id >= block2 && id < block2 + size);
   }
 
   /** Wait for flush_buffered_writes() to be fully completed */

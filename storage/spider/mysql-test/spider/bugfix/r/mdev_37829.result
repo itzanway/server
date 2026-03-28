@@ -30,7 +30,6 @@ CONSTRAINT test3_pk PRIMARY KEY (id)
 ) ENGINE=SPIDER COMMENT='wrapper "mysql", srv "srv", table "t2"';
 Warnings:
 Warning	1280	Name 'test3_pk' ignored for PRIMARY key.
-Warning	138	Spider table params in COMMENT or CONNECTION strings have been deprecated and will be removed in a future release. Please use table options instead.
 CREATE PROCEDURE tProc()
 BEGIN
 # This conditional logic is intentionally FALSE.

@@ -43,7 +43,7 @@ Named_type_handler<Type_handler_long_blob_json>
 const Type_handler *
 Type_handler_json_common::json_type_handler_from_generic(const Type_handler *th)
 {
-  // Test in the order of likelihood.
+  // Test in the order of likelyhood.
   if (th == &type_handler_long_blob)
     return &type_handler_long_blob_json;
   if (th == &type_handler_varchar)

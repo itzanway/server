@@ -109,15 +109,15 @@ WHERE table_schema = 'db_datadict' ORDER BY table_name;
 eval $select;
 
 --replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
-connect (testuser1, localhost, testuser1, ,"*NO-ONE*");
+connect (testuser1, localhost, testuser1, , test);
 eval $select;
 
 --replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
-connect (testuser2, localhost, testuser2, ,"*NO-ONE*");
+connect (testuser2, localhost, testuser2, , test);
 eval $select;
 
 --replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
-connect (test_no_views, localhost, test_no_views, ,"*NO-ONE*");
+connect (test_no_views, localhost, test_no_views, , test);
 eval $select;
 
 # Cleanup

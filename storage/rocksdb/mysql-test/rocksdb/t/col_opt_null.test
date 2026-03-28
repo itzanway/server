@@ -1,5 +1,4 @@
 --source include/have_rocksdb.inc
---enable_prepare_warnings
 
 # 
 # NULL column attribute
@@ -228,4 +227,4 @@ set time_zone=@col_opt_nullsave_time_zone;
 --let $col_default =
 --let $extra_col_opts =
 
---enable_prepare_warnings
+

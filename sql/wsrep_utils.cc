@@ -43,11 +43,6 @@
 #include <ifaddrs.h>
 #endif /* HAVE_GETIFADDRS */
 
-#define MY_MALLOC(arg) my_malloc(key_memory_WSREP, arg, MYF(0))
-#define MY_REALLOC(p, arg) my_realloc(key_memory_WSREP, p, arg, MYF(MY_ALLOW_ZERO_PTR))
-#define MY_STRDUP(arg) my_strdup(key_memory_WSREP, arg, MYF(0))
-#define MY_FREE(arg) my_free(arg)
-
 extern char** environ; // environment variables
 
 static wsp::string wsrep_PATH;
@@ -101,14 +96,16 @@ namespace wsp
 bool
 env::ctor_common(char** e)
 {
-    env_= static_cast<char**>(MY_MALLOC((len_ + 1) * sizeof(char*)));
+    env_= static_cast<char**>(my_malloc(key_memory_WSREP,
+                                        (len_ + 1) * sizeof(char*),
+                                        0));
 
     if (env_)
     {
         for (size_t i(0); i < len_; ++i)
         {
             assert(e[i]); // caller should make sure about len_
-            env_[i]= MY_STRDUP(e[i]);
+            env_[i]= my_strdup(key_memory_WSREP, e[i], MYF(0));
             if (!env_[i])
             {
                 errno_= errno;
@@ -134,8 +131,8 @@ env::dtor()
     if (env_)
     {
         /* don't need to go beyond the first NULL */
-        for (size_t i(0); env_[i] != NULL; ++i) { MY_FREE(env_[i]); }
-        MY_FREE(env_);
+        for (size_t i(0); env_[i] != NULL; ++i) { my_free(env_[i]); }
+        my_free(env_);
         env_= NULL;
     }
     len_= 0;
@@ -162,12 +159,13 @@ env::~env() { dtor(); }
 int
 env::append(const char* val)
 {
-    char** tmp= static_cast<char**>(MY_REALLOC(env_, (len_ + 2)*sizeof(char*)));
-
+    char** tmp= static_cast<char**>(my_realloc(key_memory_WSREP,
+                                               env_, (len_ + 2)*sizeof(char*),
+                                               0));
     if (tmp)
     {
         env_= tmp;
-        env_[len_]= MY_STRDUP(val);
+        env_[len_]= my_strdup(key_memory_WSREP, val, 0);
 
         if (env_[len_])
         {
@@ -181,97 +179,18 @@ env::append(const char* val)
     return errno_;
 }
 
-#define READ_END  0
-#define WRITE_END 1
-#define STDIN_FD  0
-#define STDOUT_FD 1
+
+#define PIPE_READ  0
+#define PIPE_WRITE 1
+#define STDIN_FD   0
+#define STDOUT_FD  1
 
 #ifndef POSIX_SPAWN_USEVFORK
 # define POSIX_SPAWN_USEVFORK 0
 #endif
 
-static int
-add_file_actions(posix_spawn_file_actions_t *fact,
-                 int close_fd, int dup_fd, int unused_fd)
-{
-    // close child's stdout|stdin fd
-    int err= posix_spawn_file_actions_addclose(fact, close_fd);
-    if (err)
-    {
-        WSREP_ERROR ("posix_spawn_file_actions_addclose() failed: %d (%s)",
-                   err, strerror(err));
-        return err;
-    }
-
-    // substitute our pipe descriptor in place of the closed one
-    err= posix_spawn_file_actions_adddup2(fact, dup_fd, close_fd);
-    if (err)
-    {
-        WSREP_ERROR ("posix_spawn_file_actions_addup2() failed: %d (%s)",
-                     err, strerror(err));
-        return err;
-    }
-
-    // close unused end of the pipe
-    err= posix_spawn_file_actions_addclose(fact, unused_fd);
-    if (err)
-    {
-        WSREP_ERROR ("posix_spawn_file_actions_addclose(2) failed: %d (%s)",
-                     err, strerror(err));
-        return err;
-    }
-
-    return 0;
-}
-
-void
-process::setup_parent_pipe_end(io_direction      direction,
-                               int               pipe_fds[],
-                               int const         pipe_end,
-                               const char* const mode)
-{
-    io_[direction] = fdopen(pipe_fds[pipe_end], mode);
-
-    if (io_[direction])
-    {
-        pipe_fds[pipe_end]= -1; // skip close on cleanup
-    }
-    else
-    {
-        err_= errno;
-        WSREP_ERROR("fdopen() failed on '%s' pipe: %d (%s)",
-                    mode, err_, strerror(err_));
-    }
-}
-
-void
-process::close_io(io_direction const direction, bool const warn)
-{
-    if (io_[direction])
-    {
-        if (warn)
-        {
-            WSREP_WARN("Closing pipe to child process: %s, PID(%ld) "
-                       "which might still be running.", str_, (long)pid_);
-        }
-
-        if (fclose(io_[direction]) == -1)
-        {
-            err_= errno;
-            WSREP_ERROR("fclose(%d) failed: %d (%s)",
-                        direction, err_, strerror(err_));
-        }
-
-        io_[direction]= NULL;
-    }
-}
-
 process::process (const char* cmd, const char* type, char** env)
-    :
-    str_(cmd ? MY_STRDUP(cmd) : MY_STRDUP("")),
-    io_{ NULL, NULL },
-    err_(EINVAL),
-    pid_(0)
+    : str_(cmd ? strdup(cmd) : strdup("")), io_(NULL), err_(EINVAL), pid_(0)
 {
     if (0 == str_)
     {
@@ -286,41 +205,33 @@ process::process (const char* cmd, const char* type, char** env)
         return;
     }
 
-    if (NULL == type ||
-        (strncmp(type, "w", 1) && strncmp(type, "r", 1) && strncmp(type, "rw", 2)))
+    if (NULL == type || (strcmp (type, "w") && strcmp(type, "r")))
     {
-        WSREP_ERROR ("type argument should be either \"r\", \"w\" or \"rw\".");
+        WSREP_ERROR ("type argument should be either \"r\" or \"w\".");
         return;
     }
 
     if (NULL == env) { env= environ; } // default to global environment
 
-    bool const read_from_child= strchr(type, 'r');
-    bool const write_to_child= strchr(type, 'w');
+    int pipe_fds[2]= { -1, };
+    if (::pipe(pipe_fds))
+    {
+        err_= errno;
+        WSREP_ERROR ("pipe() failed: %d (%s)", err_, strerror(err_));
+        return;
+    }
 
-    int read_pipe[2]=  { -1, -1 };
-    int write_pipe[2]= { -1, -1 };
+    // which end of pipe will be returned to parent
+    int const parent_end (strcmp(type,"w") ? PIPE_READ : PIPE_WRITE);
+    int const child_end  (parent_end == PIPE_READ ? PIPE_WRITE : PIPE_READ);
+    int const close_fd   (parent_end == PIPE_READ ? STDOUT_FD : STDIN_FD);
 
-    char* const pargv[4]= { MY_STRDUP("sh"), MY_STRDUP("-c"), MY_STRDUP(str_), NULL };
+    char* const pargv[4]= { strdup("sh"), strdup("-c"), strdup(str_), NULL };
     if (!(pargv[0] && pargv[1] && pargv[2]))
     {
         err_= ENOMEM;
         WSREP_ERROR ("Failed to allocate pargv[] array.");
-        goto cleanup_pargv;
-    }
-
-    if (read_from_child && ::pipe(read_pipe))
-    {
-        err_= errno;
-        WSREP_ERROR ("pipe(read_pipe) failed: %d (%s)", err_, strerror(err_));
-        goto cleanup_pargv;
-    }
-
-    if (write_to_child && ::pipe(write_pipe))
-    {
-        err_= errno;
-        WSREP_ERROR ("pipe(write_pipe) failed: %d (%s)", err_, strerror(err_));
-        goto cleanup_pipes;
+        goto cleanup_pipe;
     }
 
     posix_spawnattr_t attr;
@@ -329,7 +240,7 @@ process::process (const char* cmd, const char* type, char** env)
     {
         WSREP_ERROR ("posix_spawnattr_init() failed: %d (%s)",
                      err_, strerror(err_));
-        goto cleanup_pipes;
+        goto cleanup_pipe;
     }
 
     /* make sure that no signlas are masked in child process */
@@ -359,8 +270,8 @@ process::process (const char* cmd, const char* type, char** env)
     }
 
     err_= posix_spawnattr_setflags (&attr, POSIX_SPAWN_SETSIGDEF  |
-                                           POSIX_SPAWN_SETSIGMASK |
-                                           POSIX_SPAWN_USEVFORK);
+                                            POSIX_SPAWN_SETSIGMASK |
+                                            POSIX_SPAWN_USEVFORK);
     if (err_)
     {
         WSREP_ERROR ("posix_spawnattr_setflags() failed: %d (%s)",
@@ -377,19 +288,23 @@ process::process (const char* cmd, const char* type, char** env)
         goto cleanup_attr;
     }
 
-    /* Add file actions for the child (fd substitution, close unused fds) */
-    if (read_from_child)
+    // close child's stdout|stdin depending on what we returning
+    err_= posix_spawn_file_actions_addclose (&fact, close_fd);
+    if (err_)
     {
-        err_= add_file_actions(&fact, STDOUT_FD, read_pipe[WRITE_END],
-                               read_pipe[READ_END]);
-        if (err_) goto cleanup_fact;
+        WSREP_ERROR ("posix_spawn_file_actions_addclose() failed: %d (%s)",
+                     err_, strerror(err_));
+        goto cleanup_fact;
     }
 
-    if (write_to_child)
+    // substitute our pipe descriptor in place of the closed one
+    err_= posix_spawn_file_actions_adddup2 (&fact,
+                                             pipe_fds[child_end], close_fd);
+    if (err_)
     {
-        err_= add_file_actions(&fact, STDIN_FD, write_pipe[READ_END],
-                               write_pipe[WRITE_END]);
-        if (err_) goto cleanup_fact;
+        WSREP_ERROR ("posix_spawn_file_actions_addup2() failed: %d (%s)",
+                     err_, strerror(err_));
+        goto cleanup_fact;
     }
 
     err_= posix_spawnp (&pid_, pargv[0], &fact, &attr, pargv, env);
@@ -401,16 +316,16 @@ process::process (const char* cmd, const char* type, char** env)
         goto cleanup_fact;
     }
 
-    if (read_from_child)
-    {
-        setup_parent_pipe_end(READ, read_pipe, READ_END, "r");
-        assert(from());
-    }
+    io_= fdopen (pipe_fds[parent_end], type);
 
-    if (write_to_child)
+    if (io_)
     {
-        setup_parent_pipe_end(WRITE, write_pipe, WRITE_END, "w");
-        assert(to());
+        pipe_fds[parent_end]= -1; // skip close on cleanup
+    }
+    else
+    {
+        err_= errno;
+        WSREP_ERROR ("fdopen() failed: %d (%s)", err_, strerror(err_));
     }
 
 cleanup_fact:
@@ -430,24 +345,33 @@ cleanup_attr:
                      err, strerror(err));
     }
 
-cleanup_pipes:
-    if (read_pipe[0] >= 0) close (read_pipe[0]);
-    if (read_pipe[1] >= 0) close (read_pipe[1]);
-    if (write_pipe[0] >= 0) close (write_pipe[0]);
-    if (write_pipe[1] >= 0) close (write_pipe[1]);
+cleanup_pipe:
+    if (pipe_fds[0] >= 0) close (pipe_fds[0]);
+    if (pipe_fds[1] >= 0) close (pipe_fds[1]);
 
-cleanup_pargv:
-    MY_FREE(pargv[0]);
-    MY_FREE(pargv[1]);
-    MY_FREE(pargv[2]);
+    free (pargv[0]);
+    free (pargv[1]);
+    free (pargv[2]);
 }
 
 process::~process ()
 {
-    close_io(READ, true);
-    close_io(WRITE, true);
+    if (io_)
+    {
+        assert (pid_);
+        assert (str_);
 
-    if (str_) MY_FREE(const_cast<char*>(str_));
+        WSREP_WARN("Closing pipe to child process: %s, PID(%ld) "
+                   "which might still be running.", str_, (long)pid_);
+
+        if (fclose (io_) == -1)
+        {
+            err_= errno;
+            WSREP_ERROR("fclose() failed: %d (%s)", err_, strerror(err_));
+        }
+    }
+
+    if (str_) free (const_cast<char*>(str_));
 }
 
 int
@@ -484,43 +408,28 @@ process::wait ()
           }
 
           pid_= 0;
-          close_io(READ,  false);
-          close_io(WRITE, false);
-       }
+          if (io_) fclose (io_);
+          io_= NULL;
+      }
   }
   else {
-      assert (NULL == io_[READ]);
-      assert (NULL == io_[WRITE]);
+      assert (NULL == io_);
       WSREP_ERROR("Command did not run: %s", str_);
   }
 
   return err_;
 }
 
-thd::thd (my_bool ini, bool system_thread)
-    :
-    init(ini),
-    ptr(init.err_ ? nullptr : new THD(0))
+thd::thd (my_bool won, bool system_thread) : init(), ptr(new THD(0))
 {
   if (ptr)
   {
-    ptr->real_id= pthread_self();
     wsrep_assign_from_threadvars(ptr);
     wsrep_store_threadvars(ptr);
-
-    ptr->tx_read_only= false;
-    ptr->variables.tx_read_only= false;
-    ptr->variables.tx_isolation= ISO_READ_COMMITTED;
-    ptr->variables.sql_log_bin = 0;
-    ptr->variables.option_bits &= ~OPTION_BIN_LOG; // disable binlog
-    ptr->variables.option_bits |=  OPTION_LOG_OFF; // disable general log
-    ptr->variables.wsrep_on = false;
-    ptr->security_context()->skip_grants();
-
+    ptr->variables.option_bits&= ~OPTION_BIN_LOG; // disable binlog
+    ptr->variables.wsrep_on= won;
     if (system_thread)
-    {
       ptr->system_thread= SYSTEM_THREAD_GENERIC;
-    }
     ptr->security_ctx->master_access= ALL_KNOWN_ACL;
     lex_start(ptr);
   }
@@ -533,40 +442,6 @@ thd::~thd ()
     delete ptr;
     set_current_thd(nullptr);
   }
-}
-
-mysql::mysql() :
-  mysql_(mysql_init(NULL))
-{
-  int err = 0;
-  if (mysql_real_connect_local(mysql_) == NULL) {
-      err = mysql_errno(mysql_);
-      WSREP_ERROR("mysql::mysql() mysql_real_connect() failed: %d (%s)",
-                  err, mysql_error(mysql_));
-  }
-}
-
-mysql::~mysql()
-{
-  mysql_close(mysql_);
-}
-
-int
-mysql::disable_replication()
-{
-  int err = execute("SET SESSION sql_log_bin = OFF;");
-  if (err) {
-    WSREP_ERROR("sst_user::user() disabling log_bin failed: %d (%s)",
-                err, errstr());
-  }
-  else {
-    err = execute("SET SESSION wsrep_on = OFF;");
-    if (err) {
-      WSREP_ERROR("sst_user::user() disabling wsrep replication failed: %d (%s)",
-                  err, errstr());
-    }
-  }
-  return err;
 }
 
 } // namespace wsp
@@ -584,13 +459,7 @@ unsigned int wsrep_check_ip (const char* const addr, bool *is_ipv6)
 
   *is_ipv6= false;
 
-  char *end;
-  char address[INET6_ADDRSTRLEN];
-
-  end= strcend(addr, ',');
-  strmake(address, addr, (uint) (end - addr));
-
-  int gai_ret= getaddrinfo(address, NULL, &hints, &res);
+  int gai_ret= getaddrinfo(addr, NULL, &hints, &res);
   if (0 == gai_ret)
   {
     if (AF_INET == res->ai_family) /* IPv4 */

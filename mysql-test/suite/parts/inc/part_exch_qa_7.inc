@@ -1,5 +1,4 @@
 CREATE USER test_2@localhost;
-GRANT SELECT,INSERT,CREATE,ALTER,DROP on test.* to test_2@localhost;
 
 --source include/not_embedded.inc
 --disable_result_log

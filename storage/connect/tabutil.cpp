@@ -91,7 +91,7 @@ TABLE_SHARE *GetTableShare(PGLOBAL g, THD *thd, const char *db,
   key[++k] = 0;
 
 	if (!(s = alloc_table_share(db, name, key, ++k))) {
-    strcpy(g->Message, "Error allocating share");
+    strcpy(g->Message, "Error allocating share\n");
     return NULL;
     } // endif s
 
@@ -109,7 +109,7 @@ TABLE_SHARE *GetTableShare(PGLOBAL g, THD *thd, const char *db,
     if (thd->is_error())
       thd->clear_error();  // Avoid stopping info commands
 
-    snprintf(g->Message, sizeof(g->Message), "Error %d opening share", s->error);
+    snprintf(g->Message, sizeof(g->Message), "Error %d opening share\n", s->error);
     free_table_share(s);
     return NULL;
   } // endif open_table_def
@@ -205,7 +205,7 @@ PQRYRES TabColumns(PGLOBAL g, THD *thd, const char *db,
       if (v == 'K') {
         // Skip this column
         snprintf(g->Message, sizeof(g->Message), "Column %s skipped (unsupported type)", colname);
-        push_warning(thd, Sql_condition::WARN_LEVEL_WARN, ER_UNKNOWN_ERROR, g->Message);
+        push_warning(thd, Sql_condition::WARN_LEVEL_WARN, 0, g->Message);
         continue;
         } // endif v
 
@@ -218,7 +218,7 @@ PQRYRES TabColumns(PGLOBAL g, THD *thd, const char *db,
         len = zconv;
         snprintf(g->Message, sizeof(g->Message), "Column %s converted to varchar(%d)",
                 colname, len);
-        push_warning(thd, Sql_condition::WARN_LEVEL_WARN, ER_UNKNOWN_ERROR, g->Message);
+        push_warning(thd, Sql_condition::WARN_LEVEL_WARN, 0, g->Message);
         } // endif v
 
     crp = crp->Next;                       // Data_Type
@@ -431,8 +431,8 @@ PTDB TDBPRX::GetSubTable(PGLOBAL g, PTABLE tabp, bool b)
     hc->get_table()->field = NULL;
 
     // Make caller use the source definition
-    sp = hc->get_table()->s->option_struct_table->srcdef;
-    hc->get_table()->s->option_struct_table->srcdef = tabp->GetSrc();
+    sp = hc->get_table()->s->option_struct->srcdef;
+    hc->get_table()->s->option_struct->srcdef = tabp->GetSrc();
   } // endif srcdef
 
   if (mysql) {
@@ -466,7 +466,7 @@ PTDB TDBPRX::GetSubTable(PGLOBAL g, PTABLE tabp, bool b)
   } else if (b) {
     // Restore s structure that can be in cache
     hc->get_table()->field = fp;
-    hc->get_table()->s->option_struct_table->srcdef = sp;
+    hc->get_table()->s->option_struct->srcdef = sp;
   } // endif s
 
   if (trace(1) && tdbp)

@@ -15,6 +15,7 @@ SET default_storage_engine=InnoDB;
 -- disable_query_log
 -- disable_result_log
 
+DROP TABLE IF EXISTS bug38231_1;
 CREATE TABLE bug38231_1 (a INT);
 
 -- connect (lock_gain,localhost,root,,)
@@ -62,15 +63,14 @@ UNLOCK TABLES;
 
 -- connection default
 
--- dirty_close lock_gain
--- dirty_close lock_wait1
--- dirty_close lock_wait2
--- dirty_close truncate_wait
+-- disconnect lock_gain
+-- disconnect lock_wait1
+-- disconnect lock_wait2
+-- disconnect truncate_wait
 
 DROP TABLE bug38231_1;
 
 -- enable_query_log
 -- enable_result_log
 
--- let $count_sessions= 1
--- source include/wait_until_count_sessions.inc
+-- connection default

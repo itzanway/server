@@ -5,6 +5,9 @@
 # The test can take hours with valgrind
 --source include/not_valgrind.inc
 
+# Save the initial number of concurrent sessions
+--source include/count_sessions.inc
+
 SET @odl_sync_frm = @@global.sync_frm;
 SET @@global.sync_frm = OFF;
 
@@ -12,6 +15,9 @@ connect (locker,localhost,root,,);
 connect (writer,localhost,root,,);
 
 --connection default
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
 CREATE TABLE t1( a INT, b INT );
 CREATE TABLE t2( a INT, b INT );
 INSERT INTO t1 VALUES (1, 1), (2, 2), (3, 3), (4, 4);
@@ -30,8 +36,8 @@ while ($i) {
   send UPDATE t1, (SELECT 1 FROM t2 t1i) d SET a = 0 WHERE 1=0;
 
 --connection locker
-  ALTER TABLE t1 ADD COLUMN (c INT), LOCK=SHARED;
-  ALTER TABLE t1 DROP COLUMN c, LOCK=SHARED;
+  ALTER TABLE t1 ADD COLUMN (c INT);
+  ALTER TABLE t1 DROP COLUMN c;
 
 --connection writer
 --reap
@@ -50,8 +56,8 @@ while ($i) {
 --send EXECUTE stmt
 
 --connection locker
-  ALTER TABLE t1 ADD COLUMN (c INT), LOCK=SHARED;
-  ALTER TABLE t1 DROP COLUMN c, LOCK=SHARED;
+  ALTER TABLE t1 ADD COLUMN (c INT);
+  ALTER TABLE t1 DROP COLUMN c;
 
 --connection writer
 --reap
@@ -70,7 +76,7 @@ while ($i) {
 
 --connection locker
 --error 0,ER_DUP_FIELDNAME
-  ALTER TABLE t1 ADD COLUMN a int(11) unsigned default NULL, LOCK=SHARED;
+  ALTER TABLE t1 ADD COLUMN a int(11) unsigned default NULL;
   UPDATE t1 SET a=b;
 
 --connection writer
@@ -78,7 +84,7 @@ while ($i) {
 
 --connection locker
 --error 0,ER_CANT_DROP_FIELD_OR_KEY
-  ALTER TABLE t1 DROP COLUMN a, LOCK=SHARED;
+  ALTER TABLE t1 DROP COLUMN a;
 
 --connection writer
 --error 0,ER_BAD_FIELD_ERROR # unknown column error
@@ -95,7 +101,7 @@ while ($i) {
 
 --connection locker
 --error 0,ER_DUP_FIELDNAME
-  ALTER TABLE t1 ADD COLUMN a INT, LOCK=SHARED;
+  ALTER TABLE t1 ADD COLUMN a INT;
   UPDATE t1 SET a=b;
 
 --connection writer
@@ -104,7 +110,7 @@ while ($i) {
 
 --connection locker
 --error 0,ER_CANT_DROP_FIELD_OR_KEY
-  ALTER TABLE t1 DROP COLUMN a, LOCK=SHARED;
+  ALTER TABLE t1 DROP COLUMN a;
 
 --connection writer
 --error 0,ER_BAD_FIELD_ERROR # Unknown column 'a' in 'field list'
@@ -112,7 +118,7 @@ while ($i) {
 }
 --enable_query_log
 --connection default
-ALTER TABLE t1 ADD COLUMN a INT, LOCK=SHARED;
+ALTER TABLE t1 ADD COLUMN a INT;
 
 --echo # 2. test UNIONs
 --echo # 2.1. test altering of columns that multiupdate doesn't use
@@ -127,8 +133,8 @@ while ($i) {
   send UPDATE t1, ((SELECT 1 FROM t1 t1i) UNION (SELECT 2 FROM t1 t1ii)) e SET a = 0 WHERE 1=0;
 
 --connection locker
-  ALTER TABLE t1 ADD COLUMN (c INT), LOCK=SHARED;
-  ALTER TABLE t1 DROP COLUMN c, LOCK=SHARED;
+  ALTER TABLE t1 ADD COLUMN (c INT);
+  ALTER TABLE t1 DROP COLUMN c;
 
 --connection writer
 --reap
@@ -147,8 +153,8 @@ while ($i) {
 --send EXECUTE stmt
 
 --connection locker
-  ALTER TABLE t1 ADD COLUMN (c INT), LOCK=SHARED;
-  ALTER TABLE t1 DROP COLUMN c, LOCK=SHARED;
+  ALTER TABLE t1 ADD COLUMN (c INT);
+  ALTER TABLE t1 DROP COLUMN c;
 
 --connection writer
 --reap
@@ -167,7 +173,7 @@ while ($i) {
 
 --connection locker
 --error 0,ER_DUP_FIELDNAME
-  ALTER TABLE t1 ADD COLUMN a int(11) unsigned default NULL, LOCK=SHARED;
+  ALTER TABLE t1 ADD COLUMN a int(11) unsigned default NULL;
   UPDATE t1 SET a=b;
 
 --connection writer
@@ -175,7 +181,7 @@ while ($i) {
 
 --connection locker
 --error 0,ER_CANT_DROP_FIELD_OR_KEY
-  ALTER TABLE t1 DROP COLUMN a, LOCK=SHARED;
+  ALTER TABLE t1 DROP COLUMN a;
 
 --connection writer
 --error 0,ER_BAD_FIELD_ERROR # Unknown column 'a' in 'field list'
@@ -192,7 +198,7 @@ while ($i) {
 
 --connection locker
 --error 0,ER_DUP_FIELDNAME
-  ALTER TABLE t1 ADD COLUMN a INT, LOCK=SHARED;
+  ALTER TABLE t1 ADD COLUMN a INT;
   UPDATE t1 SET a=b;
 
 --connection writer
@@ -201,7 +207,7 @@ while ($i) {
 
 --connection locker
 --error 0,ER_CANT_DROP_FIELD_OR_KEY
-  ALTER TABLE t1 DROP COLUMN a, LOCK=SHARED;
+  ALTER TABLE t1 DROP COLUMN a;
 
 --connection writer
 --error 0,ER_BAD_FIELD_ERROR # Unknown column 'a' in 'field list'
@@ -218,4 +224,8 @@ DROP TABLE t1,t2;
 
 SET @@global.sync_frm = @odl_sync_frm;
 
---echo # End of 5.0 tests
+# End of 5.0 tests
+
+# Wait till all disconnects are completed
+--source include/wait_until_count_sessions.inc
+

@@ -2,10 +2,8 @@
 
 --eval $create_statement
 --eval $insert_statement
---let $dbug_flag= `select @@session.debug_dbug`
---echo # $dbug_flag: BEFORE failure
+--echo # State before failure
 --replace_result #p# #P# #sp# #SP#
---let $DATADIR= `select @@datadir`
 --list_files $DATADIR/test
 SHOW CREATE TABLE t1;
 --sorted_result
@@ -13,7 +11,7 @@ SELECT * FROM t1;
 --disable_abort_on_error
 --eval $fail_statement
 --enable_abort_on_error
---echo # $dbug_flag: AFTER failure
+--echo # State after failure
 --replace_result #p# #P# #sp# #SP#
 --list_files $DATADIR/test
 SHOW CREATE TABLE t1;
@@ -21,9 +19,10 @@ SHOW CREATE TABLE t1;
 SELECT * FROM t1;
 DROP TABLE t1;
 
+--echo # Same test under LOCK TABLE
 --eval $create_statement
 --eval $insert_statement
---echo # $dbug_flag: BEFORE failure (under LOCK TABLE)
+--echo # State before failure
 --replace_result #p# #P# #sp# #SP#
 --list_files $DATADIR/test
 SHOW CREATE TABLE t1;
@@ -33,7 +32,7 @@ LOCK TABLE t1 WRITE;
 --disable_abort_on_error
 --eval $fail_statement
 --enable_abort_on_error
---echo # $dbug_flag: AFTER failure (under LOCK TABLE)
+--echo # State after failure
 --replace_result #p# #P# #sp# #SP#
 --list_files $DATADIR/test
 SHOW CREATE TABLE t1;

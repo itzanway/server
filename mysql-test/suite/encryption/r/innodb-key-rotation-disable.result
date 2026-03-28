@@ -1,3 +1,4 @@
+SET GLOBAL innodb_file_per_table = ON;
 set global innodb_compression_algorithm = 1;
 create database enctests;
 use enctests;

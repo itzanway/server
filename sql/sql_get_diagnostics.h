@@ -254,8 +254,7 @@ public:
     CURSOR_NAME,
     MESSAGE_TEXT,
     MYSQL_ERRNO,
-    RETURNED_SQLSTATE,
-    ROW_NUMBER
+    RETURNED_SQLSTATE
   };
 
   /**

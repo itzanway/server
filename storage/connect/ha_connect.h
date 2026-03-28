@@ -23,6 +23,10 @@
   /sql/handler.h and /storage/connect/ha_connect.cc
 */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface     /* gcc class implementation */
+#endif
+
 /****************************************************************************/
 /*  mycat.h contains the TOS, PTOS, ha_table_option_struct declarations.    */
 /****************************************************************************/
@@ -304,18 +308,13 @@ public:
   /** @brief
     Called in test_quick_select to determine if indexes should be used.
   */
-  IO_AND_CPU_COST scan_time() override
-  { return { 0, (double) (stats.records+stats.deleted) * DISK_READ_COST }; };
+  double scan_time() override { return (double) (stats.records+stats.deleted) / 20.0+10; }
 
   /** @brief
     This method will never be called if you do not implement indexes.
   */
-  IO_AND_CPU_COST keyread_time(uint index, ulong ranges, ha_rows rows,
-                                       ulonglong blocks) override
-  {
-    return { 0, (double) rows * 0.001 };
-  }
-
+  double read_time(uint, uint, ha_rows rows) override
+    { return (double) rows /  20.0+1; }
 
   /*
     Everything below are methods that we implement in ha_connect.cc.
@@ -498,8 +497,7 @@ int index_prev(uchar *buf) override;
   ha_rows multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                                       void *seq_init_param,
                                       uint n_ranges, uint *bufsz,
-                                      uint *flags, ha_rows limit,
-                                      Cost_estimate *cost) override;
+                                      uint *flags, Cost_estimate *cost) override;
   ha_rows multi_range_read_info(uint keyno, uint n_ranges, uint keys,
                                 uint key_parts, uint *bufsz,
                                 uint *flags, Cost_estimate *cost) override;
@@ -519,7 +517,7 @@ protected:
 	char *GetDBfromName(const char *name);
 
   // Members
-  static ulong  num;                  // Traceable handler number
+  static ulong  num;                  // Tracable handler number
   PCONNECT      xp;                   // To user_connect associated class
   ulong         hnum;                 // The number of this handler
   query_id_t    valid_query_id;       // The one when tdbp was allocated

@@ -5,7 +5,7 @@ call mtr.add_suppression("Slave SQL.*Column [0-9] of table .test.t[0-9]*. cannot
 **** Diff Table Def Start ****
 connection slave;
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 SET @saved_slave_type_conversions = @@slave_type_conversions;
 SET GLOBAL SLAVE_TYPE_CONVERSIONS = 'ALL_NON_LOSSY';
 CREATE TABLE t1 (a INT, b INT PRIMARY KEY, c CHAR(20),
@@ -16,7 +16,6 @@ ENGINE='MyISAM';
 connection master;
 CREATE TABLE t1 (a INT PRIMARY KEY, b INT, c CHAR(10)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -43,7 +42,7 @@ DROP TABLE t1;
 connection slave;
 *** Create t2 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t2 (a INT, b INT PRIMARY KEY, c CHAR(5),
 d FLOAT DEFAULT '2.00',
 e CHAR(5) DEFAULT 'TEST2')
@@ -52,7 +51,6 @@ ENGINE='MyISAM';
 connection master;
 CREATE TABLE t2 (a INT PRIMARY KEY, b INT, c CHAR(10)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Master Data Insert ***
 connection master;
@@ -66,15 +64,12 @@ a	b	c
 connection slave;
 START SLAVE;
 include/wait_for_slave_sql_error.inc [errno=1677]
-Last_SQL_Error = 'Column 2 of table 'test.t2' cannot be converted from type 'char(40 octets)' to type 'char(20 octets) character set utf8mb4''
+Last_SQL_Error = 'Column 2 of table 'test.t2' cannot be converted from type 'char(10 octets)' to type 'char(5 octets) character set latin1''
 STOP SLAVE;
-include/reset_slave.inc
-Warnings:
-Warning	1948	Specified value for @@gtid_slave_pos contains no value for replication domain 0. This conflicts with the binary log which contains GTID 0-2-4. If MASTER_GTID_POS=CURRENT_POS is used, the binlog position will override the new value of @@gtid_slave_pos
+RESET SLAVE;
 SELECT * FROM t2 ORDER BY a;
 a	b	c	d	e
 connection master;
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 connection slave;
 START SLAVE;
@@ -84,7 +79,7 @@ DROP TABLE t2;
 connection slave;
 *** Create t3 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t3 (a INT, b INT PRIMARY KEY, c CHAR(20),
 d FLOAT DEFAULT '2.00',
 e CHAR(5) DEFAULT 'TEST2')
@@ -93,7 +88,6 @@ ENGINE='MyISAM';
 connection master;
 CREATE TABLE t3 (a BLOB, b INT PRIMARY KEY, c CHAR(20)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -115,7 +109,7 @@ DROP TABLE t3;
 connection slave;
 *** Create t4 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t4 (a INT, b INT PRIMARY KEY, c CHAR(20),
 d FLOAT DEFAULT '2.00',
 e CHAR(5) DEFAULT 'TEST2')
@@ -124,7 +118,6 @@ ENGINE='MyISAM';
 connection master;
 CREATE TABLE t4 (a DECIMAL(8,2), b INT PRIMARY KEY, c CHAR(20)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -145,7 +138,7 @@ DROP TABLE t4;
 connection slave;
 *** Create t5 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t5 (a INT PRIMARY KEY, b CHAR(5),
 c FLOAT, d INT, e DOUBLE,
 f DECIMAL(8,2))ENGINE='MyISAM';
@@ -154,7 +147,6 @@ connection master;
 CREATE TABLE t5 (a INT PRIMARY KEY, b VARCHAR(6),
 c DECIMAL(8,2), d BIT, e BLOB,
 f FLOAT) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -168,14 +160,14 @@ INSERT INTO t5 () VALUES(1,'Kyle',200.23,1,'b1b1',23.00098),
 ********************************************
 connection slave;
 include/wait_for_slave_sql_error_and_skip.inc [errno=1677]
-Last_SQL_Error = 'Column 5 of table 'test.t5' cannot be converted from type 'float' to type 'decimal(8,2)''
+Last_SQL_Error = 'Column 1 of table 'test.t5' cannot be converted from type 'varchar(6 octets)' to type 'char(5 octets) character set latin1''
 *** Drop t5  ***
 connection master;
 DROP TABLE t5;
 connection slave;
 *** Create t6 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t6 (a INT PRIMARY KEY, b CHAR(5),
 c FLOAT, d INT)ENGINE='MyISAM';
 *** Create t6 on Master ***
@@ -183,7 +175,6 @@ connection master;
 CREATE TABLE t6 (a INT PRIMARY KEY, b VARCHAR(6),
 c DECIMAL(8,2), d BIT 
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -197,7 +188,7 @@ INSERT INTO t6 () VALUES(1,'Kyle',200.23,1),
 ********************************************
 connection slave;
 include/wait_for_slave_sql_error.inc [errno=1677]
-Last_SQL_Error = 'Column 3 of table 'test.t6' cannot be converted from type 'bit(1)' to type 'int(11)''
+Last_SQL_Error = 'Column 1 of table 'test.t6' cannot be converted from type 'varchar(6 octets)' to type 'char(5 octets) character set latin1''
 *** Drop t6  ***
 include/rpl_reset.inc
 connection master;
@@ -207,7 +198,7 @@ connection slave;
 **** Extra Colums Start ****
 *** Create t7 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t7 (a INT KEY, b BLOB, c CHAR(5),
 d TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00',
 e CHAR(20) DEFAULT 'Extra Column Testing')
@@ -216,7 +207,6 @@ ENGINE='MyISAM';
 connection master;
 CREATE TABLE t7 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -244,7 +234,7 @@ DROP TABLE t7;
 connection slave;
 *** Create t8 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t8 (a INT KEY, b BLOB, c CHAR(5),
 d TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00',
 e INT)ENGINE='MyISAM';
@@ -252,7 +242,6 @@ e INT)ENGINE='MyISAM';
 connection master;
 CREATE TABLE t8 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -267,9 +256,10 @@ connection master;
 DROP TABLE t8;
 connection slave;
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t9 (a INT KEY, b BLOB, c CHAR(5),
-d TIMESTAMP NOT NULL DEFAULT 0,
+d TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP 
+ON UPDATE CURRENT_TIMESTAMP,
 e INT NOT NULL,
 f text not null,
 g text,
@@ -279,7 +269,6 @@ i blob) ENGINE='MyISAM';
 connection master;
 CREATE TABLE t9 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -300,14 +289,13 @@ DROP TABLE t9;
 connection slave;
 *** Create t10 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t10 (a INT KEY, b BLOB, f DOUBLE DEFAULT '233', 
 c CHAR(5), e INT DEFAULT '1')ENGINE='MyISAM';
 *** Create t10 on Master ***
 connection master;
 CREATE TABLE t10 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -322,21 +310,20 @@ INSERT INTO t10 () VALUES(1,@b1,'Kyle'),(2,@b1,'JOE'),(3,@b1,'QA');
 ********************************************
 connection slave;
 include/wait_for_slave_sql_error_and_skip.inc [errno=1677]
-Last_SQL_Error = 'Column 2 of table 'test.t10' cannot be converted from type 'char(20 octets)' to type 'double''
+Last_SQL_Error = 'Column 2 of table 'test.t10' cannot be converted from type 'char(5 octets)' to type 'double''
 *** Drop t10  ***
 connection master;
 DROP TABLE t10;
 connection slave;
 *** Create t11 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t11 (a INT KEY, b BLOB, f INT,
 c CHAR(5) DEFAULT 'test', e INT DEFAULT '1')ENGINE='MyISAM';
 *** Create t11 on Master ***
 connection master;
 CREATE TABLE t11 (a INT PRIMARY KEY, b BLOB, c VARCHAR(254)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -351,21 +338,20 @@ INSERT INTO t11 () VALUES(1,@b1,'Kyle'),(2,@b1,'JOE'),(3,@b1,'QA');
 ********************************************
 connection slave;
 include/wait_for_slave_sql_error_and_skip.inc [errno=1677]
-Last_SQL_Error = 'Column 2 of table 'test.t11' cannot be converted from type 'varchar(1016 octets)' to type 'int(11)''
+Last_SQL_Error = 'Column 2 of table 'test.t11' cannot be converted from type 'varchar(254 octets)' to type 'int(11)''
 *** Drop t11  ***
 connection master;
 DROP TABLE t11;
 connection slave;
 *** Create t12 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t12 (a INT KEY, b BLOB, f TEXT,
 c CHAR(5) DEFAULT 'test', e INT DEFAULT '1')ENGINE='MyISAM';
 *** Create t12 on Master ***
 connection master;
 CREATE TABLE t12 (a INT PRIMARY KEY, b BLOB, c BLOB
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -395,7 +381,7 @@ connection slave;
 *** BUG 22177 Start ***
 *** Create t13 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t13 (a INT KEY, b BLOB, c CHAR(5),
 d INT DEFAULT '1',
 e TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
@@ -404,7 +390,6 @@ e TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
 connection master;
 CREATE TABLE t13 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -434,7 +419,7 @@ connection slave;
 *** Alter Master Table Testing Start ***
 *** Create t14 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t14 (c1 INT KEY, c4 BLOB, c5 CHAR(5),
 c6 INT DEFAULT '1',
 c7 TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
@@ -443,8 +428,6 @@ c7 TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
 connection master;
 CREATE TABLE t14 (c1 INT PRIMARY KEY, c4 BLOB, c5 CHAR(5)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -472,7 +455,7 @@ c1	c2	c3	c4	c5	c6	c7
 3	3.00	If is does not, I will open a bug	b1b1b1b1b1b1b1b1	QA	1	CURRENT_TIMESTAMP
 *** Create t14a on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t14a (c1 INT KEY, c4 BLOB, c5 CHAR(5),
 c6 INT DEFAULT '1',
 c7 TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
@@ -481,7 +464,6 @@ c7 TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
 connection master;
 CREATE TABLE t14a (c1 INT PRIMARY KEY, c4 BLOB, c5 CHAR(5)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -506,11 +488,10 @@ c1	c4	c5	c6	c7
 2	b1b1b1b1b1b1b1b1	JOE	1	CURRENT_TIMESTAMP
 3	b1b1b1b1b1b1b1b1	QA	1	CURRENT_TIMESTAMP
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 *** Master Drop c5 ***
 connection master;
 ALTER TABLE t14a DROP COLUMN c5;
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -566,7 +547,7 @@ DROP TABLE t14;
 connection slave;
 *** Create t15 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t15 (c1 INT KEY, c2 DECIMAL(8,2), c3 TEXT,
 c4 BLOB, c5 CHAR(5),
 c6 INT DEFAULT '1',
@@ -576,7 +557,6 @@ c7 TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
 connection master;
 CREATE TABLE t15 (c1 INT PRIMARY KEY, c2 DECIMAL(8,2), c3 TEXT,
 c4 BLOB, c5 CHAR(5)) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -635,7 +615,7 @@ DROP TABLE t15;
 connection slave;
 *** Create t16 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t16 (c1 INT KEY, c2 DECIMAL(8,2), c3 TEXT,
 c4 BLOB, c5 CHAR(5),
 c6 INT DEFAULT '1',
@@ -645,7 +625,6 @@ c7 TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
 connection master;
 CREATE TABLE t16 (c1 INT PRIMARY KEY, c2 DECIMAL(8,2), c3 TEXT,
 c4 BLOB, c5 CHAR(5))ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -682,7 +661,7 @@ t16	CREATE TABLE `t16` (
   `c4` blob DEFAULT NULL,
   `c5` char(5) DEFAULT NULL,
   PRIMARY KEY (`c1`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY KEY (`c1`)
 PARTITIONS 4
 *** Show table on Slave ****
@@ -698,7 +677,7 @@ t16	CREATE TABLE `t16` (
   `c6` int(11) DEFAULT 1,
   `c7` timestamp NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`c1`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY KEY (`c1`)
 PARTITIONS 4
 *** DROP TABLE t16 ***
@@ -708,7 +687,7 @@ connection slave;
 *** Alter Master End ***
 *** Create t17 on slave  ***
 STOP SLAVE;
-include/reset_slave.inc
+RESET SLAVE;
 CREATE TABLE t17 (a SMALLINT, b INT PRIMARY KEY, c CHAR(5),
 d FLOAT DEFAULT '2.00',
 e CHAR(5) DEFAULT 'TEST2')
@@ -717,7 +696,6 @@ ENGINE='MyISAM';
 connection master;
 CREATE TABLE t17 (a BIGINT PRIMARY KEY, b INT, c CHAR(10)
 ) ENGINE='MyISAM';
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 *** Start Slave ***
 connection slave;
@@ -730,7 +708,7 @@ INSERT INTO t17 () VALUES(9223372036854775807,2,'Kyle, TEX');
 ********************************************
 connection slave;
 include/wait_for_slave_sql_error_and_skip.inc [errno=1677]
-Last_SQL_Error = 'Column 2 of table 'test.t17' cannot be converted from type 'char(40 octets)' to type 'char(20 octets) character set utf8mb4''
+Last_SQL_Error = 'Column 0 of table 'test.t17' cannot be converted from type 'bigint' to type 'smallint(6)''
 ** DROP table t17 ***
 connection master;
 DROP TABLE t17;

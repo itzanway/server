@@ -2,7 +2,7 @@
 #
 # Waits until the slave IO thread on the current connection has been
 # synced up to the point saved by the last call to
-# include/save_master_pos.inc (i.e., until the IO thread has been copied
+# include/save_master_pos.inc (i.e., until the IO thead has copied up
 # to the saved position).  Does not wait for the SQL thread.
 #
 #

@@ -24,7 +24,6 @@ Insert into a table
 Created 4/20/1996 Heikki Tuuri
 *******************************************************/
 
-#define MYSQL_SERVER
 #include "row0ins.h"
 #include "dict0dict.h"
 #include "trx0rec.h"
@@ -32,6 +31,7 @@ Created 4/20/1996 Heikki Tuuri
 #include "btr0btr.h"
 #include "btr0cur.h"
 #include "mach0data.h"
+#include "ibuf0ibuf.h"
 #include "que0que.h"
 #include "row0upd.h"
 #include "row0sel.h"
@@ -46,7 +46,6 @@ Created 4/20/1996 Heikki Tuuri
 #ifdef BTR_CUR_HASH_ADAPT
 # include "btr0sea.h"
 #endif
-#include "sql_class.h" // THD
 #ifdef WITH_WSREP
 #include <wsrep.h>
 #include <mysql/service_wsrep.h>
@@ -1473,8 +1472,8 @@ row_ins_check_foreign_constraint(
 	ulint		n_fields_cmp;
 	btr_pcur_t	pcur;
 	int		cmp;
+	mtr_t		mtr;
 	trx_t*		trx		= thr_get_trx(thr);
-	mtr_t		mtr{trx};
 	mem_heap_t*	heap		= NULL;
 	rec_offs	offsets_[REC_OFFS_NORMAL_SIZE];
 	rec_offs*	offsets		= offsets_;
@@ -1666,7 +1665,7 @@ row_ins_check_foreign_constraint(
 			}
 		}
 
-		cmp = cmp_dtuple_rec(entry, rec, check_index, offsets);
+		cmp = cmp_dtuple_rec(entry, rec, offsets);
 
 		if (cmp == 0) {
 			if (rec_get_deleted_flag(rec,
@@ -1698,7 +1697,7 @@ row_ins_check_foreign_constraint(
 							vers_history_row(rec,
 									 offsets);
 					} else if (check_index->
-						vers_history_row(&mtr, rec,
+						vers_history_row(rec,
 								 history_row)) {
 						break;
 					}
@@ -1869,9 +1868,8 @@ bool row_ins_foreign_index_entry(dict_foreign_t *foreign,
       if (col->is_dropped())
         continue;
 
-      const Lex_ident_column col_name=
-        dict_table_get_col_name(index->table, col->ind);
-      if (col_name.streq(Lex_cstring_strlen(foreign->foreign_col_names[i])))
+      const char *col_name= dict_table_get_col_name(index->table, col->ind);
+      if (0 == innobase_strcasecmp(col_name, foreign->foreign_col_names[i]))
       {
         dfield_copy(&ref_entry->fields[i], &entry->fields[j]);
         goto got_match;
@@ -1957,7 +1955,7 @@ row_ins_check_foreign_constraints(
 				TRUE, foreign, table, ref_tuple, thr);
 
 			if (ref_table) {
-				ref_table->release();
+				dict_table_close(ref_table);
 			}
 		}
 	}
@@ -1984,15 +1982,17 @@ row_ins_dupl_error_with_rec(
 	dict_index_t*	index,	/*!< in: index */
 	const rec_offs*	offsets)/*!< in: rec_get_offsets(rec, index) */
 {
+	ulint	matched_fields;
+	ulint	n_unique;
 	ulint	i;
 
 	ut_ad(rec_offs_validate(rec, index, offsets));
 
-	const auto n_unique = dict_index_get_n_unique(index);
+	n_unique = dict_index_get_n_unique(index);
 
-	uint16_t matched_fields = 0;
+	matched_fields = 0;
 
-	cmp_dtuple_rec_with_match(entry, rec, index, offsets, &matched_fields);
+	cmp_dtuple_rec_with_match(entry, rec, offsets, &matched_fields);
 
 	if (matched_fields < n_unique) {
 
@@ -2024,9 +2024,9 @@ row_ins_dupl_error_with_rec(
 @retval DB_SUCCESS                on success
 @retval DB_FOREIGN_DUPLICATE_KEY  if a history row was inserted by trx */
 static dberr_t vers_row_same_trx(dict_index_t* index, const rec_t* rec,
-                                 trx_t *trx)
+                                 const trx_t& trx)
 {
-  mtr_t mtr{trx};
+  mtr_t mtr;
   dberr_t ret= DB_SUCCESS;
   dict_index_t *clust_index= dict_table_get_first_index(index->table);
   ut_ad(index != clust_index);
@@ -2051,7 +2051,7 @@ static dberr_t vers_row_same_trx(dict_index_t* index, const rec_t* rec,
                                             clust_index->n_uniq, &trx_id_len);
       ut_ad(trx_id_len == DATA_TRX_ID_LEN);
 
-      if (trx->id == trx_read_trx_id(trx_id))
+      if (trx.id == trx_read_trx_id(trx_id))
         ret= DB_FOREIGN_DUPLICATE_KEY;
     }
 
@@ -2087,6 +2087,7 @@ row_ins_scan_sec_index_for_duplicate(
 	mem_heap_t*	offsets_heap)
 				/*!< in/out: memory heap that can be emptied */
 {
+	ulint		n_unique;
 	int		cmp;
 	ulint		n_fields_cmp;
 	btr_pcur_t	pcur;
@@ -2098,7 +2099,7 @@ row_ins_scan_sec_index_for_duplicate(
 
 	ut_ad(!index->lock.have_any());
 
-	const auto n_unique = dict_index_get_n_unique(index);
+	n_unique = dict_index_get_n_unique(index);
 
 	/* If the secondary index is unique, but one of the fields in the
 	n_unique first fields is NULL, a unique key violation cannot occur,
@@ -2167,7 +2168,7 @@ row_ins_scan_sec_index_for_duplicate(
 			continue;
 		}
 
-		cmp = cmp_dtuple_rec(entry, rec, index, offsets);
+		cmp = cmp_dtuple_rec(entry, rec, offsets);
 
 		if (cmp == 0) {
 			if (row_ins_dupl_error_with_rec(rec, entry,
@@ -2180,7 +2181,7 @@ row_ins_scan_sec_index_for_duplicate(
 				if (!index->table->versioned()) {
 				} else if (dberr_t e =
 					   vers_row_same_trx(index, rec,
-							     trx)) {
+							     *trx)) {
 					err = e;
 					goto end_scan;
 				}
@@ -2213,32 +2214,30 @@ end_scan:
 }
 
 /** Checks for a duplicate when the table is being rebuilt online.
-@param n_uniq   index->db_trx_id()
-@param entry    entry being inserted
-@param rec      clustered index record at insert position
-@param index    clustered index
-@param offsets  rec_get_offsets(rec)
 @retval DB_SUCCESS when no duplicate is detected
 @retval DB_SUCCESS_LOCKED_REC when rec is an exact match of entry or
 a newer version of entry (the entry should not be inserted)
 @retval DB_DUPLICATE_KEY when entry is a duplicate of rec */
 static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
-row_ins_duplicate_online(ulint n_uniq, const dtuple_t *entry,
-                         const rec_t *rec, const dict_index_t *index,
-                         rec_offs *offsets)
+row_ins_duplicate_online(
+/*=====================*/
+	ulint		n_uniq,	/*!< in: offset of DB_TRX_ID */
+	const dtuple_t*	entry,	/*!< in: entry that is being inserted */
+	const rec_t*	rec,	/*!< in: clustered index record */
+	rec_offs*	offsets)/*!< in/out: rec_get_offsets(rec) */
 {
-	uint16_t fields	= 0;
+	ulint	fields	= 0;
 
 	/* During rebuild, there should not be any delete-marked rows
 	in the new table. */
 	ut_ad(!rec_get_deleted_flag(rec, rec_offs_comp(offsets)));
 	ut_ad(dtuple_get_n_fields_cmp(entry) == n_uniq);
-	ut_ad(n_uniq == index->db_trx_id());
 
-	/* Compare the PRIMARY KEY fields and the DB_TRX_ID, DB_ROLL_PTR. */
-	cmp_dtuple_rec_with_match_low(entry, rec, index, offsets, n_uniq + 2,
-				      &fields);
+	/* Compare the PRIMARY KEY fields and the
+	DB_TRX_ID, DB_ROLL_PTR. */
+	cmp_dtuple_rec_with_match_low(
+		entry, rec, offsets, n_uniq + 2, &fields);
 
 	if (fields < n_uniq) {
 		/* Not a duplicate. */
@@ -2284,8 +2283,7 @@ row_ins_duplicate_error_in_clust_online(
 		*offsets = rec_get_offsets(rec, cursor->index(), *offsets,
 					   cursor->index()->n_fields,
 					   ULINT_UNDEFINED, heap);
-		err = row_ins_duplicate_online(n_uniq, entry,
-					       rec, cursor->index(), *offsets);
+		err = row_ins_duplicate_online(n_uniq, entry, rec, *offsets);
 		if (err != DB_SUCCESS) {
 			return(err);
 		}
@@ -2299,8 +2297,7 @@ row_ins_duplicate_error_in_clust_online(
 		*offsets = rec_get_offsets(rec, cursor->index(), *offsets,
 					   cursor->index()->n_fields,
 					   ULINT_UNDEFINED, heap);
-		err = row_ins_duplicate_online(n_uniq, entry,
-					       rec, cursor->index(), *offsets);
+		err = row_ins_duplicate_online(n_uniq, entry, rec, *offsets);
 	}
 
 	return(err);
@@ -2336,7 +2333,7 @@ row_ins_duplicate_error_in_clust(
 	/* NOTE: For unique non-clustered indexes there may be any number
 	of delete marked records with the same value for the non-clustered
 	index key (remember multiversioning), and which differ only in
-	the row reference part of the index record, containing the
+	the row refererence part of the index record, containing the
 	clustered index key fields. For such a secondary index record,
 	to avoid race condition, we must FIRST do the insertion and after
 	that check that the uniqueness condition is not breached! */
@@ -2411,7 +2408,7 @@ duplicate:
 						&trx_id_len);
 					ut_ad(trx_id_len == DATA_TRX_ID_LEN);
 					if (trx->id == trx_read_trx_id(trx_id)) {
-						err = DB_DUPLICATE_KEY;
+						err = DB_FOREIGN_DUPLICATE_KEY;
 					}
 				}
 				goto func_exit;
@@ -2511,8 +2508,8 @@ of a clustered index entry.
 @param[in]	big_rec	externally stored fields
 @param[in,out]	offsets	rec_get_offsets()
 @param[in,out]	heap	memory heap
+@param[in]	thd	client connection, or NULL
 @param[in]	index	clustered index
-@param[in]	trx	transaction
 @return	error code
 @retval	DB_SUCCESS
 @retval DB_OUT_OF_FILE_SPACE */
@@ -2524,16 +2521,16 @@ row_ins_index_entry_big_rec(
 	rec_offs*		offsets,
 	mem_heap_t**		heap,
 	dict_index_t*		index,
-	trx_t*			trx)
+	const void*		thd __attribute__((unused)))
 {
-	mtr_t		mtr{trx};
+	mtr_t		mtr;
 	btr_pcur_t	pcur;
 	rec_t*		rec;
 
 	pcur.btr_cur.page_cur.index = index;
 	ut_ad(index->is_primary());
 
-	DEBUG_SYNC_C_IF_THD(trx->mysql_thd, "before_row_ins_extern_latch");
+	DEBUG_SYNC_C_IF_THD(thd, "before_row_ins_extern_latch");
 
 	mtr.start();
 	if (index->table->is_temporary()) {
@@ -2552,30 +2549,15 @@ row_ins_index_entry_big_rec(
 	offsets = rec_get_offsets(rec, index, offsets, index->n_core_fields,
 				  ULINT_UNDEFINED, heap);
 
-	DEBUG_SYNC_C_IF_THD(trx->mysql_thd, "before_row_ins_extern");
+	DEBUG_SYNC_C_IF_THD(thd, "before_row_ins_extern");
 	error = btr_store_big_rec_extern_fields(
 		&pcur, offsets, big_rec, &mtr, BTR_STORE_INSERT);
-	DEBUG_SYNC_C_IF_THD(trx->mysql_thd, "after_row_ins_extern");
+	DEBUG_SYNC_C_IF_THD(thd, "after_row_ins_extern");
 
 	mtr.commit();
 
 	ut_free(pcur.old_rec_buf);
 	return(error);
-}
-
-/** Check whether the executed sql command is from insert
-statement
-@param thd thread information
-@return true if it is insert statement */
-static bool thd_sql_is_insert(const THD *thd) noexcept
-{
-  switch (thd->lex->sql_command) {
-  case SQLCOM_INSERT:
-  case SQLCOM_INSERT_SELECT:
-    return true;
-  default:
-    return false;
-  }
 }
 
 /** Parse the integer data from specified data, which could be
@@ -2617,21 +2599,6 @@ static uint64_t row_parse_int(const byte *data, size_t len,
   return 0;
 }
 
-inline bool dict_table_t::can_bulk_insert(const trx_t &trx) const noexcept
-{
-  if (is_temporary() || versioned() || has_spatial_index())
-    return false;
-  /* Bulk insert is not compatible with HA_CHECK_UNIQUE_AFTER_WRITE.
-  Refuse bulk insert if HA_KEY_ALG_LONG_HASH indexes exist.
-  handler::ha_check_long_uniques() assumes that all data
-  passed to ha_innobase::write_row() is available immediately. */
-  if (const char *s= v_col_names)
-    for (auto n= n_v_cols; n--; s+= strlen(s) + 1)
-      if (!strncmp(s, C_STRING_WITH_LEN("DB_ROW_HASH_")))
-        return false; /* make_long_hash_field_name() */
-  return !trx.check_foreigns || (foreign_set.empty() && referenced_set.empty());
-}
-
 /***************************************************************//**
 Tries to insert an entry into a clustered index, ignoring foreign key
 constraints. If a record with the same unique key is found, the other
@@ -2659,13 +2626,13 @@ row_ins_clust_index_entry_low(
 	btr_pcur_t	pcur;
 	dberr_t		err		= DB_SUCCESS;
 	big_rec_t*	big_rec		= NULL;
+	mtr_t		mtr;
 	uint64_t	auto_inc	= 0;
 	mem_heap_t*	offsets_heap	= NULL;
 	rec_offs	offsets_[REC_OFFS_NORMAL_SIZE];
 	rec_offs*	offsets         = offsets_;
 	rec_offs_init(offsets_);
 	trx_t*		trx	= thr_get_trx(thr);
-	mtr_t		mtr{trx};
 	buf_block_t*	block;
 
 	DBUG_ENTER("row_ins_clust_index_entry_low");
@@ -2742,6 +2709,15 @@ err_exit:
 		goto func_exit;
 	}
 
+	if (auto_inc) {
+		buf_block_t* root
+			= mtr.at_savepoint(mode != BTR_MODIFY_ROOT_AND_LEAF);
+		ut_ad(index->page == root->page.id().page_no());
+		page_set_autoinc(root, auto_inc, &mtr, false);
+	}
+
+	btr_pcur_get_btr_cur(&pcur)->thr = thr;
+
 #ifdef UNIV_DEBUG
 	{
 		page_t*	page = btr_pcur_get_page(&pcur);
@@ -2755,12 +2731,15 @@ err_exit:
 
 	block = btr_pcur_get_block(&pcur);
 
-	DBUG_EXECUTE_IF("row_ins_row_level", goto row_level_insert;);
+	DBUG_EXECUTE_IF("row_ins_row_level", goto skip_bulk_insert;);
 
 #ifdef WITH_WSREP
 	/* Appliers never execute bulk insert statements directly. */
-	if (trx->is_wsrep() && !wsrep_thd_is_local_transaction(trx->mysql_thd))
-		goto row_level_insert;
+	if (trx->is_wsrep() &&
+	    !wsrep_thd_is_local_transaction(trx->mysql_thd))
+	{
+		goto skip_bulk_insert;
+	}
 #endif /* WITH_WSREP */
 
 	if (!(flags & BTR_NO_UNDO_LOG_FLAG)
@@ -2769,37 +2748,29 @@ err_exit:
 	    && !trx->check_unique_secondary && !trx->check_foreigns
 	    && !trx->dict_operation
 	    && block->page.id().page_no() == index->page
-	    && !index->table->is_native_online_ddl()
-	    && (!dict_table_is_partition(index->table)
-		|| thd_sql_is_insert(trx->mysql_thd))) {
+	    && !index->table->skip_alter_undo
+	    && !index->table->n_rec_locks
+	    && !index->table->is_active_ddl()
+	    && !index->table->versioned()
+            && (!dict_table_is_partition(index->table)
+	        || thd_sql_command(trx->mysql_thd) == SQLCOM_INSERT)) {
+		DEBUG_SYNC_C("empty_root_page_insert");
 
-		if (!index->table->n_rec_locks
-		    && !index->table->versioned()
-		    && !index->table->is_temporary()
-		    && !index->table->has_spatial_index()
-		    /* Prevent ALTER IGNORE from using bulk insert
-		    optimization. since it requires to write undo log
-		    for each row operation that's incompatible with
-		    bulk operations */
-		    && index->table->skip_alter_undo !=
-		         dict_table_t::IGNORE_UNDO) {
-
-			ut_ad(!index->table->skip_alter_undo);
-			trx->bulk_insert = TRX_DML_BULK;
+		if (!index->table->is_temporary()) {
 			err = lock_table(index->table, NULL, LOCK_X, thr);
+
 			if (err != DB_SUCCESS) {
 				trx->error_state = err;
-				trx->bulk_insert = TRX_NO_BULK;
 				goto err_exit;
 			}
+
 			if (index->table->n_rec_locks) {
-avoid_bulk:
-				trx->bulk_insert = TRX_NO_BULK;
-				goto row_level_insert;
+				goto skip_bulk_insert;
 			}
+
 #ifdef WITH_WSREP
 			if (trx->is_wsrep() &&
-			    wsrep_append_table_key(trx->mysql_thd, *index->table, true))
+			    wsrep_append_table_key(trx->mysql_thd, *index->table))
 			{
 				trx->error_state = DB_ROLLBACK;
 				goto err_exit;
@@ -2807,62 +2778,23 @@ avoid_bulk:
 #endif /* WITH_WSREP */
 
 #ifdef BTR_CUR_HASH_ADAPT
-			auto &part = btr_search.get_part(*index);
-			part.latch.wr_lock(SRW_LOCK_CALL);
-			index->table->bulk_trx_id = trx->id;
-			part.latch.wr_unlock();
+			if (btr_search_enabled) {
+				btr_search_x_lock_all();
+				index->table->bulk_trx_id = trx->id;
+				btr_search_x_unlock_all();
+			} else {
+				index->table->bulk_trx_id = trx->id;
+			}
 #else /* BTR_CUR_HASH_ADAPT */
 			index->table->bulk_trx_id = trx->id;
 #endif /* BTR_CUR_HASH_ADAPT */
-
-			/* Write TRX_UNDO_EMPTY undo log and
-			start buffering the insert operation */
-			err = trx_undo_report_row_operation(
-				thr, index, entry,
-				nullptr, 0, nullptr, nullptr,
-				nullptr);
-
-			if (err != DB_SUCCESS) {
-				goto avoid_bulk;
-			}
-
 			export_vars.innodb_bulk_operations++;
-			goto err_exit;
 		}
-	} else if (flags == (BTR_NO_UNDO_LOG_FLAG | BTR_NO_LOCKING_FLAG)
-		   && !index->table->n_rec_locks) {
 
-		ut_ad(index->table->skip_alter_undo);
-		ut_ad(!entry->is_metadata());
-
-		/* If foreign key exist and foreign key is enabled
-		then avoid using bulk insert for copy algorithm */
-		if (innodb_alter_copy_bulk
-		    && index->table->can_bulk_insert(*trx)) {
-			ut_ad(page_is_empty(block->page.frame));
-			/* This code path has been executed at the
-			start of the alter operation. Consecutive
-			insert operation are buffered in the
-			bulk buffer and doesn't check for constraint
-			validity of foreign key relationship. */
-			trx_start_if_not_started(trx, true);
-			trx->bulk_insert = TRX_DDL_BULK;
-			auto m = trx->mod_tables.emplace(index->table, 0);
-			m.first->second.start_bulk_insert(index->table, true);
-			err = m.first->second.bulk_insert_buffered(
-					*entry, *index, trx);
-			goto err_exit;
-		}
+		trx->bulk_insert = true;
 	}
 
-row_level_insert:
-	if (auto_inc) {
-		buf_block_t* root =
-			mtr.at_savepoint(mode != BTR_MODIFY_ROOT_AND_LEAF);
-		ut_ad(index->page == root->page.id().page_no());
-		page_set_autoinc(root, auto_inc, &mtr, false);
-	}
-
+skip_bulk_insert:
 	if (UNIV_UNLIKELY(entry->info_bits != 0)) {
 		const rec_t* rec = btr_pcur_get_rec(&pcur);
 
@@ -2992,7 +2924,7 @@ do_insert:
 				log_write_up_to(mtr.commit_lsn(), true););
 			err = row_ins_index_entry_big_rec(
 				entry, big_rec, offsets, &offsets_heap, index,
-				trx);
+				trx->mysql_thd);
 			dtuple_convert_back_big_rec(index, entry, big_rec);
 		}
 	}
@@ -3051,8 +2983,7 @@ row_ins_sec_index_entry_low(
 	btr_latch_mode	search_mode	= mode;
 	dberr_t		err;
 	ulint		n_unique;
-	trx_t*const	trx{thr_get_trx(thr)};
-	mtr_t		mtr{trx};
+	mtr_t		mtr;
 	rec_offs	offsets_[REC_OFFS_NORMAL_SIZE];
 	rec_offs*	offsets         = offsets_;
 	rec_offs_init(offsets_);
@@ -3061,9 +2992,10 @@ row_ins_sec_index_entry_low(
 	ut_ad(!dict_index_is_clust(index));
 	ut_ad(mode == BTR_MODIFY_LEAF || mode == BTR_INSERT_TREE);
 
+	cursor.thr = thr;
 	cursor.rtr_info = NULL;
 	cursor.page_cur.index = index;
-	ut_ad(trx->id != 0);
+	ut_ad(thr_get_trx(thr)->id != 0);
 
 	mtr.start();
 
@@ -3082,10 +3014,9 @@ row_ins_sec_index_entry_low(
 
 	if (index->is_spatial()) {
 		rtr_init_rtr_info(&rtr_info, false, &cursor, index, false);
-		rtr_info.thr = thr;
 		rtr_info_update_btr(&cursor, &rtr_info);
 
-		err = rtr_insert_leaf(&cursor, thr, entry, search_mode, &mtr);
+		err = rtr_insert_leaf(&cursor, entry, search_mode, &mtr);
 
 		if (err == DB_SUCCESS && search_mode == BTR_MODIFY_LEAF
 		    && rtr_info.mbr_adj) {
@@ -3094,7 +3025,6 @@ row_ins_sec_index_entry_low(
 			rtr_clean_rtr_info(&rtr_info, true);
 			rtr_init_rtr_info(&rtr_info, false, &cursor,
 					  index, false);
-			rtr_info.thr = thr;
 			rtr_info_update_btr(&cursor, &rtr_info);
 			mtr.start();
 			if (index->table->is_temporary()) {
@@ -3102,7 +3032,7 @@ row_ins_sec_index_entry_low(
 			} else {
 				index->set_modified(mtr);
 			}
-			err = rtr_insert_leaf(&cursor, thr, entry,
+			err = rtr_insert_leaf(&cursor, entry,
 					      search_mode, &mtr);
 		}
 
@@ -3111,15 +3041,29 @@ row_ins_sec_index_entry_low(
 			goto func_exit;});
 
 	} else {
+		if (!index->table->is_temporary()) {
+			search_mode = btr_latch_mode(
+				search_mode
+				| (thr_get_trx(thr)->check_unique_secondary
+				   ? BTR_INSERT
+				   : BTR_INSERT | BTR_IGNORE_SEC_UNIQUE));
+		}
+
 		err = cursor.search_leaf(entry, PAGE_CUR_LE, search_mode,
 					 &mtr);
 	}
 
 	if (err != DB_SUCCESS) {
 		if (err == DB_DECRYPTION_FAILED) {
-			innodb_decryption_failed(trx->mysql_thd,
+			innodb_decryption_failed(thr_get_trx(thr)->mysql_thd,
 						 index->table);
 		}
+		goto func_exit;
+	}
+
+	if (cursor.flag == BTR_CUR_INSERT_TO_IBUF) {
+		ut_ad(!dict_index_is_spatial(index));
+		/* The insert was buffered during the search: we are done */
 		goto func_exit;
 	}
 
@@ -3154,7 +3098,8 @@ row_ins_sec_index_entry_low(
 			break;
 		case DB_DUPLICATE_KEY:
 			if (!index->is_committed()) {
-				ut_ad(!trx->dict_operation_lock_mode);
+				ut_ad(!thr_get_trx(thr)
+				      ->dict_operation_lock_mode);
 				index->type |= DICT_CORRUPT;
 				/* Do not return any error to the
 				caller. The duplicate will be reported
@@ -3181,9 +3126,13 @@ row_ins_sec_index_entry_low(
 		locked with s-locks the necessary records to
 		prevent any insertion of a duplicate by another
 		transaction. Let us now reposition the cursor and
-		continue the insertion. */
-		err = cursor.search_leaf(entry, PAGE_CUR_LE, search_mode,
-					 &mtr);
+		continue the insertion (bypassing the change buffer). */
+		err = cursor.search_leaf(
+			entry, PAGE_CUR_LE,
+			btr_latch_mode(search_mode
+				       & ~(BTR_INSERT
+					   | BTR_IGNORE_SEC_UNIQUE)),
+			&mtr);
 		if (err != DB_SUCCESS) {
 			goto func_exit;
 		}
@@ -3316,13 +3265,13 @@ row_ins_clust_index_entry(
 		: index->table->is_temporary()
 		? BTR_NO_LOCKING_FLAG : 0;
 #endif /* WITH_WSREP */
-	const auto orig_n_fields = entry->n_fields;
+	const ulint	orig_n_fields = entry->n_fields;
 
 	/* For intermediate table during copy alter table,
 	   skip the undo log and record lock checking for
 	   insertion operation.
 	*/
-	if (index->table->skip_alter_undo == dict_table_t::NO_UNDO) {
+	if (index->table->skip_alter_undo) {
 		flags |= BTR_NO_UNDO_LOG_FLAG | BTR_NO_LOCKING_FLAG;
 	}
 
@@ -3370,7 +3319,7 @@ row_ins_sec_index_entry(
 	bool		check_foreign) /*!< in: true if check
 				foreign table is needed, false otherwise */
 {
-	dberr_t		err = DB_SUCCESS;
+	dberr_t		err;
 	mem_heap_t*	offsets_heap;
 	mem_heap_t*	heap;
 	trx_id_t	trx_id  = 0;
@@ -3415,6 +3364,11 @@ row_ins_sec_index_entry(
 	if (err == DB_FAIL) {
 		mem_heap_empty(heap);
 
+		if (index->table->space == fil_system.sys_space
+		    && !(index->type & (DICT_UNIQUE | DICT_SPATIAL))) {
+			ibuf_free_excess_pages();
+		}
+
 		/* Try then pessimistic descent to the B-tree */
 		log_free_check();
 
@@ -3442,31 +3396,12 @@ row_ins_index_entry(
 	dtuple_t*	entry,	/*!< in/out: index entry to insert */
 	que_thr_t*	thr)	/*!< in: query thread */
 {
-	trx_t* trx = thr_get_trx(thr);
-
-	ut_ad(trx->id || index->table->no_rollback()
+	ut_ad(thr_get_trx(thr)->id || index->table->no_rollback()
 	      || index->table->is_temporary());
 
 	DBUG_EXECUTE_IF("row_ins_index_entry_timeout", {
 			DBUG_SET("-d,row_ins_index_entry_timeout");
 			return(DB_LOCK_WAIT);});
-
-	if (index->is_btree()) {
-		/* If the InnoDB skips the sorting of primary
-		index for bulk insert operation then InnoDB
-		should have called load_one_row() for the
-		first insert statement and shouldn't use
-		buffer for consecutive insert statement */
-		if (auto t= trx->use_bulk_buffer(index)) {
-			/* MDEV-25036 FIXME:
-			row_ins_check_foreign_constraint() check
-			should be done before buffering the insert
-			operation. */
-			ut_ad(index->table->skip_alter_undo
-			      || !trx->check_foreigns);
-			return t->bulk_insert_buffered(*entry, *index, trx);
-		}
-	}
 
 	if (index->is_primary()) {
 		return row_ins_clust_index_entry(index, entry, thr, 0);
@@ -3644,6 +3579,19 @@ row_ins_index_entry_step(
 }
 
 /***********************************************************//**
+Allocates a row id for row and inits the node->index field. */
+UNIV_INLINE
+void
+row_ins_alloc_row_id_step(
+/*======================*/
+	ins_node_t*	node)	/*!< in: row insert node */
+{
+  ut_ad(node->state == INS_NODE_ALLOC_ROW_ID);
+  if (dict_table_get_first_index(node->table)->is_gen_clust())
+    dict_sys_write_row_id(node->sys_buf, dict_sys.get_new_row_id());
+}
+
+/***********************************************************//**
 Gets a row to insert from the values list. */
 UNIV_INLINE
 void
@@ -3723,17 +3671,12 @@ row_ins(
 	DBUG_PRINT("row_ins", ("table: %s", node->table->name.m_name));
 
 	if (node->state == INS_NODE_ALLOC_ROW_ID) {
+
+		row_ins_alloc_row_id_step(node);
+
 		node->index = dict_table_get_first_index(node->table);
 		ut_ad(node->entry_list.empty() == false);
 		node->entry = node->entry_list.begin();
-
-		if (node->index->is_gen_clust()) {
-			const uint64_t db_row_id{++node->table->row_id};
-			if (db_row_id >> 48) {
-				DBUG_RETURN(DB_OUT_OF_FILE_SPACE);
-			}
-			mach_write_to_6(node->sys_buf, db_row_id);
-		}
 
 		if (node->ins_type == INS_SEARCHED) {
 
@@ -3938,28 +3881,14 @@ static
 const rec_t *row_search_get_max_rec(dict_index_t *index, mtr_t *mtr) noexcept
 {
   btr_pcur_t pcur;
-  const bool desc= index->fields[0].descending;
-
   /* Open at the high/right end (false), and init cursor */
-  if (pcur.open_leaf(desc, index, BTR_SEARCH_LEAF, mtr) != DB_SUCCESS)
+  if (pcur.open_leaf(false, index, BTR_SEARCH_LEAF, mtr) != DB_SUCCESS)
     return nullptr;
-
-  if (desc)
-  {
-    const bool comp= index->table->not_redundant();
-    while (btr_pcur_move_to_next_user_rec(&pcur, mtr))
-    {
-      const rec_t *rec= btr_pcur_get_rec(&pcur);
-      if (!rec_is_metadata(rec, comp) && !rec_get_deleted_flag(rec, comp))
-        return rec;
-    }
-    return nullptr;
-  }
 
   do
   {
     const page_t *page= btr_pcur_get_page(&pcur);
-    const rec_t *rec= page_find_rec_last_not_deleted(page);
+    const rec_t *rec= page_find_rec_max_not_deleted(page);
     if (page_rec_is_user_rec_low(rec - page))
       return rec;
     btr_pcur_move_before_first_on_page(&pcur);
@@ -3972,7 +3901,7 @@ const rec_t *row_search_get_max_rec(dict_index_t *index, mtr_t *mtr) noexcept
 uint64_t row_search_max_autoinc(dict_index_t *index) noexcept
 {
   uint64_t value= 0;
-  mtr_t mtr{nullptr};
+  mtr_t mtr;
   mtr.start();
   if (const rec_t *rec= row_search_get_max_rec(index, &mtr))
     value= row_read_autoinc(*index, rec);

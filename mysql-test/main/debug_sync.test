@@ -18,7 +18,6 @@
 # We need the Debug Sync Facility.
 #
 --source include/have_debug_sync.inc
---source include/have_innodb.inc
 
 #
 # We are checking privileges, which the embedded server cannot do.
@@ -448,3 +447,4 @@ SHOW VARIABLES LIKE 'DEBUG_SYNC';
 # Otherwise signal would confuse the next test.
 #
 SET DEBUG_SYNC= 'RESET';
+

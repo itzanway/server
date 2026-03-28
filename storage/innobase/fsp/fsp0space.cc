@@ -28,7 +28,6 @@ Created 2012-11-16 by Sunny Bains as srv/srv0space.cc
 #include "fsp0fsp.h"
 #include "os0file.h"
 #include "my_sys.h"
-#include "lex_ident.h"
 
 /** Check if two tablespaces have common data file names.
 @param other_space	Tablespace to check against this.
@@ -60,7 +59,7 @@ Tablespace::shutdown()
 	m_files.clear();
 	ut_free(m_path);
 	m_path = NULL;
-	m_space_id = UINT32_MAX;
+	m_space_id = ULINT_UNDEFINED;
 }
 
 /** Note that the data file was found.
@@ -120,7 +119,7 @@ Tablespace::open_or_create(bool is_temp)
 
 			/* Create the tablespace entry for the multi-file
 			tablespace in the tablespace manager. */
-			uint32_t fsp_flags;
+			ulint fsp_flags = 0;
 
 			switch (srv_checksum_algorithm) {
 			case SRV_CHECKSUM_ALGORITHM_FULL_CRC32:
@@ -149,10 +148,9 @@ Tablespace::open_or_create(bool is_temp)
 bool
 Tablespace::find(const char* filename) const
 {
-	const Lex_ident_column filename_ident = Lex_cstring_strlen(filename);
 	for (const_iterator it = begin(); it != end(); ++it) {
 
-		if (filename_ident.streq(Lex_cstring_strlen(it->m_filename))) {
+		if (innobase_strcasecmp(filename, it->m_filename) == 0) {
 			return(true);
 		}
 	}

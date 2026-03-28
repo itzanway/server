@@ -27,11 +27,23 @@
 #include "create_tmp_table.h"
 #include "sql_parse.h"
 
-#ifndef DBUG_OFF
-int dbug_json_check_min_stack_requirement();
-#endif
-
 #define HA_ERR_JSON_TABLE (HA_ERR_LAST+1)
+
+/*
+  Allocating memory and *also* using it (reading and
+  writing from it) because some build instructions cause
+  compiler to optimize out stack_used_up. Since alloca()
+  here depends on stack_used_up, it doesnt get executed
+  correctly and causes json_debug_nonembedded to fail
+  ( --error ER_STACK_OVERRUN_NEED_MORE does not occur).
+*/
+#define ALLOCATE_MEM_ON_STACK(A) do \
+                              { \
+                                uchar *array= (uchar*)alloca(A); \
+                                array[0]= 1; \
+                                array[0]++; \
+                                array[0] ? array[0]++ : array[0]--; \
+                              } while(0)
 
 class table_function_handlerton
 {
@@ -42,7 +54,6 @@ public:
     bzero(&m_hton, sizeof(m_hton));
     m_hton.tablefile_extensions= hton_no_exts;
     m_hton.slot= HA_SLOT_UNDEF;
-    m_hton.flags= HTON_HIDDEN;
   }
 };
 
@@ -108,9 +119,13 @@ int get_disallowed_table_deps_for_list(MEM_ROOT *mem_root,
   List_iterator<TABLE_LIST> li(*join_list);
 
   DBUG_EXECUTE_IF("json_check_min_stack_requirement",
-                  return -dbug_json_check_min_stack_requirement(););
+                  {
+                    long arbitrary_var;
+                    long stack_used_up= (available_stack_size(current_thd->thread_stack, &arbitrary_var));
+                    ALLOCATE_MEM_ON_STACK(my_thread_stack_size-stack_used_up-STACK_MIN_SIZE);
+                  });
   if (check_stack_overrun(current_thd, STACK_MIN_SIZE , NULL))
-    return -1;
+    return 1;
 
   while ((table= li++))
   {
@@ -188,11 +203,6 @@ class ha_json_table: public handler
   String *m_js; // The JSON document we're reading
   String m_tmps; // Buffer for the above
 
-  json_engine_t je;
-  MEM_ROOT_DYNAMIC_ARRAY array_counters;
-  MEM_ROOT current_mem_root;
-  bool mem_root_inited;
-
   int fill_column_values(THD *thd, uchar * buf, uchar *pos);
 
 public:
@@ -210,8 +220,6 @@ public:
 
     /* See ha_json_table::position for format definition */
     ref_length= m_jt->m_columns.elements * 4;
-    mem_root_inited= false;
-
   }
   ~ha_json_table() {}
   handler *clone(const char *name, MEM_ROOT *mem_root) override { return NULL; }
@@ -237,10 +245,6 @@ public:
   int open(const char *name, int mode, uint test_if_locked) override
   { return 0; }
   int close(void) override { return 0; }
-  void update_optimizer_costs(OPTIMIZER_COSTS *costs) override
-  {
-    memcpy(costs, &heap_optimizer_costs, sizeof(*costs));
-  }
   int rnd_init(bool scan) override;
   int rnd_next(uchar *buf) override;
   int rnd_pos(uchar * buf, uchar *pos) override;
@@ -257,13 +261,6 @@ public:
   {
     buf->length(0);
     return TRUE;
-  }
-  int ha_rnd_end()
-  {
-    DBUG_ENTER("ha_json_table::ha_rnd_end");
-    if (mem_root_inited)
-      free_root(&current_mem_root, MYF(0));
-    DBUG_RETURN(handler::ha_rnd_end());
   }
 };
 
@@ -342,8 +339,7 @@ handle_new_nested:
 
   while (!json_get_path_next(&m_engine, &m_cur_path))
   {
-    if (json_path_compare(&m_path, &m_cur_path, m_engine.value_type,
-                          NULL))
+    if (json_path_compare(&m_path, &m_cur_path, m_engine.value_type))
       continue;
     /* path found. */
     ++m_ordinality_counter;
@@ -371,13 +367,6 @@ int ha_json_table::rnd_init(bool scan)
     p.scan_start(m_js->charset(),
                  (const uchar *) m_js->ptr(), (const uchar *) m_js->end());
   }
-
-  mem_root_dynamic_array_init(current_thd->mem_root, PSI_INSTRUMENT_MEM,
-                              &array_counters, sizeof(int), NULL,
-                              JSON_DEPTH_DEFAULT, JSON_DEPTH_INC, MYF(0));
-  mem_root_dynamic_array_init(current_thd->mem_root, PSI_INSTRUMENT_MEM,
-                              &je.stack, sizeof(int), NULL,
-                              JSON_DEPTH_DEFAULT, JSON_DEPTH_INC, MYF(0));
 
   DBUG_RETURN(0);
 }
@@ -448,19 +437,6 @@ bool Json_table_nested_path::check_error(const char *str)
   return false; // Ok
 }
 
-void Json_table_nested_path::init_json_engine()
-{
-  mem_root_dynamic_array_init(current_thd->mem_root, PSI_INSTRUMENT_MEM,
-                              &m_engine.stack, sizeof(int), NULL,
-                              JSON_DEPTH_DEFAULT, JSON_DEPTH_INC, MYF(0));
-  mem_root_dynamic_array_init(current_thd->mem_root, PSI_INSTRUMENT_MEM,
-                              &m_cur_path.steps, sizeof(json_path_step_t), NULL,
-                              JSON_DEPTH_DEFAULT, JSON_DEPTH_INC, MYF(0));
-  mem_root_dynamic_array_init(current_thd->mem_root, PSI_INSTRUMENT_MEM,
-                              &m_path.steps, sizeof(json_path_step_t), NULL,
-                              JSON_DEPTH_DEFAULT, JSON_DEPTH_INC, MYF(0));
-}
-
 
 int ha_json_table::rnd_next(uchar *buf)
 {
@@ -506,7 +482,7 @@ int ha_json_table::rnd_next(uchar *buf)
 
 int ha_json_table::fill_column_values(THD *thd, uchar * buf, uchar *pos)
 {
-   MY_BITMAP *orig_map= dbug_tmp_use_all_columns(table, &table->write_set);
+  MY_BITMAP *orig_map= dbug_tmp_use_all_columns(table, &table->write_set);
   int error= 0;
   Counting_error_handler er_handler;
   Field **f= table->field;
@@ -572,13 +548,12 @@ int ha_json_table::fill_column_values(THD *thd, uchar * buf, uchar *pos)
       case Json_table_column::PATH:
       case Json_table_column::EXISTS_PATH:
       {
+        json_engine_t je;
         json_path_step_t *cur_step;
+        uint array_counters[JSON_DEPTH_LIMIT];
         int not_found;
         const uchar* node_start;
         const uchar* node_end;
-
-        mem_root_dynamic_array_reset(&array_counters);
-        mem_root_dynamic_array_reset(&je.stack);
 
         /*
           Get the JSON context node that we will need to evaluate PATH or
@@ -599,8 +574,8 @@ int ha_json_table::fill_column_values(THD *thd, uchar * buf, uchar *pos)
 
         json_scan_start(&je, m_js->charset(), node_start, node_end);
 
-        cur_step= (json_path_step_t*)(jc->m_path.steps.buffer);
-        not_found= json_find_path(&je, &jc->m_path, &cur_step, &array_counters) ||
+        cur_step= jc->m_path.steps;
+        not_found= json_find_path(&je, &jc->m_path, &cur_step, array_counters) ||
                    json_read_value(&je);
 
         if (jc->m_column_type == Json_table_column::EXISTS_PATH)
@@ -639,11 +614,10 @@ int ha_json_table::fill_column_values(THD *thd, uchar * buf, uchar *pos)
                 more matches for it in json and report an error if so.
               */
               if (jc->m_path.types_used &
-                    (JSON_PATH_WILD | JSON_PATH_DOUBLE_WILD |
-                     JSON_PATH_ARRAY_RANGE) &&
+                    (JSON_PATH_WILD | JSON_PATH_DOUBLE_WILD) &&
                   (json_scan_next(&je) ||
                    !json_find_path(&je, &jc->m_path, &cur_step,
-                                   &array_counters)))
+                                   array_counters)))
               {
                 error= jc->m_on_error.respond(jc, *f,
                                               ER_JSON_TABLE_MULTIPLE_MATCHES);
@@ -734,7 +708,7 @@ int ha_json_table::info(uint)
 
   @param thd                  thread handle
   @param param                a description used as input to create the table
-  @param jt                   json_table specification
+  @param jt                   json_table specificaion
   @param table_alias          alias
 */
 
@@ -751,8 +725,6 @@ TABLE *Create_json_table::start(THD *thd,
   if (!(table= Create_tmp_table::start(thd, param, table_alias)))
     DBUG_RETURN(0);
   share= table->s;
-  share->db= any_db;
-  share->table_name= { STRING_WITH_LEN("json_table") };
   share->not_usable_by_query_cache= FALSE;
   share->db_plugin= NULL;
   if (!(table->file= new (&table->mem_root) ha_json_table(share, jt)))
@@ -774,8 +746,7 @@ bool Create_json_table::finalize(THD *thd, TABLE *table,
 
   table->db_stat= HA_OPEN_KEYFILE;
   if (unlikely(table->file->ha_open(table, table->s->path.str, O_RDWR,
-                                    HA_OPEN_TMP_TABLE | HA_OPEN_INTERNAL_TABLE |
-                                    HA_OPEN_SIZE_TRACKING)))
+                                    HA_OPEN_TMP_TABLE | HA_OPEN_INTERNAL_TABLE)))
     DBUG_RETURN(true);
 
   table->set_created();
@@ -799,7 +770,7 @@ bool Create_json_table::add_json_table_fields(THD *thd, TABLE *table,
   uint fieldnr= 0;
   MEM_ROOT *mem_root_save= thd->mem_root;
   List_iterator_fast<Json_table_column> jc_i(jt->m_columns);
-  Column_derived_attributes da(&my_charset_utf8mb4_general_ci);
+  Column_derived_attributes da(NULL);
   DBUG_ENTER("add_json_table_fields");
 
   thd->mem_root= &table->mem_root;
@@ -816,15 +787,17 @@ bool Create_json_table::add_json_table_fields(THD *thd, TABLE *table,
        executing a prepared statement for the second time.
     */
     sql_f->length= sql_f->char_length;
+    if (!sql_f->charset)
+      sql_f->charset= &my_charset_utf8mb4_general_ci;
 
-    if (sql_f->prepare_stage1(thd, thd->mem_root,
-                              COLUMN_DEFINITION_TABLE_FIELD,
-                              &da))
+    if (sql_f->prepare_stage1(thd, thd->mem_root, table->file,
+                              table->file->ha_table_flags(), &da))
       goto err_exit;
 
     while ((jc2= it2++) != jc)
     {
-      if (sql_f->field_name.streq(jc2->m_field->field_name))
+      if (lex_string_cmp(system_charset_info,
+            &sql_f->field_name, &jc2->m_field->field_name) == 0)
       {
         my_error(ER_DUP_FIELDNAME, MYF(0), sql_f->field_name.str);
         goto err_exit;
@@ -916,7 +889,8 @@ TABLE *create_table_for_function(THD *thd, TABLE_LIST *sql_table)
 
   my_bitmap_map* bitmaps=
     (my_bitmap_map*) thd->alloc(bitmap_buffer_size(field_count));
-  my_bitmap_init(&table->def_read_set, (my_bitmap_map*) bitmaps, field_count);
+  my_bitmap_init(&table->def_read_set, (my_bitmap_map*) bitmaps, field_count,
+                 FALSE);
   table->read_set= &table->def_read_set;
   bitmap_clear_all(table->read_set);
   table->alias_name_used= true;
@@ -936,10 +910,6 @@ int Json_table_column::set(THD *thd, enum_type ctype, const LEX_CSTRING &path,
 {
   set(ctype);
   m_explicit_cs= cs;
-
-  mem_root_dynamic_array_init(thd->mem_root, PSI_INSTRUMENT_MEM,
-                              &m_path.steps, sizeof(json_path_step_t), NULL,
-                              JSON_DEPTH_DEFAULT, JSON_DEPTH_INC, MYF(0));
   if (json_path_setup(&m_path, thd->variables.collation_connection,
         (const uchar *) path.str, (const uchar *)(path.str + path.length)))
   {
@@ -951,7 +921,7 @@ int Json_table_column::set(THD *thd, enum_type ctype, const LEX_CSTRING &path,
   /*
     This is done so the ::print function can just print the path string.
     Can be removed if we redo that function to print the path using it's
-    actual content. Not sure though if we should.
+    anctual content. Not sure though if we should.
   */
   m_path.s.c_str= (const uchar *) path.str;
 
@@ -959,26 +929,6 @@ int Json_table_column::set(THD *thd, enum_type ctype, const LEX_CSTRING &path,
     m_format_json= m_field->type_handler() == &type_handler_long_blob_json;
 
   return 0;
-}
-
-
-int Json_table_column::set(THD *thd, enum_type ctype, const LEX_CSTRING &path,
-                           const Lex_column_charset_collation_attrs_st &cl)
-{
-  mem_root_dynamic_array_init(thd->mem_root, PSI_INSTRUMENT_MEM,
-                              &m_path.steps, sizeof(json_path_step_t), NULL,
-                              JSON_DEPTH_DEFAULT, JSON_DEPTH_INC, MYF(0));
-
-  if (cl.is_empty() || cl.is_contextually_typed_collate_default())
-    return set(thd, ctype, path, nullptr);
-
-  CHARSET_INFO *tmp;
-  if (!(tmp= cl.resolved_to_character_set(
-                  thd,
-                  thd->variables.character_set_collations,
-                  &my_charset_utf8mb4_general_ci)))
-    return 1;
-  return set(thd, ctype, path, tmp);
 }
 
 
@@ -1021,14 +971,10 @@ int Json_table_column::print(THD *thd, Field **f, String *str)
 
     (*f)->sql_type(column_type);
 
-    if ((m_format_json ? str->append(STRING_WITH_LEN(" JSON ")) : str->append(column_type)))
-      return 1;
-    if (((*f)->has_charset() && m_explicit_cs &&
+    if (str->append(column_type) ||
+        ((*f)->has_charset() && m_explicit_cs &&
          (str->append(STRING_WITH_LEN(" CHARSET ")) ||
-          str->append(&m_explicit_cs->cs_name) ||
-          (Charset(m_explicit_cs).can_have_collate_clause() &&
-           (str->append(STRING_WITH_LEN(" COLLATE ")) ||
-            str->append(&m_explicit_cs->coll_name))))) ||
+          str->append(&m_explicit_cs->cs_name))) ||
         str->append(m_column_type == PATH ? &path : &exists_path) ||
         print_path(str, &m_path))
       return 1;
@@ -1046,10 +992,6 @@ int Json_table_column::print(THD *thd, Field **f, String *str)
 
 int Json_table_nested_path::set_path(THD *thd, const LEX_CSTRING &path)
 {
-  mem_root_dynamic_array_init(thd->mem_root, PSI_INSTRUMENT_MEM,
-                              &m_path.steps, sizeof(json_path_step_t), NULL,
-                              JSON_DEPTH_DEFAULT, JSON_DEPTH_INC, MYF(0));
-
   if (json_path_setup(&m_path, thd->variables.collation_connection,
         (const uchar *) path.str, (const uchar *)(path.str + path.length)))
   {
@@ -1112,19 +1054,19 @@ int Json_table_column::On_response::print(const char *name, String *str) const
   switch (m_response)
   {
     case Json_table_column::RESPONSE_NULL:
-      resp= { STRING_WITH_LEN("NULL") };
+      lex_string_set3(&resp, STRING_WITH_LEN("NULL"));
       break;
     case Json_table_column::RESPONSE_ERROR:
-      resp= { STRING_WITH_LEN("ERROR") };
+      lex_string_set3(&resp, STRING_WITH_LEN("ERROR"));
       break;
     case Json_table_column::RESPONSE_DEFAULT:
     {
-      resp= { STRING_WITH_LEN("DEFAULT") };
+      lex_string_set3(&resp, STRING_WITH_LEN("DEFAULT"));
       ds= m_default->val_str(&val);
       break;
     }
     default:
-      resp= { "", 0 };
+      lex_string_set3(&resp, "", 0);
       DBUG_ASSERT(FALSE); /* should never happen. */
   }
 
@@ -1252,9 +1194,9 @@ bool Table_function_json_table::setup(THD *thd, TABLE_LIST *sql_table,
 }
 
 int Table_function_json_table::walk_items(Item_processor processor,
-                                          void *argument, item_walk_flags flags)
+                                          bool walk_subquery, void *argument)
 {
-  return m_json->walk(processor, argument, flags);
+  return m_json->walk(processor, walk_subquery, argument);
 }
 
 void Table_function_json_table::get_estimates(ha_rows *out_rows,
@@ -1393,19 +1335,21 @@ void Table_function_json_table::fix_after_pullout(TABLE_LIST *sql_table,
 /*
   @brief
      Recursively make all tables in the join_list also depend on deps.
-
-  @return - boolean - true if error (out of memory).
 */
 
-static bool add_extra_deps(List<TABLE_LIST> *join_list, table_map deps)
+static void add_extra_deps(List<TABLE_LIST> *join_list, table_map deps)
 {
   TABLE_LIST *table;
   List_iterator<TABLE_LIST> li(*join_list);
 
   DBUG_EXECUTE_IF("json_check_min_stack_requirement",
-                  dbug_json_check_min_stack_requirement(); return true;);
+                  {
+                    long arbitrary_var;
+                    long stack_used_up= (available_stack_size(current_thd->thread_stack, &arbitrary_var));
+                    ALLOCATE_MEM_ON_STACK(my_thread_stack_size-stack_used_up-STACK_MIN_SIZE);
+                  });
   if (check_stack_overrun(current_thd, STACK_MIN_SIZE , NULL))
-    return true;
+    return;
 
   while ((table= li++))
   {
@@ -1414,11 +1358,9 @@ static bool add_extra_deps(List<TABLE_LIST> *join_list, table_map deps)
     if ((nested_join= table->nested_join))
     {
        // set the deps inside, too
-       if (add_extra_deps(&nested_join->join_list, deps))
-         return true;
+       add_extra_deps(&nested_join->join_list, deps);
     }
   }
-  return false;
 }
 
 
@@ -1486,29 +1428,25 @@ static bool add_extra_deps(List<TABLE_LIST> *join_list, table_map deps)
   @param  join_list    List of tables to process. Initial invocation should
                        supply the JOIN's top-level table list.
   @param  nest_tables  Bitmap of all tables in the join list.
-  @param  error        Pointer to value which is set to true on stack overrun
-                       error.
 
-  @return Bitmap of all outside references that tables in join_list have,
-    or 0 on out of stack overrun error (in addition to *error= true).
+  @return Bitmap of all outside references that tables in join_list have
 */
 
 table_map add_table_function_dependencies(List<TABLE_LIST> *join_list,
-                                          table_map nest_tables,
-					  bool *error)
+                                          table_map nest_tables)
 {
   TABLE_LIST *table;
   table_map res= 0;
   List_iterator<TABLE_LIST> li(*join_list);
 
   DBUG_EXECUTE_IF("json_check_min_stack_requirement",
-                  if (dbug_json_check_min_stack_requirement())
-		    { *error= true; return 0; });
+                  {
+                    long arbitrary_var;
+                    long stack_used_up= (available_stack_size(current_thd->thread_stack, &arbitrary_var));
+                    ALLOCATE_MEM_ON_STACK(my_thread_stack_size-stack_used_up-STACK_MIN_SIZE);
+                  });
   if ((res=check_stack_overrun(current_thd, STACK_MIN_SIZE , NULL)))
-  {
-    *error= true;
-    return 0;
-  }
+    return res;
 
   // Recursively compute extra dependencies
   while ((table= li++))
@@ -1517,9 +1455,7 @@ table_map add_table_function_dependencies(List<TABLE_LIST> *join_list,
     if ((nested_join= table->nested_join))
     {
       res |= add_table_function_dependencies(&nested_join->join_list,
-                                             nested_join->used_tables, error);
-      if (*error)
-	return 0;
+                                             nested_join->used_tables);
     }
     else if (table->table_function)
     {
@@ -1530,13 +1466,9 @@ table_map add_table_function_dependencies(List<TABLE_LIST> *join_list,
   res= res & ~nest_tables & ~PSEUDO_TABLE_BITS;
   // Then, make all "peers" have them:
   if (res)
-  {
-    if (add_extra_deps(join_list,  res))
-    {
-      *error= true;
-      return 0;
-    }
-  }
+    add_extra_deps(join_list,  res);
 
   return res;
 }
+
+

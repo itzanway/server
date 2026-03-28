@@ -21,7 +21,7 @@
 my_bool maria_log_remove(const char *testdir)
 {
   MY_DIR *dirp;
-  size_t i;
+  uint i;
   MY_STAT stat_buff;
   char file_name[FN_REFLEN];
 

@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2017, 2023, MariaDB Corporation.
+Copyright (c) 2017, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -30,7 +30,6 @@ Created 3/26/1996 Heikki Tuuri
 #include "srv0srv.h"
 #include "trx0purge.h"
 #include "srv0mon.h"
-#include "log.h"
 
 #ifdef WITH_WSREP
 # include <mysql/service_wsrep.h>
@@ -169,7 +168,7 @@ segments will be reset.
 @param[in]	xid		WSREP XID */
 void trx_rseg_update_wsrep_checkpoint(const XID* xid)
 {
-	mtr_t mtr{nullptr};
+	mtr_t	mtr;
 	mtr.start();
 	trx_rseg_update_wsrep_checkpoint(xid, &mtr);
 	mtr.commit();
@@ -201,7 +200,7 @@ bool trx_rseg_read_wsrep_checkpoint(const buf_block_t *rseg_header, XID &xid)
 	memcpy(xid.data, TRX_RSEG + TRX_RSEG_WSREP_XID_DATA
 	       + rseg_header->page.frame, XIDDATASIZE);
 
-	return wsrep_is_wsrep_xid(&xid);
+	return true;
 }
 
 /** Read the WSREP XID from the TRX_SYS page (in case of upgrade).
@@ -237,8 +236,7 @@ static bool trx_rseg_init_wsrep_xid(const page_t* page, XID& xid)
 	memcpy(xid.data,
 	       TRX_SYS + TRX_SYS_WSREP_XID_INFO
 	       + TRX_SYS_WSREP_XID_DATA + page, XIDDATASIZE);
-
-	return wsrep_is_wsrep_xid(&xid);
+	return true;
 }
 
 /** Recover the latest WSREP checkpoint XID.
@@ -246,7 +244,7 @@ static bool trx_rseg_init_wsrep_xid(const page_t* page, XID& xid)
 @return	whether the WSREP XID was found */
 bool trx_rseg_read_wsrep_checkpoint(XID& xid)
 {
-	mtr_t		mtr{nullptr};
+	mtr_t		mtr;
 	long long       max_xid_seqno = -1;
 	bool		found = false;
 
@@ -381,7 +379,7 @@ void trx_rseg_t::destroy()
 void trx_rseg_t::init(fil_space_t *space, uint32_t page)
 {
   latch.SRW_LOCK_INIT(trx_rseg_latch_key);
-  ut_ad(!this->space || this->space != space);
+  ut_ad(!this->space);
   this->space= space;
   page_no= page;
   last_page_no= FIL_NULL;
@@ -425,7 +423,6 @@ static dberr_t trx_undo_lists_init(trx_rseg_t *rseg,
                                    const buf_block_t *rseg_header)
 {
   ut_ad(srv_force_recovery < SRV_FORCE_NO_UNDO_LOG_SCAN);
-  bool is_undo_empty= true;
 
   for (ulint i= 0; i < TRX_RSEG_N_SLOTS; i++)
   {
@@ -436,13 +433,10 @@ static dberr_t trx_undo_lists_init(trx_rseg_t *rseg,
         trx_undo_mem_create_at_db_start(rseg, i, page_no);
       if (!undo)
         return DB_CORRUPTION;
-      if (is_undo_empty)
-        is_undo_empty= !undo->size || undo->state == TRX_UNDO_CACHED;
       rseg->curr_size+= undo->size;
     }
   }
 
-  trx_sys.set_undo_non_empty(!is_undo_empty);
   return DB_SUCCESS;
 }
 
@@ -458,12 +452,12 @@ static dberr_t trx_rseg_mem_restore(trx_rseg_t *rseg, mtr_t *mtr)
   /* Access the tablespace header page to recover rseg->space->free_limit */
   page_id_t page_id{rseg->space->id, 0};
   dberr_t err;
-  if (!buf_page_get_gen(page_id, 0, RW_X_LATCH, nullptr, BUF_GET, mtr, &err))
+  if (!buf_page_get_gen(page_id, 0, RW_S_LATCH, nullptr, BUF_GET, mtr, &err))
     return err;
   mtr->release_last_page();
   page_id.set_page_no(rseg->page_no);
   const buf_block_t *rseg_hdr=
-    buf_page_get_gen(rseg->page_id(), 0, RW_X_LATCH, nullptr, BUF_GET, mtr,
+    buf_page_get_gen(rseg->page_id(), 0, RW_S_LATCH, nullptr, BUF_GET, mtr,
                      &err);
   if (!rseg_hdr)
     return err;
@@ -506,17 +500,10 @@ static dberr_t trx_rseg_mem_restore(trx_rseg_t *rseg, mtr_t *mtr)
           trx_sys.recovered_binlog_offset= binlog_offset;
         trx_sys.recovered_binlog_is_legacy_pos= false;
       }
-    }
 #ifdef WITH_WSREP
-    XID tmp_xid;
-    tmp_xid.null();
-    /* Update recovered wsrep xid only if we found wsrep xid from
-       rseg header page and read xid seqno is larger than currently
-       recovered xid seqno. */
-    if (trx_rseg_read_wsrep_checkpoint(rseg_hdr, tmp_xid) &&
-        wsrep_xid_seqno(&tmp_xid) > wsrep_xid_seqno(&trx_sys.recovered_wsrep_xid))
-      trx_sys.recovered_wsrep_xid.set(&tmp_xid);
+      trx_rseg_read_wsrep_checkpoint(rseg_hdr, trx_sys.recovered_wsrep_xid);
 #endif
+    }
   }
 
   if (srv_operation == SRV_OPERATION_RESTORE)
@@ -563,6 +550,8 @@ static dberr_t trx_rseg_mem_restore(trx_rseg_t *rseg, mtr_t *mtr)
       rseg->needs_purge= id;
 
     rseg->set_last_commit(node_addr.boffset, id);
+    ut_ad(mach_read_from_2(block->page.frame + node_addr.boffset +
+                           TRX_UNDO_NEEDS_PURGE) <= 1);
 
     if (rseg->last_page_no != FIL_NULL)
       /* There is no need to cover this operation by the purge
@@ -570,7 +559,6 @@ static dberr_t trx_rseg_mem_restore(trx_rseg_t *rseg, mtr_t *mtr)
       purge_sys.enqueue(*rseg);
   }
 
-  trx_sys.set_undo_non_empty(rseg->history_size > 0);
   return err;
 }
 
@@ -606,7 +594,7 @@ dberr_t trx_rseg_array_init()
 	wsrep_sys_xid.null();
 	bool wsrep_xid_in_rseg_found = false;
 #endif
-	mtr_t mtr{nullptr};
+	mtr_t mtr;
 	dberr_t err = DB_SUCCESS;
 	/* mariabackup --prepare only deals with the redo log and the data
 	files, not with	transactions or the data dictionary, that's why
@@ -621,7 +609,7 @@ dberr_t trx_rseg_array_init()
 		purge_sys.queue_lock();
 	for (ulint rseg_id = 0; rseg_id < TRX_SYS_N_RSEGS; rseg_id++) {
 		mtr.start();
-		if (const buf_block_t* sys = trx_sysf_get(&mtr, true)) {
+		if (const buf_block_t* sys = trx_sysf_get(&mtr, false)) {
 			if (rseg_id == 0) {
 				/* In case this is an upgrade from
 				before MariaDB 10.3.5, fetch the base
@@ -643,25 +631,11 @@ dberr_t trx_rseg_array_init()
 				sys, rseg_id);
 			if (page_no != FIL_NULL) {
 				trx_rseg_t& rseg = trx_sys.rseg_array[rseg_id];
-				uint32_t space_id=
-					trx_sysf_rseg_get_space(
-						sys, rseg_id);
-
-				fil_space_t *rseg_space =
-					fil_space_get(space_id);
-				if (!rseg_space) {
-					mtr.commit();
-					err = DB_ERROR;
-					sql_print_error(
-					  "InnoDB: Failed to open the undo "
-					  "tablespace undo%03" PRIu32,
-					  (space_id -
-					   srv_undo_space_id_start + 1));
-					break;
-				}
-
 				rseg.destroy();
-				rseg.init(rseg_space, page_no);
+				rseg.init(fil_space_get(
+						  trx_sysf_rseg_get_space(
+							  sys, rseg_id)),
+					  page_no);
 				ut_ad(rseg.is_persistent());
 				err = trx_rseg_mem_restore(&rseg, &mtr);
 				if (rseg.needs_purge > max_trx_id) {
@@ -755,28 +729,29 @@ which corresponds to the transaction just being committed.
 In a replication slave, this updates the master binlog position
 up to which replication has proceeded.
 @param[in,out]	rseg_header	rollback segment header
-@param[in]	log_file_name	binlog file name
-@param[in]	log_offset	binlog file offset
+@param[in]	trx		committing transaction
 @param[in,out]	mtr		mini-transaction */
-void trx_rseg_update_binlog_offset(buf_block_t *rseg_header,
-                                   const char *log_file_name,
-                                   ulonglong log_offset,
+void trx_rseg_update_binlog_offset(buf_block_t *rseg_header, const trx_t *trx,
                                    mtr_t *mtr)
 {
-  DBUG_PRINT("trx", ("trx_mysql_binlog_offset %llu", log_offset));
-  const size_t len= strlen(log_file_name) + 1;
-  ut_ad(len > 1);
+	DBUG_LOG("trx", "trx_mysql_binlog_offset: " << trx->mysql_log_offset);
 
-  if (UNIV_UNLIKELY(len > TRX_RSEG_BINLOG_NAME_LEN))
-    return;
+	const size_t len = strlen(trx->mysql_log_file_name) + 1;
 
-  mtr->write<8,mtr_t::MAYBE_NOP>(
-    *rseg_header,
-    TRX_RSEG + TRX_RSEG_BINLOG_OFFSET + rseg_header->page.frame,
-    log_offset);
+	ut_ad(len > 1);
 
-  byte *name= TRX_RSEG + TRX_RSEG_BINLOG_NAME + rseg_header->page.frame;
+	if (UNIV_UNLIKELY(len > TRX_RSEG_BINLOG_NAME_LEN)) {
+		return;
+	}
 
-  if (memcmp(log_file_name, name, len))
-    mtr->memcpy(*rseg_header, name, log_file_name, len);
+	mtr->write<8,mtr_t::MAYBE_NOP>(*rseg_header,
+				       TRX_RSEG + TRX_RSEG_BINLOG_OFFSET
+				       + rseg_header->page.frame,
+				       trx->mysql_log_offset);
+
+	void* name = TRX_RSEG + TRX_RSEG_BINLOG_NAME + rseg_header->page.frame;
+
+	if (memcmp(trx->mysql_log_file_name, name, len)) {
+		mtr->memcpy(*rseg_header, name, trx->mysql_log_file_name, len);
+	}
 }

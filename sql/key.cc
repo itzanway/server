@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2010, Oracle and/or its affiliates. All rights reserved.
-   Copyright (c) 2018, 2021, MariaDB
+   Copyright (c) 2018, 2020, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -148,7 +148,7 @@ void key_copy(uchar *to_key, const uchar *from_record, const KEY *key_info,
       key_length-= HA_KEY_BLOB_LENGTH;
       length= MY_MIN(key_length, key_part->length);
       uint bytes= key_part->field->get_key_image(to_key, length, from_ptr,
-                                        Field::image_type(key_info->algorithm));
+		      key_info->flags & HA_SPATIAL ? Field::itMBR : Field::itRAW);
       if (with_zerofill && bytes < length)
         bzero((char*) to_key + bytes, length - bytes);
       to_key+= HA_KEY_BLOB_LENGTH;
@@ -495,7 +495,6 @@ int key_cmp(KEY_PART_INFO *key_part, const uchar *key, uint key_length)
   {
     int cmp;
     store_length= key_part->store_length;
-    int sort_order = (key_part->key_part_flag & HA_REVERSE_SORT) ? -1 : 1;
     if (key_part->null_bit)
     {
       /* This key part allows null values; NULL is lower than everything */
@@ -504,19 +503,19 @@ int key_cmp(KEY_PART_INFO *key_part, const uchar *key, uint key_length)
       {
 	/* the range is expecting a null value */
 	if (!field_is_null)
-	  return sort_order;                         // Found key is > range
+	  return 1;                             // Found key is > range
         /* null -- exact match, go to next key part */
 	continue;
       }
       else if (field_is_null)
-	return -sort_order;                     // NULL is less than any value
+	return -1;                              // NULL is less than any value
       key++;					// Skip null byte
       store_length--;
     }
     if ((cmp=key_part->field->key_cmp(key, key_part->length)) < 0)
-      return -sort_order;
+      return -1;
     if (cmp > 0)
-      return sort_order;
+      return 1;
   }
   return 0;                                     // Keys are equal
 }
@@ -574,9 +573,6 @@ int key_rec_cmp(const KEY *const *key, const uchar *first_rec,
     /* loop over every key part */
     do
     {
-      const int GREATER= key_part->key_part_flag & HA_REVERSE_SORT ? -1 : +1;
-      const int LESS= -GREATER;
-
       field= key_part->field;
 
       if (key_part->null_bit)
@@ -597,12 +593,12 @@ int key_rec_cmp(const KEY *const *key, const uchar *first_rec,
             ; /* Fall through, no NULL fields */
           else
           {
-            DBUG_RETURN(GREATER);
+            DBUG_RETURN(+1);
           }
         }
         else if (!sec_is_null)
         {
-          DBUG_RETURN(LESS);
+          DBUG_RETURN(-1);
         }
         else
           goto next_loop; /* Both were NULL */
@@ -617,7 +613,7 @@ int key_rec_cmp(const KEY *const *key, const uchar *first_rec,
       if ((result= field->cmp_prefix(field->ptr+first_diff, field->ptr+sec_diff,
                                      key_part->length /
                                      field->charset()->mbmaxlen)))
-        DBUG_RETURN(result * GREATER);
+        DBUG_RETURN(result);
 next_loop:
       key_part++;
       key_part_num++;
@@ -694,7 +690,7 @@ int key_tuple_cmp(KEY_PART_INFO *part, const uchar *key1, const uchar *key2,
 
 ulong key_hashnr(KEY *key_info, uint used_key_parts, const uchar *key)
 {
-  my_hasher_st hasher= my_hasher_mysql5x();
+  ulong nr=1, nr2=4;
   KEY_PART_INFO *key_part= key_info->key_part;
   KEY_PART_INFO *end_key_part= key_part + used_key_parts;
 
@@ -711,7 +707,7 @@ ulong key_hashnr(KEY *key_info, uint used_key_parts, const uchar *key)
       key++;                       /* Skip null byte */
       if (*pos)                    /* Found null */
       {
-        hasher.m_nr1^= (hasher.m_nr1 << 1) | 1;
+        nr^= (nr << 1) | 1;
         /* Add key pack length to key for VARCHAR segments */
         switch (key_part->type) {
         case HA_KEYTYPE_VARTEXT1:
@@ -764,19 +760,20 @@ ulong key_hashnr(KEY *key_info, uint used_key_parts, const uchar *key)
         In this case, the passed key tuple is already a prefix, no
         special handling is required.
       */
-      cs->hash_sort(&hasher, pos+pack_length, length);
+      cs->hash_sort(pos+pack_length, length, &nr, &nr2);
       key+= pack_length;
     }
     else
     {
       for (; pos < (uchar*)key ; pos++)
       {
-        MY_HASH_ADD_MARIADB(hasher.m_nr1, hasher.m_nr2, *pos);
+        nr^=(ulong) ((((uint) nr & 63)+nr2)*((uint) *pos)) + (nr << 8);
+        nr2+=3;
       }
     }
   }
-  DBUG_PRINT("exit", ("hash: %lx", hasher.m_nr1));
-  return(hasher.m_nr1);
+  DBUG_PRINT("exit", ("hash: %lx", nr));
+  return(nr);
 }
 
 

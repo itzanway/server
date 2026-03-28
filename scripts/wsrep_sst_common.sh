@@ -1082,43 +1082,6 @@ if [ -n "$WSREP_SST_OPT_REMOTE_AUTH" ]; then
     WSREP_SST_OPT_REMOTE_PSWD="${WSREP_SST_OPT_REMOTE_AUTH#*:}"
 fi
 
-# Reads incoming data from STDIN and sets the variables
-#
-# Globals:
-#   WSREP_SST_OPT_USER (sets this variable)
-#   WSREP_SST_OPT_PSWD (sets this variable)
-#
-# Parameters:
-#   None
-#
-read_variables_from_stdin()
-{
-    while read line; do
-        local key="${line%%=*}"
-        local value=""
-        [ "$key" != "$line" ] && value="${line#*=}"
-        case "$key" in
-            'sst_user')
-                WSREP_SST_OPT_USER="$value"
-                ;;
-            'sst_password')
-                WSREP_SST_OPT_PSWD="$value"
-                ;;
-            'sst_remote_user')
-                WSREP_SST_OPT_REMOTE_USER="$value"
-                ;;
-            'sst_remote_password')
-                WSREP_SST_OPT_REMOTE_PSWD="$value"
-                ;;
-            *)
-                wsrep_log_warning "Unrecognized input: $line"
-        esac
-    done
-    return 0
-}
-
-[ "$WSREP_SST_OPT_ROLE" = "donor" ] && read_variables_from_stdin || :
-
 readonly WSREP_SST_OPT_USER
 readonly WSREP_SST_OPT_PSWD
 readonly WSREP_SST_OPT_AUTH
@@ -1267,13 +1230,6 @@ check_sockets_utils()
     lsof_available=0
     sockstat_available=0
     ss_available=0
-    raw_socket_check=0
-
-    if [ -n "$(commandex selinuxenabled)" ] && selinuxenabled; then
-        raw_socket_check=1
-        wsrep_log_info "/proc/net/tcp{,6} is being used directly to avoid excessive selinux AVC notices"
-        return 0
-    fi
 
     socket_utility="$(commandex ss)"
     if [ -n "$socket_utility" ]; then
@@ -1342,11 +1298,7 @@ check_port()
 
     local rc=2 # ENOENT
 
-    if [ $raw_socket_check -ne 0 ]; then
-        for key in $(awk -v p="$port" 'BEGIN { hex_port = sprintf(":%04X", p) } $2 ~ hex_port && $4 == "0A" { print $10 }' /proc/net/tcp /proc/net/tcp6); do
-            return 0
-        done
-    elif [ $ss_available -ne 0 ]; then
+    if [ $ss_available -ne 0 ]; then
         $socket_utility $ss_opts -t "( sport = :$port )" 2>/dev/null | \
             grep -q -E "[[:space:]]users:[[:space:]]?\\(.*\\(\"($utils)[^[:space:]]*\"[^)]*,pid=$pid(,[^)]*)?\\)" && rc=0
     elif [ $sockstat_available -ne 0 ]; then
@@ -1453,7 +1405,7 @@ verify_ca_matches_cert()
         wsrep_log_info "run: \"$OPENSSL_BINARY\" verify -verbose${ca:+ -CAfile \"$ca\"}${cap:+ -CApath \"$cap\"} \"$cert\""
         wsrep_log_info "output: $errmsg"
         wsrep_log_error "******** FATAL ERROR ********************************************"
-        wsrep_log_error "* The certificate and CA (certificate authority) do not match.  *"
+        wsrep_log_error "* The certifcate and CA (certificate authority) do not match.   *"
         wsrep_log_error "* It does not appear that the certificate was issued by the CA. *"
         wsrep_log_error "* Please check your certificate and CA files.                   *"
         wsrep_log_error "*****************************************************************"

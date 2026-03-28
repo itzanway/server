@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 #
-# $Id: mytop,v 1.99-maria8 2025/07/16 17:59:26 jweisbuch Exp $
+# $Id: mytop,v 1.99-maria6 2019/10/22 14:53:51 jweisbuch Exp $
 
 =pod
 
@@ -21,7 +21,7 @@ use Socket;
 use List::Util qw(min max);
 use File::Basename;
 
-$main::VERSION = "1.99-maria8";
+$main::VERSION = "1.99-maria6";
 my $path_for_script = dirname($0);
 
 $| = 1;
@@ -256,11 +256,7 @@ if (eval {DBI->install_driver("MariaDB")}) {
 
 if ($config{socket} and -S $config{socket})
 {
-    $dsn .= "${prefix}_socket=$config{socket}";
-}
-elsif($config{host} eq "localhost")
-{
-    $dsn .= "host=$config{host}";
+  $dsn .= "${prefix}_socket=$config{socket}";
 }
 else
 {
@@ -461,7 +457,7 @@ while (1)
         ReadKey(0);
     }
 
-    ## l - change long running queries highlighting
+    ## l - change long running hightling
 
     if ($key eq 'l')
     {
@@ -1447,7 +1443,7 @@ sub GetData()
         ## Strip non printing control symbols
         $thread->{Info} =~ tr/[[:cntrl:]]//;
 
-        ## Collapse whitespace
+        ## Collpase whitespace
         $thread->{Info} =~ s/\s+/ /g;
 
         ## Trailing space removal
@@ -1953,13 +1949,13 @@ sub PrintHelp()
   E - display current replication error
   f - show full query info for a given thread
   F - unfilter the display
-  h - show only a specific host's connections
+  h - show only a specifc host's connections
   H - toggle the mytop header
   i - toggle the display of idle (sleeping) threads
   I - show innodb status
   k - kill a thread
   p - pause the display
-  l - change long running queries highlighting
+  l - change long running queries hightlighing
   m - switch [mode] to qps (queries/sec) scrolling view
   M - switch [mode] to status
   o - reverse the sort order (toggle)
@@ -1967,7 +1963,7 @@ sub PrintHelp()
   r - reset the status counters (via FLUSH STATUS on your server)
   R - change reverse IP lookup
   s - change the delay between screen updates
-  S - change slow query highlighting
+  S - change slow query hightlighting
   t - switch to thread view (default)
   u - show only a specific user
   V - show variables
@@ -2127,7 +2123,7 @@ modules.
 
 =head2 Optional Color Support
 
-In addition, if you want a color B<mytop> (recommended), install
+In additon, if you want a color B<mytop> (recommended), install
 Term::ANSIColor from the CPAN:
 
     http://search.cpan.org/search?dist=ANSIColor
@@ -2201,7 +2197,7 @@ slow queries, and the percentage of Select, Insert, Update, and Delete
 queries.
 
 The third real-time values. First is the number of queries per second,
-then the number of slow queries, followed by query percentages (like
+then the number of slow queries, followed by query precentages (like
 on the previous line).
 
 And the fourth line displays key buffer efficiency (how often keys are
@@ -2497,7 +2493,7 @@ Reset the server's status counters via a I<FLUSH STATUS> command.
 
 =item B<R>
 
-Toggle IP reverse lookup. Default is on.
+Togle IP reverse lookup. Default is on.
 
 =item B<s>
 

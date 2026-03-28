@@ -21,6 +21,10 @@
   Classes for the thread scheduler
 */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface
+#endif
+
 class THD;
 
 /* Functions used when manipulating threads */
@@ -75,7 +79,7 @@ void one_thread_scheduler(scheduler_functions *func, Atomic_counter<uint> *arg_c
 extern void scheduler_init();
 extern void post_kill_notification(THD *);
 /*
- To be used for pool-of-threads (implemented differently on various OSs)
+ To be used for pool-of-threads (implemeneted differently on various OSs)
 */
 struct thd_scheduler
 {

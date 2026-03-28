@@ -281,6 +281,7 @@ lock table t1 read, t2 read;
 unlock tables;
 connection default;
 unlock tables;
+connection con1;
 disconnect con1;
 connection default;
 drop table t1, t2, t3;
@@ -398,7 +399,9 @@ connection con2;
 connection default;
 commit;
 # Cleanup
+connection con1;
 disconnect con1;
+connection con2;
 disconnect con2;
 connection default;
 drop table t1;
@@ -477,7 +480,9 @@ connection default;
 # Reap INSERT.
 handler t1 close;
 # Cleanup.
+connection con1;
 disconnect con1;
+connection con2;
 disconnect con2;
 connection default;
 drop tables t1, t2;

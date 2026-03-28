@@ -10,8 +10,6 @@ IF(CMAKE_C_COMPILER_ID MATCHES "Clang")
     PROPERTY COMPILE_FLAGS "-Wno-incompatible-pointer-types-discards-qualifiers")
 ENDIF()
 
-IF (NOT DEB) # avoid arch-dependent-file-in-usr-share error
-  SET(dest DESTINATION "${INSTALL_MYSQLTESTDIR}/suite/plugins/pam" COMPONENT Test)
-  INSTALL(TARGETS pam_mariadb_mtr ${dest})
-  INSTALL(FILES mariadb_mtr.conf RENAME mariadb_mtr ${dest})
-ENDIF()
+SET(dest DESTINATION "${INSTALL_MYSQLTESTDIR}/suite/plugins/pam" COMPONENT Test)
+INSTALL(TARGETS pam_mariadb_mtr ${dest})
+INSTALL(FILES mariadb_mtr.conf RENAME mariadb_mtr ${dest})

@@ -156,15 +156,16 @@ connect(con3,localhost,root,,);
 # flag set by another RESET MASTER; this could cause the wakeup from the
 # binlog background thread not to be sent, and thus the second RESET MASTER
 # to wait infinitely.
-# After MDEV-34705, two RESET MASTERs are protected by MDL_BACKUP_START from
-# running concurrently; we test this by having a debug_sync point time
-# out while a second RESET MASTER is waiting for the first one.
-SET debug_sync="reset_logs_after_set_reset_master_pending SIGNAL reset_master_ready WAIT_FOR reset_master_cont TIMEOUT 1";
+SET debug_sync="reset_logs_after_set_reset_master_pending SIGNAL reset_master_ready WAIT_FOR reset_master_cont";
 send RESET MASTER;
 
 --connection default
+SET @old_dbug= @@global.DEBUG_DBUG;
+SET GLOBAL debug_dbug="+d,inject_binlog_background_thread_before_mark_xid_done";
 SET debug_sync="now WAIT_FOR reset_master_ready";
 RESET MASTER;
+SET debug_sync="now WAIT_FOR injected_binlog_background_thread";
+SET GLOBAL debug_dbug=@old_dbug;
 SET debug_sync="now SIGNAL reset_master_cont";
 
 --connection con3
@@ -205,7 +206,7 @@ XA END 'xa1';
 
 --connection default
   # In the patch's base BBT would exit first to win the race against
-  # the XA transaction's binlogging.
+  # the XA transaction's binloging.
   SET GLOBAL debug_dbug="+d,only_kill_system_threads_no_loop";
 --source include/shutdown_mysqld.inc
 --source include/start_mysqld.inc

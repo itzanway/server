@@ -18,7 +18,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1335  USA
 
 *******************************************************/
 
-#define VER "1.0"
 #include <my_global.h>
 #include <my_base.h>
 #include <my_getopt.h>
@@ -27,8 +26,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1335  USA
 #include "common.h"
 #include "xbstream.h"
 #include "datasink.h"
-#include <welcome_copyright_notice.h>
 
+#define XBSTREAM_VERSION "1.0"
 #define XBSTREAM_BUFFER_SIZE (10 * 1024 * 1024UL)
 
 #define START_FILE_HASH_SIZE 16
@@ -149,6 +148,14 @@ get_options(int *argc, char ***argv)
 
 static
 void
+print_version(void)
+{
+	printf("%s  Ver %s for %s (%s)\n", my_progname, XBSTREAM_VERSION,
+	       SYSTEM_TYPE, MACHINE_TYPE);
+}
+
+static
+void
 usage(void)
 {
 	print_version();
@@ -255,7 +262,7 @@ mode_create(int argc, char **argv)
 		return 1;
 	}
 
-	stream = xb_stream_write_new(nullptr, nullptr);
+	stream = xb_stream_write_new();
 	if (stream == NULL) {
 		msg("%s: xb_stream_write_new() failed.", my_progname);
 		return 1;
@@ -280,7 +287,7 @@ mode_create(int argc, char **argv)
 			goto err;
 		}
 
-		file = xb_stream_write_open(stream, filepath, &mystat, false);
+		file = xb_stream_write_open(stream, filepath, &mystat, NULL, NULL);
 		if (file == NULL) {
 			goto err;
 		}
@@ -307,8 +314,7 @@ err:
 
 static
 file_entry_t *
-file_entry_new(extract_ctxt_t *ctxt, const char *path, uint pathlen,
-	uchar chunk_flags)
+file_entry_new(extract_ctxt_t *ctxt, const char *path, uint pathlen)
 {
 	file_entry_t	*entry;
 	ds_file_t	*file;
@@ -325,8 +331,7 @@ file_entry_new(extract_ctxt_t *ctxt, const char *path, uint pathlen,
 	}
 	entry->pathlen = pathlen;
 
-	file = ds_open(ctxt->ds_ctxt, path, NULL,
-		chunk_flags == XB_STREAM_FLAG_REWRITE);
+	file = ds_open(ctxt->ds_ctxt, path, NULL);
 
 	if (file == NULL) {
 		msg("%s: failed to create file.", my_progname);
@@ -408,50 +413,10 @@ extract_worker_thread_func(void *arg)
 							(uchar *) chunk.path,
 							chunk.pathlen);
 
-		if (entry && (chunk.type == XB_CHUNK_TYPE_REMOVE ||
-			chunk.type == XB_CHUNK_TYPE_RENAME)) {
-			msg("%s: rename and remove chunks can not be applied to opened file: %s",
-				my_progname, chunk.path);
-			pthread_mutex_unlock(ctxt->mutex);
-			break;
-		}
-
-		if (chunk.type == XB_CHUNK_TYPE_REMOVE) {
-			if (ds_remove(ctxt->ds_ctxt, chunk.path)) {
-				msg("%s: error on file removing: %s", my_progname, chunk.path);
-				pthread_mutex_unlock(ctxt->mutex);
-				res = XB_STREAM_READ_ERROR;
-				break;
-			}
-			pthread_mutex_unlock(ctxt->mutex);
-			continue;
-		}
-
-		if (chunk.type == XB_CHUNK_TYPE_RENAME) {
-			if (my_hash_search(ctxt->filehash,
-				reinterpret_cast<const uchar *>(chunk.data), chunk.length)) {
-				msg("%s: rename chunks can not be applied to opened file: %s",
-					my_progname, reinterpret_cast<const uchar *>(chunk.data));
-				pthread_mutex_unlock(ctxt->mutex);
-				break;
-			}
-			if (ds_rename(ctxt->ds_ctxt, chunk.path,
-				reinterpret_cast<const char *>(chunk.data))) {
-				msg("%s: error on file renaming: %s to %s", my_progname,
-					reinterpret_cast<const char *>(chunk.data), chunk.path);
-				pthread_mutex_unlock(ctxt->mutex);
-				res = XB_STREAM_READ_ERROR;
-				break;
-			}
-			pthread_mutex_unlock(ctxt->mutex);
-			continue;
-		}
-
 		if (entry == NULL) {
 			entry = file_entry_new(ctxt,
 					       chunk.path,
-					       chunk.pathlen,
-								 chunk.flags);
+					       chunk.pathlen);
 			if (entry == NULL) {
 				pthread_mutex_unlock(ctxt->mutex);
 				break;
@@ -467,18 +432,6 @@ extract_worker_thread_func(void *arg)
 		pthread_mutex_lock(&entry->mutex);
 
 		pthread_mutex_unlock(ctxt->mutex);
-
-		if (chunk.type == XB_CHUNK_TYPE_SEEK) {
-			if (ds_seek_set(entry->file, chunk.offset)) {
-				msg("%s: my_seek() failed.", my_progname);
-				pthread_mutex_unlock(&entry->mutex);
-				res = XB_STREAM_READ_ERROR;
-				break;
-			}
-			entry->offset = chunk.offset;
-			pthread_mutex_unlock(&entry->mutex);
-			continue;
-		}
 
 		res = xb_stream_validate_checksum(&chunk);
 

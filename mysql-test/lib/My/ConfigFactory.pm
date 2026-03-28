@@ -63,7 +63,7 @@ sub get_testdir {
   return $testdir;
 }
 
-# Retrieve build directory (which is different from basedir in out-of-source build)
+# Retrive build directory (which is different from basedir in out-of-source build)
 sub get_bindir {
   if (defined $ENV{MTR_BINDIR})
   {

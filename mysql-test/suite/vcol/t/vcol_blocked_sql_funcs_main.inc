@@ -19,16 +19,6 @@
 # to check for things that should not work for either VIRTUAL or PERSISTENT
 #
 
---echo # AES_ENCRYPT() without the mode (4th argument)
--- error ER_GENERATED_COLUMN_FUNCTION_IS_NOT_ALLOWED
-create or replace table t1 (b blob as (aes_encrypt('abc', 'bcd')) PERSISTENT);
--- error ER_GENERATED_COLUMN_FUNCTION_IS_NOT_ALLOWED
-create or replace table t1 (b blob as (aes_encrypt('abc', 'bcd','def')) PERSISTENT);
--- error ER_GENERATED_COLUMN_FUNCTION_IS_NOT_ALLOWED
-create or replace table t1 (b blob as (aes_decrypt('abc', 'bcd')) PERSISTENT);
--- error ER_GENERATED_COLUMN_FUNCTION_IS_NOT_ALLOWED
-create or replace table t1 (b blob as (aes_decrypt('abc', 'bcd','def')) PERSISTENT);
-
 --echo # RAND()
 create or replace table t1 (b double as (rand()));
 -- error ER_GENERATED_COLUMN_FUNCTION_IS_NOT_ALLOWED
@@ -351,12 +341,12 @@ let $tmp_long_string = `SELECT repeat('a',240)`;
 eval create or replace table t1 (a int, b varchar(300) as (concat(a,'$tmp_long_string')));
 drop table t1;
 let $tmp_long_string = `SELECT repeat('a',243)`;
-eval create or replace table t1 (a int, b varchar(16384) as (concat(a,'$tmp_long_string'))) charset=latin1;
+eval create or replace table t1 (a int, b varchar(16384) as (concat(a,'$tmp_long_string')));
 
 --disable_query_log
 let $tmp_long_string = `SELECT repeat('a',65535)`;
 --error ER_EXPRESSION_IS_TOO_BIG
-eval create or replace table t1 (a int, b varchar(16384) as (concat(a,'$tmp_long_string'))) charset=latin1;
+eval create or replace table t1 (a int, b varchar(16384) as (concat(a,'$tmp_long_string')));
 --enable_query_log
 
 --echo #

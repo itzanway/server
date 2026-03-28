@@ -23,14 +23,12 @@ HAVING (t1.a>2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
 FROM t1
 WHERE (t1.a>2)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : using equality
@@ -42,14 +40,12 @@ HAVING (t1.a=2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
 FROM t1
 WHERE (t1.a=2)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # extracted AND formula
@@ -61,14 +57,12 @@ HAVING (t1.a>1) AND (t1.a<4);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
 FROM t1
 WHERE (t1.a>1) AND (t1.a<4)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # extracted OR formula
@@ -81,7 +75,6 @@ eval $no_pushdown $query;
 eval $query;
 --enable_prepare_warnings
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 --disable_prepare_warnings
 let $query=
@@ -90,7 +83,6 @@ FROM t1
 WHERE (t1.a>1) OR (a IN (SELECT 3))
 GROUP BY t1.a;
 --enable_prepare_warnings
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 --disable_prepare_warnings
 
@@ -102,7 +94,6 @@ HAVING ((t1.a>2) AND (MAX(t1.b)>13)) OR ((t1.a<3) AND (MIN(t1.c)>1));
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -110,7 +101,6 @@ FROM t1
 WHERE (t1.a>2) OR (t1.a<3)
 GROUP BY t1.a
 HAVING ((t1.a>2) AND (MAX(t1.b)>13)) OR ((t1.a<3) AND (MIN(t1.c)>1));
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : no aggregation formula pushdown
@@ -122,7 +112,6 @@ HAVING (t1.a>1) AND (MAX(t1.a)<3);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
@@ -130,7 +119,6 @@ FROM t1
 WHERE (t1.a>1)
 GROUP BY t1.a
 HAVING (MAX(t1.a)<3);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -141,7 +129,6 @@ HAVING (t1.a>1) AND (MAX(t1.b)>13);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
@@ -149,7 +136,6 @@ FROM t1
 WHERE (t1.a>1)
 GROUP BY t1.a
 HAVING (MAX(t1.b)>13);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -160,7 +146,6 @@ HAVING (t1.a=3) AND (MAX(t1.a)=3);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
@@ -168,7 +153,6 @@ FROM t1
 WHERE (t1.a=3)
 GROUP BY t1.a
 HAVING (MAX(t1.a)=3);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -179,7 +163,6 @@ HAVING (t1.a=2) AND (MAX(t1.b)>12);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
@@ -187,7 +170,6 @@ FROM t1
 WHERE (t1.a=2)
 GROUP BY t1.a
 HAVING (MAX(t1.b)>12);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -198,7 +180,6 @@ HAVING (t1.a>1) AND (MAX(t1.b)=13);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
@@ -206,7 +187,6 @@ FROM t1
 WHERE (t1.a>1)
 GROUP BY t1.a
 HAVING (MAX(t1.b)=13);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -217,7 +197,6 @@ HAVING (t1.a>1) AND (MIN(t1.c)<3);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MIN(t1.c)
@@ -225,7 +204,6 @@ FROM t1
 WHERE (t1.a>1)
 GROUP BY t1.a
 HAVING (MIN(t1.c)<3);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -236,7 +214,6 @@ HAVING (t1.a=2) AND (MAX(t1.b)=13) AND (MIN(t1.c)=2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MIN(t1.c)
@@ -244,7 +221,6 @@ FROM t1
 WHERE (t1.a=2)
 GROUP BY t1.a
 HAVING (MAX(t1.b)=13) AND (MIN(t1.c)=2);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : no stored function pushdown
@@ -256,7 +232,6 @@ HAVING (t1.a>1) AND (a=test.f1());
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
@@ -264,7 +239,6 @@ FROM t1
 WHERE (t1.a>1)
 GROUP BY t1.a
 HAVING (a=test.f1());
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : pushdown into derived table WHERE clause
@@ -277,14 +251,12 @@ HAVING (v1.a>1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT v1.a
 FROM t2,v1
 WHERE (t2.x=v1.a) AND (v1.a>1)
 GROUP BY v1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : pushdown into derived table HAVING clause
@@ -297,14 +269,12 @@ HAVING (v1.c>2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT v1.a,v1.c
 FROM t2,v1
 WHERE (t2.x=v1.a) AND (v1.c>2)
 GROUP BY v1.c;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : pushdown into materialized IN subquery
@@ -318,7 +288,6 @@ HAVING (t1.a>1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT * FROM t1
@@ -326,7 +295,6 @@ WHERE
   (t1.a>1) AND
   (t1.a,t1.b) IN (SELECT t2.x,MAX(t2.y) FROM t2 WHERE t2.x<5 GROUP BY t2.x)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : pushdown into materialized IN subquery
@@ -340,7 +308,6 @@ HAVING (t1.b<14);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT * FROM t1
@@ -348,7 +315,6 @@ WHERE
   (t1.b<14) AND
   (t1.a,t1.b) IN (SELECT t2.x,MAX(t2.y) FROM t2 WHERE t2.x<5 GROUP BY t2.x)
 GROUP BY t1.b;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # non-standard allowed queries
@@ -361,14 +327,12 @@ HAVING (t1.c=2) AND (t1.a>1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c FROM t1
 WHERE (t1.a>1)
 GROUP BY t1.a
 HAVING (t1.c=2);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -379,7 +343,6 @@ HAVING (t1.a=2) AND (t1.b=13) AND (t1.c=2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT MAX(t1.a),t1.a,t1.b,t1.c
@@ -387,7 +350,6 @@ FROM t1
 WHERE (t1.b=13)
 GROUP BY t1.b
 HAVING (t1.a=2) AND (t1.c=2);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # extracted AND formula : using equalities
@@ -399,13 +361,11 @@ HAVING (t1.a=t1.c) AND (t1.c>1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b) FROM t1
 WHERE (t1.a=t1.c) AND (t1.a>1)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -416,14 +376,12 @@ HAVING (t1.a=t1.c) AND (t1.c=2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.a=t1.c) AND (t1.a=2)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -434,7 +392,6 @@ HAVING ((t1.a=t1.c) AND (t1.a>1)) OR ((t1.a<3) AND (t1.c>3));
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -442,10 +399,9 @@ FROM t1
 WHERE ((t1.a=t1.c) AND (t1.a>1)) OR (t1.a<3)
 GROUP BY t1.a
 HAVING ((t1.a=t1.c) AND (t1.a>1)) OR ((t1.a<3) AND (t1.c>3));
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
---echo # conjunctive subformula : pushdown using WHERE multiple equalities
+--echo # conjuctive subformula : pushdown using WHERE multiple equalities
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
@@ -455,14 +411,12 @@ HAVING (t1.c<3);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.a=t1.c) AND (t1.c<3)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # extracted AND-formula : pushdown using WHERE multiple equalities
@@ -475,14 +429,12 @@ HAVING (t1.a>1) AND (t1.c<3);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.a=t1.c) AND (t1.a>1) AND (t1.c<3)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -494,7 +446,6 @@ HAVING (((t1.a>1) AND (MAX(t1.c)<3)) OR (t1.c<4)) AND (t1.a<2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -502,7 +453,6 @@ FROM t1
 WHERE (t1.a=t1.c) AND (((t1.a>1) OR (t1.c<4)) AND (t1.a<2))
 GROUP BY t1.a
 HAVING ((t1.a>1) AND (MAX(t1.c)<3)) OR (t1.c<4);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # extracted OR-formula : pushdown using WHERE multiple equalities
@@ -515,7 +465,6 @@ HAVING ((t1.a>1) AND (MAX(t1.c)<3)) OR (t1.c<4);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -523,7 +472,6 @@ FROM t1
 WHERE (t1.a=t1.c) AND ((t1.a>1) OR (t1.c<4))
 GROUP BY t1.a
 HAVING ((t1.a>1) AND (MAX(t1.c)<3)) OR (t1.c<4);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 DROP TABLE t1,t2;
@@ -562,14 +510,12 @@ HAVING t1.b = 13 AND MAX(t1.c) > 2;
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 GROUP BY t1.a
 HAVING t1.b = 13 AND MAX(t1.c) > 2;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # extracted AND formula
@@ -581,14 +527,12 @@ HAVING (t1.a = 1 OR t1.b > 10) AND (t1.b < 14);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.a = 1 OR t1.b > 10) AND (t1.b < 14)
 GROUP BY t1.a,t1.b;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -599,14 +543,12 @@ HAVING (t1.a = 1 OR t1.b > 10) AND (t1.b < 14 OR t1.b > 15);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.a = 1 OR t1.b > 10) AND (t1.b < 14 OR t1.b > 15)
 GROUP BY t1.a,t1.b;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # extracted AND formula : equality in the inner AND formula
@@ -618,14 +560,12 @@ HAVING (t1.a = 1 OR t1.b > 10) AND (t1.b < 14 OR (t1.b > 15 AND t1.a = 2));
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.a = 1 OR t1.b > 10) AND (t1.b < 14 OR (t1.b > 15 AND t1.a = 2))
 GROUP BY t1.a,t1.b;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # extracted OR formula
@@ -637,14 +577,12 @@ HAVING (t1.a < 2) OR (t1.b = 13 AND t1.a > 2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.a < 2) OR (t1.b = 13 AND t1.a > 2)
 GROUP BY t1.a,t1.b;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -655,14 +593,12 @@ HAVING (t1.a < 2 AND t1.b = 14) OR (t1.a > 2 AND t1.b = 13);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.a < 2 AND t1.b = 14) OR (t1.a > 2 AND t1.b = 13)
 GROUP BY t1.a,t1.b;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -673,14 +609,12 @@ HAVING (t1.a < 2 AND t1.b = 14) OR (t1.a > 2 AND (t1.b = 13 OR t1.b = 14));
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.a < 2 AND t1.b = 14) OR (t1.a > 2 AND (t1.b = 13 OR t1.b = 14))
 GROUP BY t1.a,t1.b;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -691,7 +625,6 @@ HAVING (t1.a < 2 AND MAX(t1.c) = 2) OR (MAX(t1.c) > 2 AND (t1.a = 1 OR t1.a = 2)
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
@@ -699,7 +632,6 @@ FROM t1
 WHERE (t1.a < 2) OR (t1.a = 1 OR t1.a = 2)
 GROUP BY t1.a
 HAVING (t1.a < 2 AND MAX(t1.c) = 2) OR (MAX(t1.c) > 2 AND (t1.a = 1 OR t1.a = 2));
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -710,7 +642,6 @@ HAVING (t1.a = 2 AND MAX(t1.c) = 2) OR (MAX(t1.c) > 2 AND (t1.a = 1 OR t1.a = 2)
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
@@ -718,7 +649,6 @@ FROM t1
 WHERE (t1.a = 2) OR (t1.a = 1 OR t1.a = 2)
 GROUP BY t1.a
 HAVING (t1.a = 2 AND MAX(t1.c) = 2) OR (MAX(t1.c) > 2 AND (t1.a = 1 OR t1.a = 2));
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : equality pushdown
@@ -730,7 +660,6 @@ HAVING (t1.a = 1) AND (MAX(t1.c) = 3);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
@@ -738,7 +667,6 @@ FROM t1
 WHERE (t1.a = 1)
 GROUP BY t1.a
 HAVING (MAX(t1.c) = 3);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : equalities pushdown
@@ -750,7 +678,6 @@ HAVING (t1.a = 1) AND (t1.c = 3) AND MAX(t1.b = 14);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
@@ -758,7 +685,6 @@ FROM t1
 WHERE (t1.a = 1) AND (t1.c = 3)
 GROUP BY t1.a,t1.c
 HAVING (MAX(t1.b) = 14);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # conjunctive subformula : multiple equality consists of
@@ -771,7 +697,6 @@ HAVING (t1.a = 1) AND (t1.c = 1) AND MAX(t1.b = 14);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
@@ -779,7 +704,6 @@ FROM t1
 WHERE (t1.a = 1) AND (t1.c = 1)
 GROUP BY t1.a,t1.c
 HAVING (MAX(t1.b) = 14);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo #
@@ -796,14 +720,12 @@ HAVING (t1.a < 3);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.b > 2) AND (t1.a < 3)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # equality : inequality in WHERE
@@ -816,14 +738,12 @@ HAVING (t1.a = 3);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.b > 2) AND (t1.a = 3)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # inequality : equality in WHERE
@@ -836,14 +756,12 @@ HAVING (t1.a < 3);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.b = 14) AND (t1.a < 3)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # equality : equality in WHERE
@@ -856,14 +774,12 @@ HAVING (t1.a = 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,t1.b,MAX(t1.c)
 FROM t1
 WHERE (t1.b = 14) AND (t1.a = 1)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # equality : equality in WHERE, impossible WHERE
@@ -876,14 +792,12 @@ HAVING (t1.a = 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.c)
 FROM t1
 WHERE (t1.a = 3) AND (t1.a = 1)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # equality : equality in WHERE (equal through constant)
@@ -896,14 +810,12 @@ HAVING (t1.a = 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.c = 1) AND (t1.a = 1)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # inequality : AND formula in WHERE
@@ -916,14 +828,12 @@ HAVING (t1.a > 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.c > 0) AND (t1.c < 3) AND (t1.a > 1)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # equality : AND formula in WHERE
@@ -936,14 +846,12 @@ HAVING (t1.a = 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.c > 0) AND (t1.c < 3) AND (t1.a = 1)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # equality : AND formula in WHERE, impossible WHERE
@@ -956,14 +864,12 @@ HAVING (t1.a = 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.a > 0) AND (t1.c < 3) AND (t1.a = 1)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -975,14 +881,12 @@ HAVING (t1.a = 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
 FROM t1
 WHERE (t1.a = 0) AND (t1.a = 3) AND (t1.a = 1)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -994,14 +898,12 @@ HAVING (t3.a = 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t3.a,t3.b,MAX(t3.c),t3.d
 FROM t3
 WHERE (t3.b = 2) AND (t3.d = 1) AND (t3.a = 1)
 GROUP BY t3.a,t3.b,t3.d;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # inequality : OR formula in WHERE
@@ -1014,14 +916,12 @@ HAVING (t1.a < 2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE ((t1.a > 1) OR (t1.c < 3)) AND (t1.a < 2)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -1033,14 +933,12 @@ HAVING (t1.a = 2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b)
 FROM t1
 WHERE ((t1.a = 1) OR (t1.a = 3)) AND (t1.a = 2)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # AND formula : inequality in WHERE
@@ -1053,14 +951,12 @@ HAVING (t1.a < 4) AND (t1.a > 0);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.a > 1) AND (t1.a < 4) AND (t1.a > 0)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # AND formula : equality in WHERE
@@ -1073,14 +969,12 @@ HAVING (t1.a < 4) AND (t1.a > 0);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.a = 1) AND (t1.a < 4) AND (t1.a > 0)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # OR formula : inequality in WHERE
@@ -1093,14 +987,12 @@ HAVING (t1.a < 4) OR (t1.a > 0);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.a > 1) AND ((t1.a < 4) OR (t1.a > 0))
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # OR formula : equality in WHERE
@@ -1113,14 +1005,12 @@ HAVING (t1.a < 4) OR (t1.a > 0);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.a = 1) AND ((t1.a < 4) OR (t1.a > 0))
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # AND formula : AND formula in WHERE
@@ -1133,7 +1023,6 @@ HAVING (t1.a < 4) AND (t1.c > 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1142,7 +1031,6 @@ WHERE ((t1.a > 1) AND (t1.c < 3)) AND
       (t1.a < 4)
 GROUP BY t1.a
 HAVING (t1.c > 1);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -1154,7 +1042,6 @@ HAVING (t1.a < 4) AND (t1.c > 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1162,7 +1049,6 @@ FROM t1
 WHERE ((t1.a = 1) AND (t1.c < 3)) AND
       ((t1.a < 4) AND (t1.c > 1))
 GROUP BY t1.a,t1.c;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -1174,7 +1060,6 @@ HAVING (t1.a < 4) AND (t1.c > 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1182,7 +1067,6 @@ FROM t1
 WHERE ((t1.a = 1) AND (t1.c = 3)) AND
       ((t1.a < 4) AND (t1.c > 1))
 GROUP BY t1.a,t1.c;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -1194,7 +1078,6 @@ HAVING (t3.b = 2) AND (t3.d > 0);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t3.a,t3.b,MAX(t3.c),t3.d
@@ -1203,7 +1086,6 @@ WHERE (t3.a = 1) AND (t3.d = 1) AND
       (t3.b = 2)
 GROUP BY t3.a,t3.b
 HAVING (t3.d > 0);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -1215,7 +1097,6 @@ HAVING (t3.b = 2) AND (t3.d > 0);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t3.a,t3.b,MAX(t3.c),t3.d
@@ -1223,7 +1104,6 @@ FROM t3
 WHERE (t3.a = 1) AND (t3.d = 1) AND
       (t3.b = 2) AND (t3.d > 0)
 GROUP BY t3.a,t3.b,t3.d;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # AND formula : OR formula in WHERE
@@ -1236,7 +1116,6 @@ HAVING (t1.a < 4) AND (t1.c > 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1245,7 +1124,6 @@ WHERE ((t1.a > 1) OR (t1.c < 3)) AND
       (t1.a < 4)
 GROUP BY t1.a
 HAVING (t1.c > 1);
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -1257,7 +1135,6 @@ HAVING (t1.a < 4) AND (t1.c > 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1265,7 +1142,6 @@ FROM t1
 WHERE ((t1.a > 1) OR (t1.c < 3)) AND
       (t1.a < 4) AND (t1.c > 1)
 GROUP BY t1.a,t1.c;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -1277,7 +1153,6 @@ HAVING (t1.a = 4) OR (t1.c > 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1285,7 +1160,6 @@ FROM t1
 WHERE ((t1.a = 1) OR (t1.a = 3)) AND
       ((t1.a = 4) OR (t1.c > 1))
 GROUP BY t1.a,t1.c;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # equality : pushdown through equality in WHERE
@@ -1298,14 +1172,12 @@ HAVING (t1.c = 1);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
 FROM t1
 WHERE (t1.a = 1) AND (t1.a = t1.c) AND (t1.c = 1)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # OR formula : pushdown through equality
@@ -1318,7 +1190,6 @@ HAVING (t1.c = 1) OR (t1.c = 2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1326,7 +1197,6 @@ FROM t1
 WHERE (t1.a = 1) AND (t1.a = t1.c) AND
       ((t1.c = 1) OR (t1.c = 2))
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # OR formula : pushdown through equality, impossible WHERE
@@ -1339,7 +1209,6 @@ HAVING (t1.c = 3) OR (t1.c = 2);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1347,7 +1216,6 @@ FROM t1
 WHERE (t1.a = 1) AND (t1.a = t1.c) AND
       ((t1.c = 3) OR (t1.c = 2))
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # AND formula : pushdown through equality, impossible WHERE
@@ -1360,7 +1228,6 @@ HAVING (t1.c = 3) AND (t1.a > 2) AND (t1.a = t1.c);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1368,7 +1235,6 @@ FROM t1
 WHERE (t1.a = 1) AND (t1.c = 3) AND
       (t1.a > 2) AND (t1.a = t1.c)
 GROUP BY t1.a,t1.c;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 let $query=
@@ -1380,7 +1246,6 @@ HAVING (t1.c = 3) AND (t1.a > 2) AND (t1.a = t1.c);
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t1.a,MAX(t1.b),t1.c
@@ -1388,7 +1253,6 @@ FROM t1
 WHERE (t1.a = 1) AND (t1.c = 3) AND
       (t1.a > 2) AND (t1.a = t1.c)
 GROUP BY t1.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # AND formula with OR subformula : AND condition in WHERE
@@ -1401,7 +1265,6 @@ HAVING (t3.a = t3.d) AND ((t3.d = 1) OR (t3.d > 1));
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t3.a,MAX(t3.c),t3.d
@@ -1409,7 +1272,6 @@ FROM t3
 WHERE (t3.a > 1) AND ((t3.c = 3) OR (t3.c < 2)) AND
       (t3.a = t3.d) AND ((t3.d = 1) OR (t3.d > 1))
 GROUP BY t3.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # AND formula with OR subformula : AND condition in WHERE
@@ -1422,7 +1284,6 @@ HAVING (t3.a = t3.d) AND (((t3.d = t3.c) AND (t3.c < 15)) OR (t3.d > 1));
 eval $no_pushdown $query;
 eval $query;
 eval explain $query;
---source include/explain-no-costs.inc
 eval explain format=json $query;
 let $query=
 SELECT t3.a,t3.b,MAX(t3.c),t3.d
@@ -1430,7 +1291,6 @@ FROM t3
 WHERE (t3.a > 1) AND ((t3.c = 3) OR (t3.c < 2)) AND
       (t3.a = t3.d) AND (((t3.d = t3.c) AND (t3.c < 15)) OR (t3.d > 1))
 GROUP BY t3.a;
---source include/explain-no-costs.inc
 eval $no_pushdown explain format=json $query;
 
 --echo # prepare statement
@@ -1499,7 +1359,6 @@ select d1 from t1
 
 eval $q1;
 eval explain extended $q1;
---source include/explain-no-costs.inc
 eval explain format=json $q1;
 
 delete from t1;
@@ -1512,7 +1371,6 @@ select d1 from t1
 
 eval $q2;
 eval explain extended $q2;
---source include/explain-no-costs.inc
 eval explain format=json $q2;
 
 drop table t1;
@@ -1562,7 +1420,6 @@ INSERT INTO t2 VALUES (2),(3);
 let $q=
 SELECT a FROM t1 GROUP BY a HAVING a = 8 OR a = ( SELECT MIN(c) FROM t2 );
 
---source include/explain-no-costs.inc
 eval EXPLAIN FORMAT=JSON $q;
 eval $q;
 
@@ -1570,7 +1427,6 @@ let $q=
 SELECT a FROM t1 GROUP BY a,b
   HAVING ( a = 8 OR a = ( SELECT MIN(c) FROM t2 ) ) and b < 20;
 
---source include/explain-no-costs.inc
 eval EXPLAIN FORMAT=JSON $q;
 eval $q;
 
@@ -1578,14 +1434,12 @@ let $q=
 SELECT a FROM t1 GROUP BY a
   HAVING ( a = 8 OR a = ( SELECT MIN(c) FROM t2 ) ) and SUM(b) > 20;
 
---source include/explain-no-costs.inc
 eval EXPLAIN FORMAT=JSON $q;
 eval $q;
 
 let $q=
 SELECT a FROM t1 GROUP BY a HAVING a = ( SELECT MIN(c) FROM t2 );
 
---source include/explain-no-costs.inc
 eval EXPLAIN FORMAT=JSON $q;
 eval $q;
 
@@ -1660,7 +1514,6 @@ let $q=
 SELECT a,b,c FROM t1 GROUP BY a,b,c
   HAVING a = (SELECT MIN(b) AS min_b FROM t1) and (a = b or a = c);
 
---source include/explain-no-costs.inc
 eval EXPLAIN FORMAT=JSON $q;
 eval $q;
 
@@ -1668,7 +1521,6 @@ let $q=
 SELECT a FROM t1 GROUP BY a,b
   HAVING a = (SELECT MIN(a) AS min_a FROM t1) AND (a = 3 or a > b);
 
---source include/explain-no-costs.inc
 eval EXPLAIN FORMAT=JSON $q;
 eval $q;
 
@@ -1723,7 +1575,6 @@ SELECT * FROM t1
 GROUP BY b
 HAVING (SELECT MAX(b) FROM t1) = a AND a + b = 3;
 
---source include/explain-no-costs.inc
 eval EXPLAIN FORMAT=JSON $q;
 eval $q;
 
@@ -1732,7 +1583,6 @@ SELECT * FROM t1
 GROUP BY b
 HAVING (SELECT MAX(b) FROM t1) = a AND a > b;
 
---source include/explain-no-costs.inc
 eval EXPLAIN FORMAT=JSON $q;
 eval $q;
 
@@ -1750,7 +1600,7 @@ INSERT INTO t1 VALUES ('foo'),('bar');
 SELECT LOAD_FILE('') AS f, a FROM t1 GROUP BY f, a HAVING f = a;
 DROP TABLE t1;
 
---echo # End of 10.5 tests
+--echo End of 10.5 tests
 
 --echo #
 --echo # MDEV-38487: Prevent aggregate functions cloning when pushing HAVING into WHERE
@@ -1780,31 +1630,3 @@ eval $q;
 DROP TABLE t;
 
 --echo # End of 10.6 tests
-
---echo #
---echo # MDEV-19269 Pushdown into IN subquery is not made on the second
---echo # execution of stmt
---echo #
-
-create table t1 (a int, b int);
-create table t2 (x int, y int);
-
-insert into t1 values (1,1),(2,2);
-insert into t2 values (1,1),(2,2),(2,3);
-
-prepare stmt from "
-EXPLAIN FORMAT=JSON
-SELECT * FROM t1
-WHERE a = b 
-      AND (a,b) IN (SELECT t2.x, COUNT(t2.y) FROM t2 WHERE @a=1 GROUP BY t2.x);";
-
-set @a=2; 
-execute stmt;
-set @a=1;
---echo # we expect to see having_condition in both the below statements
-execute stmt;
-execute stmt;
-
-drop table t1, t2;
-
---echo # End of 10.11 tests

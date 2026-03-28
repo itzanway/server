@@ -120,7 +120,7 @@ class FILTERX : public FILTER {
 class FILTERCMP : public FILTERX {
  public:
   // Constructor
-  FILTERCMP(PGLOBAL, OPVAL);
+  FILTERCMP(PGLOBAL g);
 
   // Methods
   bool Eval(PGLOBAL) override;

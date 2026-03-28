@@ -17,7 +17,7 @@ call mtr.add_suppression("Slave I/O thread couldn't register on master");
 SET sql_log_bin=1;
 include/stop_slave.inc
 CHANGE MASTER TO master_host = '127.0.0.1', master_port = MASTER_PORT,
-MASTER_USE_GTID=SLAVE_POS;
+MASTER_USE_GTID=CURRENT_POS;
 connection server_1;
 INSERT INTO t1 VALUES (2,1);
 INSERT INTO t1 VALUES (3,1);
@@ -43,7 +43,6 @@ include/stop_slave.inc
 RESET MASTER;
 SET GLOBAL gtid_slave_pos='';
 connection server_1;
-include/kill_binlog_dump_threads.inc
 RESET MASTER;
 SHOW BINLOG EVENTS IN 'master-bin.000001' LIMIT 1,1;
 Log_name	Pos	Event_type	Server_id	End_log_pos	Info

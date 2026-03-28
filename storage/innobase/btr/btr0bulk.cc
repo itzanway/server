@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2014, 2019, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2017, 2023, MariaDB Corporation.
+Copyright (c) 2017, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -28,6 +28,7 @@ Created 03/11/2014 Shaohua Wang
 #include "btr0btr.h"
 #include "btr0cur.h"
 #include "btr0pcur.h"
+#include "ibuf0ibuf.h"
 #include "page0page.h"
 #include "trx0trx.h"
 
@@ -50,7 +51,7 @@ PageBulk::init()
 	m_index->set_modified(m_mtr);
 
 	if (m_page_no == FIL_NULL) {
-		mtr_t	alloc_mtr{m_mtr.trx};
+		mtr_t	alloc_mtr;
 		dberr_t err= DB_SUCCESS;
 
 		/* We commit redo log for allocation by a separate mtr,
@@ -94,7 +95,7 @@ PageBulk::init()
 		}
 	} else {
 		new_block = btr_block_get(*m_index, m_page_no, RW_X_LATCH,
-					  &m_mtr);
+					  false, &m_mtr);
 		if (!new_block) {
 			m_mtr.commit();
 			return(DB_CORRUPTION);
@@ -109,8 +110,8 @@ PageBulk::init()
 
 	m_page_zip = buf_block_get_page_zip(new_block);
 
-	if (!m_level && !m_index->is_primary()) {
-		page_update_max_trx_id(new_block, m_page_zip, m_mtr.trx->id,
+	if (!m_level && dict_index_is_sec_or_ibuf(m_index)) {
+		page_update_max_trx_id(new_block, m_page_zip, m_trx_id,
 				       &m_mtr);
 	}
 
@@ -552,6 +553,9 @@ inline void PageBulk::finish()
 void PageBulk::commit(bool success)
 {
   finish();
+  if (success && !m_index->is_clust() && page_is_leaf(m_page))
+    ibuf_set_bitmap_for_bulk_load(m_block, &m_mtr,
+                                  innobase_fill_factor == 100);
   m_mtr.commit();
 }
 
@@ -872,7 +876,7 @@ BtrBulk::pageSplit(
 	}
 
 	/* Initialize a new page */
-	PageBulk new_page_bulk(m_index, m_trx, FIL_NULL,
+	PageBulk new_page_bulk(m_index, m_trx->id, FIL_NULL,
 			       page_bulk->getLevel());
 	dberr_t	err = new_page_bulk.init();
 	if (err != DB_SUCCESS) {
@@ -955,10 +959,10 @@ BtrBulk::pageCommit(
 /** Log free check */
 inline void BtrBulk::logFreeCheck()
 {
-	if (log_sys.check_for_checkpoint()) {
+	if (log_sys.check_flush_or_checkpoint()) {
 		release();
 
-		log_free_check();
+		log_check_margins();
 
 		latch();
 	}
@@ -1004,7 +1008,7 @@ BtrBulk::insert(
 	/* Check if we need to create a PageBulk for the level. */
 	if (level + 1 > m_page_bulks.size()) {
 		PageBulk*	new_page_bulk
-			= UT_NEW_NOKEY(PageBulk(m_index, m_trx, FIL_NULL,
+			= UT_NEW_NOKEY(PageBulk(m_index, m_trx->id, FIL_NULL,
 						level));
 		err = new_page_bulk->init();
 		if (err != DB_SUCCESS) {
@@ -1058,7 +1062,7 @@ BtrBulk::insert(
 	if (!page_bulk->isSpaceAvailable(rec_size)) {
 		/* Create a sibling page_bulk. */
 		PageBulk*	sibling_page_bulk;
-		sibling_page_bulk = UT_NEW_NOKEY(PageBulk(m_index, m_trx,
+		sibling_page_bulk = UT_NEW_NOKEY(PageBulk(m_index, m_trx->id,
 							  FIL_NULL, level));
 		err = sibling_page_bulk->init();
 		if (err != DB_SUCCESS) {
@@ -1169,9 +1173,9 @@ BtrBulk::finish(dberr_t	err)
 
 	if (err == DB_SUCCESS) {
 		rec_t*		first_rec;
-		mtr_t		mtr{m_trx};
+		mtr_t		mtr;
 		buf_block_t*	last_block;
-		PageBulk	root_page_bulk(m_index, m_trx,
+		PageBulk	root_page_bulk(m_index, m_trx->id,
 					       m_index->page, m_root_level);
 
 		mtr.start();
@@ -1180,7 +1184,7 @@ BtrBulk::finish(dberr_t	err)
 
 		ut_ad(last_page_no != FIL_NULL);
 		last_block = btr_block_get(*m_index, last_page_no, RW_X_LATCH,
-					   &mtr);
+					   false, &mtr);
 		if (!last_block) {
 			err = DB_CORRUPTION;
 err_exit:
@@ -1214,6 +1218,6 @@ err_exit:
 	}
 
 	ut_ad(err != DB_SUCCESS
-	      || btr_validate_index(m_index, m_trx) == DB_SUCCESS);
+	      || btr_validate_index(m_index, NULL) == DB_SUCCESS);
 	return(err);
 }

@@ -21,6 +21,8 @@
 
 #include "mysys_priv.h"
 #include "my_static.h"
+#include "my_alarm.h"
+
 
 PSI_memory_key key_memory_DYNAMIC_STRING;
 PSI_memory_key key_memory_IO_CACHE;
@@ -94,6 +96,9 @@ USED_MEM* my_once_root_block=0;			/* pointer to first block */
 uint	  my_once_extra=ONCE_ALLOC_INIT;	/* Memory to alloc / block */
 size_t    my_once_allocated= 0;
 
+	/* from my_alarm */
+int volatile my_have_got_alarm=0;	/* declare variable to reset */
+ulong my_time_to_wait_for_lock=2;	/* In seconds */
 
 	/* from errors.c */
 #ifdef SHARED_LIBRARY
@@ -131,4 +136,5 @@ my_bool my_disable_copystat_in_redel=0;
 const char *sql_protocol_names_lib[] =
 { "TCP", "SOCKET", "PIPE", NullS };
 
-TYPELIB sql_protocol_typelib= CREATE_TYPELIB_FOR(sql_protocol_names_lib);
+TYPELIB sql_protocol_typelib ={ array_elements(sql_protocol_names_lib) - 1, "",
+                                sql_protocol_names_lib, NULL };

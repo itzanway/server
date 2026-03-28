@@ -388,9 +388,6 @@ CREATE TABLE t1 LIKE t2;
 
 DROP TABLE t2, t1;
 
-# The following test is disabled as it fails randomly
-if (0)
-{
 --echo #
 --echo # Bug#54332 Deadlock with two connections doing LOCK TABLE+INSERT DELAYED
 --echo #
@@ -437,7 +434,7 @@ SELECT * FROM t1 WHERE a=0;
 
 connection con1;
 --echo # Sending:
---send ALTER TABLE t1 MODIFY a INT UNSIGNED, LOCK=SHARED;
+--send ALTER TABLE t1 MODIFY a INT UNSIGNED;
 
 connection default;
 --echo # Wait until ALTER TABLE is blocked on table 't1'.
@@ -534,14 +531,17 @@ INSERT DELAYED INTO t2 VALUES (8);
 UNLOCK TABLES;
 SET AUTOCOMMIT= 1;
 
+connection con2;
 disconnect con2;
+--source include/wait_until_disconnected.inc
+connection con1;
 disconnect con1;
+--source include/wait_until_disconnected.inc
 
 connection default;
 DROP TABLE t1, t2, t3;
 --enable_ps_protocol
 --enable_view_protocol
-}
 
 --echo #
 --echo # Test for bug #56251 "Deadlock with INSERT DELAYED and MERGE tables".
@@ -581,6 +581,7 @@ connection con1;
 --reap
 
 disconnect con1;
+--source include/wait_until_disconnected.inc
 connection default;
 drop tables tm, t1, t2;
 
@@ -632,13 +633,3 @@ INSERT DELAYED INTO t1 VALUES (0);
 DROP TABLE t1;
 
 --enable_view_protocol
-
---echo #
---echo # MDEV-38726: Assertion `table->default_field != dfield_ptr' failed in
---echo # bool parse_vcol_defs(THD *, MEM_ROOT *, TABLE *, bool *,
---echo # vcol_init_mode)
---echo #
-
-CREATE TABLE t_38726 (a TIMESTAMP ON UPDATE CURRENT_TIMESTAMP()) ENGINE=MYISAM;
-INSERT DELAYED INTO t_38726 VALUES ();
-DROP TABLE t_38726;

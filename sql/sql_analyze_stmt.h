@@ -117,7 +117,6 @@ public:
     return 1000.0 * static_cast<double>(cycles_arg) /
       timer_tracker_frequency();
   }
-
   double get_time_ms() const
   {
     return cycles_to_ms(cycles);
@@ -126,7 +125,6 @@ public:
   {
     return cycles;
   }
-
   bool has_timed_statistics() const { return cycles > 0; }
 };
 
@@ -234,12 +232,6 @@ public:
   {
     return r_scans
       ? static_cast<double>(r_rows) / static_cast<double>(r_scans)
-      : 0;
-  }
-  double get_avg_rows_after_where() const
-  {
-    return r_scans
-      ? static_cast<double>(r_rows_after_where) / static_cast<double>(r_scans)
       : 0;
   }
 
@@ -469,8 +461,7 @@ public:
      n_positive_checks++;
   }
 
-  inline void set_container_elements_count(uint elements)
-  { container_elements= elements; }
+  inline void increment_container_elements_count() { container_elements++; }
 
   uint get_container_elements() const { return container_elements; }
 

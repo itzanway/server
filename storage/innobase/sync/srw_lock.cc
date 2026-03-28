@@ -143,7 +143,8 @@ static inline void srw_pause(unsigned delay) noexcept
   HMT_medium();
 }
 
-#ifndef PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP
+#ifdef SUX_LOCK_GENERIC
+# ifndef PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP
 template<> void pthread_mutex_wrapper<true>::wr_wait() noexcept
 {
   const unsigned delay= srw_pause_delay();
@@ -157,9 +158,8 @@ template<> void pthread_mutex_wrapper<true>::wr_wait() noexcept
 
   pthread_mutex_lock(&lock);
 }
-#endif
+# endif
 
-#ifdef SUX_LOCK_GENERIC
 template void ssux_lock_impl<false>::init() noexcept;
 template void ssux_lock_impl<true>::init() noexcept;
 template void ssux_lock_impl<false>::destroy() noexcept;
@@ -378,12 +378,12 @@ template void ssux_lock_impl<true>::wr_wait(uint32_t) noexcept;
 template void ssux_lock_impl<false>::wr_wait(uint32_t) noexcept;
 
 template<bool spinloop>
-void ssux_lock_impl<spinloop>::rd_lock_spin() noexcept
+void ssux_lock_impl<spinloop>::rd_wait() noexcept
 {
+  const unsigned delay= srw_pause_delay();
+
   if (spinloop)
   {
-    const unsigned delay= srw_pause_delay();
-
     for (auto spin= srv_n_spin_wait_rounds; spin; spin--)
     {
       srw_pause(delay);
@@ -392,21 +392,14 @@ void ssux_lock_impl<spinloop>::rd_lock_spin() noexcept
     }
   }
 
-  rd_lock_nospin();
-}
-
-template<bool spinloop>
-void ssux_lock_impl<spinloop>::rd_lock_nospin() noexcept
-{
-  const unsigned delay= srw_pause_delay();
-  /* Subscribe to writer.wake() or write.wake_all() calls of
+  /* Subscribe to writer.wake() or write.wake_all() calls by
   concurrently executing rd_wait() or writer.wr_unlock(). */
   uint32_t wl= writer.WAITER +
     writer.lock.fetch_add(writer.WAITER, std::memory_order_acquire);
 
   for (;;)
   {
-    if (writer.HOLDER & wl)
+    if (UNIV_LIKELY(writer.HOLDER & wl))
       writer.wait(wl);
     uint32_t lk= rd_lock_try_low();
     if (!lk)
@@ -436,9 +429,8 @@ void ssux_lock_impl<spinloop>::rd_lock_nospin() noexcept
     writer.wake_all();
 }
 
-template void ssux_lock_impl<true>::rd_lock_spin() noexcept;
-template void ssux_lock_impl<true>::rd_lock_nospin() noexcept;
-template void ssux_lock_impl<false>::rd_lock_nospin() noexcept;
+template void ssux_lock_impl<true>::rd_wait() noexcept;
+template void ssux_lock_impl<false>::rd_wait() noexcept;
 
 #if defined _WIN32 || defined SUX_LOCK_GENERIC
 template<> void srw_lock_<true>::rd_wait() noexcept
@@ -624,6 +616,7 @@ void ssux_lock::psi_u_wr_upgrade(const char *file, unsigned line) noexcept
     lock.u_wr_upgrade();
 }
 #else /* UNIV_PFS_RWLOCK */
+template void ssux_lock_impl<false>::rd_lock() noexcept;
 template void ssux_lock_impl<false>::rd_unlock() noexcept;
 template void ssux_lock_impl<false>::u_unlock() noexcept;
 template void ssux_lock_impl<false>::wr_unlock() noexcept;
@@ -675,18 +668,6 @@ void srw_lock_debug::wr_unlock() noexcept
   writer.store(0, std::memory_order_relaxed);
   srw_lock::wr_unlock();
 }
-
-# if defined _WIN32 || defined SUX_LOCK_GENERIC
-# else
-void srw_lock_debug::wr_rd_downgrade
-(SRW_LOCK_ARGS(const char *file, unsigned line)) noexcept
-{
-  ut_ad(have_wr());
-  writer.store(0, std::memory_order_relaxed);
-  readers_register();
-  srw_lock::wr_rd_downgrade(SRW_LOCK_ARGS(file, line));
-}
-# endif
 
 void srw_lock_debug::readers_register() noexcept
 {
@@ -761,126 +742,4 @@ bool srw_lock_debug::have_any() const noexcept
 {
   return have_wr() || have_rd();
 }
-
-# if defined LOG_LATCH_DEBUG && defined UNIV_PFS_RWLOCK
-void srw_lock_debug_simple::init() noexcept
-{
-  ssux_lock_impl::init();
-  readers_lock.init();
-  ut_ad(!readers.load(std::memory_order_relaxed));
-  ut_ad(!have_any());
-}
-
-void srw_lock_debug_simple::destroy() noexcept
-{
-  ut_ad(!writer);
-  if (auto r= readers.load(std::memory_order_relaxed))
-  {
-    readers.store(0, std::memory_order_relaxed);
-    ut_ad(r->empty());
-    delete r;
-  }
-  readers_lock.destroy();
-  ssux_lock_impl::destroy();
-}
-
-bool srw_lock_debug_simple::wr_lock_try() noexcept
-{
-  ut_ad(!have_any());
-  if (!ssux_lock_impl::wr_lock_try())
-    return false;
-  ut_ad(!writer);
-  writer.store(pthread_self(), std::memory_order_relaxed);
-  return true;
-}
-
-void srw_lock_debug_simple::wr_lock() noexcept
-{
-  ut_ad(!have_any());
-  ssux_lock_impl::wr_lock();
-  ut_ad(!writer);
-  writer.store(pthread_self(), std::memory_order_relaxed);
-}
-
-void srw_lock_debug_simple::wr_unlock() noexcept
-{
-  ut_ad(have_wr());
-  writer.store(0, std::memory_order_relaxed);
-  ssux_lock_impl::wr_unlock();
-}
-
-void srw_lock_debug_simple::readers_register() noexcept
-{
-  readers_lock.wr_lock();
-  auto r= readers.load(std::memory_order_relaxed);
-  if (!r)
-  {
-    r= new std::unordered_multiset<pthread_t>();
-    readers.store(r, std::memory_order_relaxed);
-  }
-  r->emplace(pthread_self());
-  readers_lock.wr_unlock();
-}
-
-bool srw_lock_debug_simple::rd_lock_try() noexcept
-{
-  ut_ad(!have_any());
-  if (!ssux_lock_impl::rd_lock_try())
-    return false;
-  readers_register();
-  return true;
-}
-
-void srw_lock_debug_simple::rd_lock() noexcept
-{
-  ut_ad(!have_any());
-  ssux_lock_impl::rd_lock();
-  readers_register();
-}
-
-void srw_lock_debug_simple::rd_unlock() noexcept
-{
-  const pthread_t self= pthread_self();
-  ut_ad(writer != self);
-  readers_lock.wr_lock();
-  auto r= readers.load(std::memory_order_relaxed);
-  ut_ad(r);
-  auto i= r->find(self);
-  ut_ad(i != r->end());
-  r->erase(i);
-  readers_lock.wr_unlock();
-
-  ssux_lock_impl::rd_unlock();
-}
-
-bool srw_lock_debug_simple::have_rd() const noexcept
-{
-  if (auto r= readers.load(std::memory_order_relaxed))
-  {
-    readers_lock.wr_lock();
-    bool found= r->find(pthread_self()) != r->end();
-    readers_lock.wr_unlock();
-#  ifndef SUX_LOCK_GENERIC
-    ut_ad(!found || is_locked());
-#  endif
-    return found;
-  }
-  return false;
-}
-
-bool srw_lock_debug_simple::have_wr() const noexcept
-{
-  if (writer != pthread_self())
-    return false;
-#  ifndef SUX_LOCK_GENERIC
-  ut_ad(is_write_locked());
-#  endif
-  return true;
-}
-
-bool srw_lock_debug_simple::have_any() const noexcept
-{
-  return have_wr() || have_rd();
-}
-# endif
 #endif

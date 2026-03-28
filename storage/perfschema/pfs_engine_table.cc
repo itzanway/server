@@ -36,6 +36,7 @@
 #include "table_setup_consumers.h"
 #include "table_setup_instruments.h"
 #include "table_setup_objects.h"
+#include "table_setup_timers.h"
 #include "table_performance_timers.h"
 #include "table_events_waits_summary.h"
 #include "table_ews_by_thread_by_event_name.h"
@@ -145,7 +146,7 @@ bool PFS_table_context::initialize(void)
   if (m_restore)
   {
     /* Restore context from TLS. */
-    PFS_table_context *context= static_cast<PFS_table_context *>(*m_thr_varptr);
+    PFS_table_context *context= static_cast<PFS_table_context *>(my_get_thread_local(m_thr_key));
     assert(context != NULL);
 
     if(context)
@@ -159,7 +160,7 @@ bool PFS_table_context::initialize(void)
   else
   {
     /* Check that TLS is not in use. */
-    PFS_table_context *context= static_cast<PFS_table_context *>(*m_thr_varptr);
+    PFS_table_context *context= static_cast<PFS_table_context *>(my_get_thread_local(m_thr_key));
     //assert(context == NULL);
 
     context= this;
@@ -177,7 +178,7 @@ bool PFS_table_context::initialize(void)
     }
 
     /* Write to TLS. */
-    *m_thr_varptr=static_cast<void *>(context);
+    my_set_thread_local(m_thr_key, static_cast<void *>(context));
   }
 
   m_initialized= (m_map_size > 0) ? (m_map != NULL) : true;
@@ -186,8 +187,8 @@ bool PFS_table_context::initialize(void)
 }
 
 /* Constructor for global or single thread tables, map size = 0.  */
-PFS_table_context::PFS_table_context(ulonglong current_version, bool restore, void** thr_var_ptr) :
-                   m_thr_varptr(thr_var_ptr), m_current_version(current_version), m_last_version(0),
+PFS_table_context::PFS_table_context(ulonglong current_version, bool restore, thread_local_key_t key) :
+                   m_thr_key(key), m_current_version(current_version), m_last_version(0),
                    m_map(NULL), m_map_size(0),
                    m_restore(restore), m_initialized(false), m_last_item(0)
 {
@@ -195,8 +196,8 @@ PFS_table_context::PFS_table_context(ulonglong current_version, bool restore, vo
 }
 
 /* Constructor for by-thread or aggregate tables, map size = max thread/user/host/account. */
-PFS_table_context::PFS_table_context(ulonglong current_version, ulong map_size, bool restore, void** thr_var_ptr) :
-                   m_thr_varptr(thr_var_ptr), m_current_version(current_version), m_last_version(0),
+PFS_table_context::PFS_table_context(ulonglong current_version, ulong map_size, bool restore, thread_local_key_t key) :
+                   m_thr_key(key), m_current_version(current_version), m_last_version(0),
                    m_map(NULL), m_map_size(map_size),
                    m_restore(restore), m_initialized(false), m_last_item(0)
 {
@@ -254,6 +255,7 @@ static PFS_engine_table_share *all_shares[]=
   &table_setup_consumers::m_share,
   &table_setup_instruments::m_share,
   &table_setup_objects::m_share,
+  &table_setup_timers::m_share,
   &table_tiws_by_index_usage::m_share,
   &table_tiws_by_table::m_share,
   &table_tlws_by_table::m_share,
@@ -392,6 +394,27 @@ int PFS_engine_table_share::write_row(TABLE *table, const unsigned char *buf,
   return result;
 }
 
+static int compare_table_names(const char *name1, const char *name2)
+{
+  /*
+    The performance schema is implemented as a storage engine, in memory.
+    The current storage engine interface exposed by the server,
+    and in particular handlerton::discover, uses 'FRM' files to describe a
+    table structure, which are later stored on disk, by the server,
+    in ha_create_table_from_engine().
+    Because the table metadata is stored on disk, the table naming rules
+    used by the performance schema then have to comply with the constraints
+    imposed by the disk storage, and in particular with lower_case_table_names.
+    Once the server is changed to be able to discover a table in a storage engine
+    and then open the table without storing a FRM file on disk, this constraint
+    on the performance schema will be lifted, and the naming logic can be relaxed
+    to be simply my_strcasecmp(system_charset_info, name1, name2).
+  */
+  if (lower_case_table_names)
+    return strcasecmp(name1, name2);
+  return strcmp(name1, name2);
+}
+
 /**
   Find a table share by name.
   @param name             The table name
@@ -404,10 +427,9 @@ PFS_engine_table::find_engine_table_share(const char *name)
 
   PFS_engine_table_share **current;
 
-  PFS_ident_table table_name= Lex_cstring_strlen(name);
   for (current= &all_shares[0]; (*current) != NULL; current++)
   {
-    if (table_name.streq((*current)->m_name))
+    if (compare_table_names(name, (*current)->m_name.str) == 0)
       DBUG_RETURN(*current);
   }
 
@@ -505,6 +527,19 @@ void PFS_engine_table::get_position(void *ref)
 void PFS_engine_table::set_position(const void *ref)
 {
   memcpy(m_pos_ptr, ref, m_share_ptr->m_ref_length);
+}
+
+/**
+  Get the timer normalizer and class type for the current row.
+  @param [in] instr_class    class
+*/
+void PFS_engine_table::get_normalizer(PFS_instr_class *instr_class)
+{
+  if (instr_class->m_type != m_class_type)
+  {
+    m_normalizer= time_normalizer::get(*instr_class->m_timer);
+    m_class_type= instr_class->m_type;
+  }
 }
 
 void PFS_engine_table::set_field_long(Field *f, long value)
@@ -1949,11 +1984,11 @@ end:
 }
 
 int pfs_discover_table_names(handlerton *hton __attribute__((unused)),
-                             const LEX_CSTRING *db,
+                             LEX_CSTRING *db,
                              MY_DIR *dir __attribute__((unused)),
                              handlerton::discovered_list *result)
 {
-  if (!PFS_ident_db(*db).streq(PERFORMANCE_SCHEMA_str))
+  if (compare_table_names(db->str, PERFORMANCE_SCHEMA_str.str))
     return 0;
   for (size_t i= 0; i < array_elements(all_shares) - 1; i++)
     result->add_table(all_shares[i]->m_name.str,

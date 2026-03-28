@@ -42,14 +42,6 @@
 #define WSREP_XID_RPL_GTID_OFFSET (WSREP_XID_SEQNO_OFFSET + sizeof(wsrep_seqno_t))
 #define WSREP_XID_GTRID_LEN_V_3 (WSREP_XID_RPL_GTID_OFFSET + sizeof(wsrep_server_gtid_t))
 
-void inline wsrep_xid_init(XID *xid)
-{
-  xid->null();
-  xid->gtrid_length= 0;
-  xid->bqual_length= 0;
-  memset(xid->data, 0, sizeof(xid->data));
-}
-
 void wsrep_xid_init(XID* xid, const wsrep::gtid& wsgtid, const wsrep_server_gtid_t& gtid)
 {
   xid->formatID= 1;
@@ -169,6 +161,8 @@ bool wsrep_get_SE_checkpoint(XID& xid)
 
 static bool wsrep_get_SE_checkpoint_common(XID& xid)
 {
+  xid.null();
+
   if (wsrep_get_SE_checkpoint(xid))
   {
     return FALSE;
@@ -192,7 +186,6 @@ template<>
 wsrep::gtid wsrep_get_SE_checkpoint()
 {
   XID xid;
-  wsrep_xid_init(&xid);
 
   if (!wsrep_get_SE_checkpoint_common(xid))
   {
@@ -206,7 +199,6 @@ template<>
 wsrep_server_gtid_t wsrep_get_SE_checkpoint()
 {
   XID xid;
-  wsrep_xid_init(&xid);
   wsrep_server_gtid_t gtid= {0,0,0};
 
   if (!wsrep_get_SE_checkpoint_common(xid))

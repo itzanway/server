@@ -73,7 +73,7 @@ public:
    */
   virtual int next_row()= 0;
 
-  /* End producing rows */
+  /* End prodicing rows */
   virtual int end_scan()=0;
 
   /* Report errors */

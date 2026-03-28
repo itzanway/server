@@ -50,22 +50,14 @@ uchar days_in_month[]= {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, 0};
 static long my_time_zone=0;
 
 
-/* Calc days in one year */
+/* Calc days in one year. works with 0 <= year <= 99 */
 
 uint calc_days_in_year(uint year)
 {
-  return isleap(year) ? 366 : 365;
+  return ((year & 3) == 0 && (year%100 || (year%400 == 0 && year)) ?
+          366 : 365);
 }
 
-/* Calc days in a month */
-
-uint calc_days_in_month(uint year, uint month)
-{
-  uint days= days_in_month[month-1];
-  if (month == 2 && isleap(year))
-    days= 29;
-  return days;
-}
 
 #ifdef DBUG_ASSERT_EXISTS
 
@@ -176,20 +168,9 @@ static int get_date_time_separator(uint *number_of_fields,
   if (s >= end)
     return 0;
 
-  /*
-    According to ISO_8601 - 2016
-    "
-    The character [T] shall be used as time designator to indicate the start of the	 
-    representation of the time of day  component in these expressions.
-    "
-  
-    That means that after T there *must* be a time component.
-  */
   if (*s == 'T')
   {
     (*str)++;
-    if (s + 1 >= end)
-      return 1;
     return 0;
   }
 
@@ -1024,7 +1005,7 @@ fractional:
   else
     date[4]= 0;
 
-  /* Check for exponent part: E<digit> | E<sign><digit> */
+  /* Check for exponent part: E<gigit> | E<sign><digit> */
   /* (may occur as result of %g formatting of time value) */
   if ((end - str) > 1 &&
       (*str == 'e' || *str == 'E') &&
@@ -1270,8 +1251,7 @@ my_time_t
 my_system_gmt_sec(const MYSQL_TIME *t_src, long *my_timezone, uint *error_code)
 {
   uint loop;
-  longlong tmp= 0;
-  time_t temporary_time;
+  time_t tmp= 0;
   int shift= 0;
   MYSQL_TIME tmp_time;
   MYSQL_TIME *t= &tmp_time;
@@ -1339,9 +1319,9 @@ my_system_gmt_sec(const MYSQL_TIME *t_src, long *my_timezone, uint *error_code)
     relevant to QNX.
 
     We are safe with shifts close to MAX_INT32, as there are no known
-    time switches on Febrary 2106 yet :)
+    time switches on Jan 2038 yet :)
   */
-  if ((t->year == TIMESTAMP_MAX_YEAR) && (t->month == 2) && (t->day > 17))
+  if ((t->year == TIMESTAMP_MAX_YEAR) && (t->month == 1) && (t->day > 4))
   {
     /*
       Below we will pass (uint) (t->day - shift) to calc_daynr.
@@ -1351,6 +1331,7 @@ my_system_gmt_sec(const MYSQL_TIME *t_src, long *my_timezone, uint *error_code)
     t->day-= 2;
     shift= 2;
   }
+#ifdef TIME_T_UNSIGNED
   else
   {
     /*
@@ -1362,7 +1343,6 @@ my_system_gmt_sec(const MYSQL_TIME *t_src, long *my_timezone, uint *error_code)
       Note: the order of below if-statements is significant.
     */
 
-    /* 1970 */
     if ((t->year == TIMESTAMP_MIN_YEAR + 1) && (t->month == 1)
         && (t->day <= 10))
     {
@@ -1370,7 +1350,6 @@ my_system_gmt_sec(const MYSQL_TIME *t_src, long *my_timezone, uint *error_code)
       shift= -2;
     }
 
-    /* 1969 */
     if ((t->year == TIMESTAMP_MIN_YEAR) && (t->month == 12)
         && (t->day == 31))
     {
@@ -1380,18 +1359,17 @@ my_system_gmt_sec(const MYSQL_TIME *t_src, long *my_timezone, uint *error_code)
       shift= -2;
     }
   }
+#endif
 
-  tmp= (((longlong) (calc_daynr((uint) t->year, (uint) t->month,
-                                (uint) t->day) -
-                     days_at_timestart) * SECONDS_IN_24H +
-         (long) t->hour*3600L +
-         (long) (t->minute*60 + t->second)) +
-        my_time_zone - 3600);
+  tmp= (time_t) (((calc_daynr((uint) t->year, (uint) t->month, (uint) t->day) -
+                   (long) days_at_timestart) * SECONDS_IN_24H +
+                   (long) t->hour*3600L +
+                  (long) (t->minute*60 + t->second)) + (time_t) my_time_zone -
+                 3600);
 
   current_timezone= my_time_zone;
-  temporary_time= (time_t) tmp;
-  localtime_r(&temporary_time, &tm_tmp);
-  l_time= &tm_tmp;
+  localtime_r(&tmp,&tm_tmp);
+  l_time=&tm_tmp;
   for (loop=0;
        loop < 2 &&
 	 (t->hour != (uint) l_time->tm_hour ||
@@ -1409,11 +1387,10 @@ my_system_gmt_sec(const MYSQL_TIME *t_src, long *my_timezone, uint *error_code)
           (long) (60*((int) t->minute - (int) l_time->tm_min)) +
           (long) ((int) t->second - (int) l_time->tm_sec));
     current_timezone+= diff+3600;		/* Compensate for -3600 above */
-    tmp+= (longlong) diff;
-    temporary_time= (time_t) tmp;
-    localtime_r(&temporary_time, &tm_tmp);
+    tmp+= (time_t) diff;
+    localtime_r(&tmp,&tm_tmp);
+    l_time=&tm_tmp;
   }
-
   /*
     Fix that if we are in the non existing daylight saving time hour
     we move the start of the next real hour.
@@ -1457,7 +1434,7 @@ my_system_gmt_sec(const MYSQL_TIME *t_src, long *my_timezone, uint *error_code)
     with unsigned time_t tmp+= shift*86400L might result in a number,
     larger than TIMESTAMP_MAX_VALUE, so another check will work.
   */
-  if (tmp < 0 || (ulonglong) tmp > TIMESTAMP_MAX_VALUE)
+  if (!IS_TIME_T_VALID_FOR_TIMESTAMP(tmp))
   {
     tmp= 0;
     *error_code= ER_WARN_DATA_OUT_OF_RANGE;
@@ -1780,7 +1757,7 @@ int my_TIME_to_str(const MYSQL_TIME *l_time, char *to, uint digits)
   @param      dec Precision, in the range 0..6.
   @return         The length of the result string.
 */
-int my_timeval_to_str(const struct my_timeval *tm, char *to, uint dec)
+int my_timeval_to_str(const struct timeval *tm, char *to, uint dec)
 {
   char *pos= longlong10_to_str((longlong) tm->tv_sec, to, 10);
   if (dec)
@@ -1932,32 +1909,30 @@ longlong number_to_datetime_or_date(longlong nr, ulong sec_part,
 int number_to_time_only(my_bool neg, ulonglong nr, ulong sec_part,
                         ulong max_hour, MYSQL_TIME *ltime, int *was_cut)
 {
+  static const ulonglong TIME_MAX_mmss= TIME_MAX_MINUTE*100 + TIME_MAX_SECOND;
+  ulonglong time_max_value= max_hour * 10000ULL + TIME_MAX_mmss;
   *was_cut= 0;
   ltime->year= ltime->month= ltime->day= 0;
   ltime->time_type= MYSQL_TIMESTAMP_TIME;
 
   ltime->neg= neg;
 
+  if (nr > time_max_value)
+  {
+    nr= time_max_value;
+    sec_part= TIME_MAX_SECOND_PART;
+    *was_cut= MYSQL_TIME_WARN_OUT_OF_RANGE;
+  }
   ltime->hour  = (uint)(nr/100/100);
   ltime->minute= nr/100%100;
   ltime->second= nr%100;
   ltime->second_part= sec_part;
 
-  if (ltime->minute >= 60 || ltime->second >= 60 || sec_part >= TIME_MAX_SECOND_PART)
-  {
-    *was_cut= MYSQL_TIME_WARN_TRUNCATED;
-    return -1;
-  }
-  if (ltime->hour > max_hour)
-  {
-    ltime->hour  = max_hour;
-    ltime->minute= TIME_MAX_MINUTE;
-    ltime->second= TIME_MAX_SECOND;
-    ltime->second_part= TIME_MAX_SECOND_PART;
-    *was_cut= MYSQL_TIME_WARN_OUT_OF_RANGE;
-  }
+  if (ltime->minute < 60 && ltime->second < 60 && sec_part <= TIME_MAX_SECOND_PART)
+    return 0;
 
-  return 0;
+  *was_cut= MYSQL_TIME_WARN_TRUNCATED;
+  return -1;
 }
 
 

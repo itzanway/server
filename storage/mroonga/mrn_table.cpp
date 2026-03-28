@@ -348,9 +348,9 @@ int mrn_parse_table_param(MRN_SHARE *share, TABLE *table)
     &part_elem, &sub_elem);
 #endif
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-  for (i = 3; i > 0; i--)
+  for (i = 4; i > 0; i--)
 #else
-  for (i = 1; i > 0; i--)
+  for (i = 2; i > 0; i--)
 #endif
   {
     const char *params_string_value = NULL;
@@ -358,7 +358,7 @@ int mrn_parse_table_param(MRN_SHARE *share, TABLE *table)
     switch (i)
     {
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-      case 3:
+      case 4:
         if (!sub_elem || !sub_elem->part_comment)
           continue;
         DBUG_PRINT("info", ("mroonga create sub comment string"));
@@ -367,7 +367,7 @@ int mrn_parse_table_param(MRN_SHARE *share, TABLE *table)
         DBUG_PRINT("info",
                    ("mroonga sub comment string=%s", params_string_value));
         break;
-      case 2:
+      case 3:
         if (!part_elem || !part_elem->part_comment)
           continue;
         DBUG_PRINT("info", ("mroonga create part comment string"));
@@ -377,7 +377,7 @@ int mrn_parse_table_param(MRN_SHARE *share, TABLE *table)
                    ("mroonga part comment string=%s", params_string_value));
         break;
 #endif
-      default:
+      case 2:
         if (LEX_STRING_IS_EMPTY(table->s->comment))
           continue;
         DBUG_PRINT("info", ("mroonga create comment string"));
@@ -385,6 +385,16 @@ int mrn_parse_table_param(MRN_SHARE *share, TABLE *table)
         params_string_length = table->s->comment.length;
         DBUG_PRINT("info",
                    ("mroonga comment string=%.*s",
+                    params_string_length, params_string_value));
+        break;
+      default:
+        if (LEX_STRING_IS_EMPTY(table->s->connect_string))
+          continue;
+        DBUG_PRINT("info", ("mroonga create connect_string string"));
+        params_string_value = table->s->connect_string.str;
+        params_string_length = table->s->connect_string.length;
+        DBUG_PRINT("info",
+                   ("mroonga connect_string=%.*s",
                     params_string_length, params_string_value));
         break;
     }
@@ -506,7 +516,9 @@ error:
 
 bool mrn_is_geo_key(const KEY *key_info)
 {
-  return key_info->algorithm == HA_KEY_ALG_RTREE;
+  return key_info->algorithm == HA_KEY_ALG_UNDEF &&
+    KEY_N_KEY_PARTS(key_info) == 1 &&
+    key_info->key_part[0].field->type() == MYSQL_TYPE_GEOMETRY;
 }
 
 int mrn_add_index_param(MRN_SHARE *share, KEY *key_info, int i)
@@ -518,6 +530,7 @@ int mrn_add_index_param(MRN_SHARE *share, KEY *key_info, int i)
   char *sprit_ptr[2];
   char *tmp_ptr, *start_ptr;
 #endif
+  THD *thd = current_thd;
   MRN_DBUG_ENTER_FUNCTION();
 
 #if MYSQL_VERSION_ID >= 50500
@@ -579,6 +592,13 @@ int mrn_add_index_param(MRN_SHARE *share, KEY *key_info, int i)
       case 5:
         MRN_PARAM_STR_LIST("table", index_table, i);
         break;
+      case 6:
+        push_warning_printf(thd, MRN_SEVERITY_WARNING,
+                            ER_WARN_DEPRECATED_SYNTAX,
+                            ER(ER_WARN_DEPRECATED_SYNTAX),
+                            "parser", "tokenizer");
+        MRN_PARAM_STR_LIST("parser", key_tokenizer, i);
+        break;
       case 9:
         MRN_PARAM_STR_LIST("tokenizer", key_tokenizer, i);
         break;
@@ -619,7 +639,7 @@ int mrn_parse_index_param(MRN_SHARE *share, TABLE *table)
     bool is_wrapper_mode = share->engine != NULL;
 
     if (is_wrapper_mode) {
-      if (key_info->algorithm != HA_KEY_ALG_FULLTEXT && !mrn_is_geo_key(key_info)) {
+      if (!(key_info->flags & HA_FULLTEXT) && !mrn_is_geo_key(key_info)) {
         continue;
       }
     }
@@ -915,7 +935,6 @@ MRN_SHARE *mrn_get_share(const char *table_name, TABLE *table, int *error)
       *wrap_table_share= *table->s;
       mrn_init_sql_alloc(current_thd, &(wrap_table_share->mem_root));
       wrap_table_share->keys = share->wrap_keys;
-      wrap_table_share->total_keys = share->wrap_keys;
       wrap_table_share->key_info = share->wrap_key_info;
       wrap_table_share->primary_key = share->wrap_primary_key;
       wrap_table_share->keys_in_use.init(share->wrap_keys);
@@ -1129,6 +1148,7 @@ st_mrn_slot_data *mrn_get_slot_data(THD *thd, bool can_create)
     slot_data->first_wrap_hton = NULL;
     slot_data->alter_create_info = NULL;
     slot_data->disable_keys_create_info = NULL;
+    slot_data->alter_connect_string = NULL;
     slot_data->alter_comment = NULL;
     thd_set_ha_data(thd, mrn_hton_ptr, slot_data);
     {
@@ -1161,6 +1181,10 @@ void mrn_clear_slot_data(THD *thd)
     }
     slot_data->alter_create_info = NULL;
     slot_data->disable_keys_create_info = NULL;
+    if (slot_data->alter_connect_string) {
+      my_free(slot_data->alter_connect_string);
+      slot_data->alter_connect_string = NULL;
+    }
     if (slot_data->alter_comment) {
       my_free(slot_data->alter_comment);
       slot_data->alter_comment = NULL;

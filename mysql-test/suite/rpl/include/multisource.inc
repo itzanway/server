@@ -38,8 +38,7 @@ change master 'abc2' to master_host='';
 eval change master 'master1' to 
 master_port=$SERVER_MYPORT_1, 
 master_host='127.0.0.1', 
-master_user='root',
-master_ssl_verify_server_cert=0;
+master_user='root';
 
 start slave 'master1';
 set default_master_connection = 'master1';
@@ -160,9 +159,7 @@ set default_master_connection = '';
 eval change master to
 master_port=$SERVER_MYPORT_2,
 master_host='127.0.0.1',
-master_user='root',
-master_ssl_verify_server_cert=0,
-master_use_gtid=no;
+master_user='root';
 
 start slave;
 --source include/wait_for_slave_to_start.inc

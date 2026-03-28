@@ -12,7 +12,6 @@
 /***********************************************************************/
 #include <my_global.h>    // All MariaDB stuff
 #include <mysqld.h>
-#include <mysqld_error.h>
 #include <sql_error.h>
 #if !defined(_WIN32) && !defined(_WINDOWS)
 #include <sys/types.h>
@@ -38,7 +37,7 @@
 #include "tabrest.h"
 
 #if defined(connect_EXPORTS)
-#define PUSH_WARNING(M) push_warning(current_thd, Sql_condition::WARN_LEVEL_NOTE, ER_UNKNOWN_ERROR, M)
+#define PUSH_WARNING(M) push_warning(current_thd, Sql_condition::WARN_LEVEL_NOTE, 0, M)
 #else
 #define PUSH_WARNING(M) htrc(M)
 #endif
@@ -95,7 +94,7 @@ int Xcurl(PGLOBAL g, PCSZ Http, PCSZ Uri, PCSZ filename)
 	char  fn[600];
 	pid_t pID;
 
-	// Check if curl package is available by executing subprocess
+	// Check if curl package is availabe by executing subprocess
 	FILE *f= popen("command -v curl", "r");
 
 	if (!f) {
@@ -336,7 +335,7 @@ bool RESTDEF::DefineAM(PGLOBAL g, LPCSTR am, int poff)
 
   // Do make the table/view definition
   if (Tdp && Tdp->Define(g, Cat, Name, Schema, "REST"))
-    Tdp = NULL; // Error occurred
+    Tdp = NULL; // Error occured
 
   if (xt)
     htrc("Tdp defined\n", rc);

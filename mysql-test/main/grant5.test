@@ -20,7 +20,6 @@ show grants for foo;  # role
 --error ER_DBACCESS_DENIED_ERROR
 show grants for foo@'%'; # user
 --connection default
---disconnect conn_1
 drop user test, foo;
 drop role foo;
 
@@ -227,7 +226,6 @@ grant create temporary tables on db.* to bar@localhost;
 create temporary table tmp (a int, key(a));
 show tables;
 show full tables;
---replace_column 7 X 8 X 9 X 10 X 11 X 12 X 13 X 14 X 19 X
 show table status;
 show index in tmp;
 show columns in tmp;
@@ -308,9 +306,7 @@ eval create user u6@h identified with 'mysql_old_password' using '$p';
 create user u7@h identified with 'mysql_old_password';
 error ER_PASSWD_LENGTH;
 set password for u7@h = 'pwd';
---enable_prepare_warnings
 set password for u7@h = old_password('pwd');
---disable_prepare_warnings
 create user u8@h identified with 'mysql_old_password';
 eval set password for u8@h = '$p';
 sorted_result;
@@ -406,10 +402,10 @@ drop user foo;
 #
 # MDEV-23009 SIGSEGV in get_field from acl_load (on optimized builds)
 #
-call mtr.add_suppression('mysql\\.host');
+call mtr.add_suppression('mysql.host table is damaged');
 create table mysql.host (c1 int);
 insert mysql.host values (1);
---error ER_CANNOT_LOAD_FROM_TABLE_V2
+--error ER_UNKNOWN_ERROR
 flush privileges;
 drop table mysql.host;
 

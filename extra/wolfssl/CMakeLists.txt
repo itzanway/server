@@ -60,10 +60,7 @@ ${WOLFCRYPT_SRCDIR}/des3.c
 ${WOLFCRYPT_SRCDIR}/dh.c
 ${WOLFCRYPT_SRCDIR}/dsa.c
 ${WOLFCRYPT_SRCDIR}/ecc.c
-${WOLFCRYPT_SRCDIR}/ed25519.c
 ${WOLFCRYPT_SRCDIR}/error.c
-${WOLFCRYPT_SRCDIR}/fe_operations.c
-${WOLFCRYPT_SRCDIR}/ge_operations.c
 ${WOLFCRYPT_SRCDIR}/hmac.c
 ${WOLFCRYPT_SRCDIR}/logging.c
 ${WOLFCRYPT_SRCDIR}/md4.c
@@ -115,7 +112,6 @@ if(WOLFSSL_INTELASM)
       ${WOLFCRYPT_SRCDIR}/aes_asm.S
       ${WOLFCRYPT_SRCDIR}/aes_gcm_asm.S
       ${WOLFCRYPT_SRCDIR}/chacha_asm.S
-      ${WOLFCRYPT_SRCDIR}/fe_x25519_asm.S
       ${WOLFCRYPT_SRCDIR}/poly1305_asm.S
       ${WOLFCRYPT_SRCDIR}/sha512_asm.S
       ${WOLFCRYPT_SRCDIR}/sha256_asm.S
@@ -141,8 +137,6 @@ if(MSVC)
   # Workaround https://github.com/wolfSSL/wolfssl/issues/9004
   target_compile_definitions(wolfssl PRIVATE WOLFSSL_NO_SOCK SOCKET_INVALID=-1)
 endif()
-
-set_property(TARGET wolfssl PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 CONFIGURE_FILE(user_settings.h.in user_settings.h)
 

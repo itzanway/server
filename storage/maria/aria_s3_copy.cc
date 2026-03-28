@@ -17,7 +17,6 @@
   Allow copying of Aria tables to and from S3 and also delete them from S3
 */
 
-#define VER "1.0"
 #include <my_global.h>
 #include <m_string.h>
 #include "maria_def.h"
@@ -29,10 +28,9 @@
 #include <zlib.h>
 #include <libmarias3/marias3.h>
 #include "s3_func.h"
-#include <welcome_copyright_notice.h>
 
 static const char *op_types[]= {"to_s3", "from_s3", "delete_from_s3", NullS};
-static TYPELIB op_typelib= CREATE_TYPELIB_FOR(op_types);
+static TYPELIB op_typelib= {array_elements(op_types)-1,"", op_types, NULL};
 #define OP_IMPOSSIBLE array_elements(op_types)
 
 static const char *load_default_groups[]= { "aria_s3_copy", 0 };
@@ -97,7 +95,7 @@ static struct my_option my_long_options[] =
    &opt_database, &opt_database, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"s3_block_size", 'B', "Block size for data/index blocks in s3",
    &opt_block_size, &opt_block_size, 0, GET_ULONG, REQUIRED_ARG,
-   4*1024*1024, 64*1024, 16*1024*1024, 0, 1024, 0 },
+   4*1024*1024, 64*1024, 16*1024*1024, MALLOC_OVERHEAD, 1024, 0 },
   {"s3_protocol_version", 'L',
    "Protocol used to communication with S3. One of \"Auto\", \"Legacy\", "
    "\"Original\", \"Amazon\", \"Path\" or \"Domain\". "
@@ -126,6 +124,12 @@ static struct my_option my_long_options[] =
 
 static bool get_database_from_path(char *to, size_t to_length, const char *path);
 
+
+static void print_version(void)
+{
+  printf("%s  Ver 1.0 for %s on %s\n", my_progname, SYSTEM_TYPE,
+	 MACHINE_TYPE);
+}
 
 static void usage(void)
 {

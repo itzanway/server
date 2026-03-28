@@ -27,22 +27,14 @@ USE auto_test_remote2;
 --connection child2_1
 --disable_query_log
 echo CHILD2_1_CREATE_TABLES;
-CREATE TABLE tbl_a (
-pkey int NOT NULL,
-val char(1) NOT NULL,
-PRIMARY KEY (pkey)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+eval $CHILD2_1_CREATE_TABLES;
 --enable_query_log
 TRUNCATE TABLE mysql.general_log;
 
 --connection child2_2
 --disable_query_log
 echo CHILD2_2_CREATE_TABLES;
-CREATE TABLE tbl_a (
-pkey int NOT NULL,
-val char(1) NOT NULL,
-PRIMARY KEY (pkey)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+eval $CHILD2_2_CREATE_TABLES;
 --enable_query_log
 TRUNCATE TABLE mysql.general_log;
 
@@ -53,19 +45,13 @@ echo CREATE TABLE tbl_a (
     val char(1) NOT NULL,
     PRIMARY KEY (pkey)
 ) MASTER_1_ENGINE MASTER_1_CHARSET MASTER_1_COMMENT_2_1;
-CREATE TABLE tbl_a (
+eval CREATE TABLE tbl_a (
     pkey int NOT NULL,
     val char(1) NOT NULL,
     PRIMARY KEY (pkey)
-) ENGINE=Spider DEFAULT CHARSET=utf8 COMMENT='table "tbl_a"'
-  PARTITION BY KEY(pkey) (
-PARTITION pt1 COMMENT='srv "s_2_1"',
-PARTITION pt2 COMMENT='srv "s_2_2"'
-  );
+) $MASTER_1_ENGINE $MASTER_1_CHARSET $MASTER_1_COMMENT_2_1;
 --enable_query_log
---disable_ps_protocol
 INSERT INTO tbl_a (pkey,val) VALUES (1,'1'),(2,'2'),(3,'3'),(4,'4');
---enable_ps_protocol
 
 --echo
 --echo select test 1
@@ -86,15 +72,15 @@ SELECT * FROM tbl_a;
 
 --connection child2_1
 --disable_view_protocol
-SELECT argument FROM mysql.general_log WHERE command_type != 'Execute' AND argument LIKE '%select %';
+eval $CHILD2_1_SELECT_ARGUMENT1;
 --enable_view_protocol
-SELECT pkey, val FROM tbl_a ORDER BY pkey;
+eval $CHILD2_1_SELECT_TABLES;
 
 --connection child2_2
 --disable_view_protocol
-SELECT argument FROM mysql.general_log WHERE command_type != 'Execute' AND argument LIKE '%select %';
+eval $CHILD2_2_SELECT_ARGUMENT1;
 --enable_view_protocol
-SELECT pkey, val FROM tbl_a ORDER BY pkey;
+eval $CHILD2_2_SELECT_TABLES;
 --enable_ps2_protocol
 
 --echo

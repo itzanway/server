@@ -1,33 +1,12 @@
 #ifndef JSON_LIB_INCLUDED
 #define JSON_LIB_INCLUDED
 
-#include <my_sys.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define JSON_DEPTH_DEFAULT 32
-#define JSON_DEPTH_LIMIT 32 /* Still used in columnstore. */
-#define JSON_DEPTH_INC JSON_DEPTH_DEFAULT*100
+#define JSON_DEPTH_LIMIT 32
 
-/*
- Because this array will store approximate two arrays of
- type json_path_step_t and one or two integer arrays,
- each of average 70 elements. So this size should suffice.
-*/
-#define BLOCK_SIZE_JSON_DYN_ARRAY 4096
-
-#define get_json_step(p,s) if (p->last_step_idx < (int)(p->steps.max_element)) \
-  s= ((json_path_step_t*)(p->steps.buffer))+p->last_step_idx; \
-  else \
-  s= (json_path_step_t*) mem_root_dynamic_array_resize_and_get_val(&p->steps,  p->last_step_idx);
-
-#define set_json_array_value_ptr(idx, max_element, dyn_arr_ptr, val) \
-  if ((size_t)(idx) < (max_element)) \
-    memcpy((dyn_arr_ptr)->buffer + (dyn_arr_ptr)->size_of_element * (idx), &(val), sizeof(val)); \
-  else \
-    mem_root_dynamic_array_resize_and_set_val((dyn_arr_ptr), &(val), (idx));
 /*
   When error happens, the c_next of the JSON engine contains the
   character that caused the error, and the c_str is the position
@@ -47,7 +26,7 @@ enum json_errors {
 
   JE_ESCAPING= -6,     /* Error in the escaping. */
 
-  JE_DEPTH= -7,        /* The limit on the JSON depth was overrun. Still used in columnstore*/
+  JE_DEPTH= -7,        /* The limit on the JSON depth was overrun. */
 };
 
 
@@ -56,7 +35,7 @@ typedef struct st_json_string_t
   const uchar *c_str;    /* Current position in JSON string */
   const uchar *str_end;  /* The end on the string. */
   my_wc_t c_next;        /* UNICODE of the last read character */
-  int c_next_len;        /* character length of the last read character. */
+  int c_next_len;        /* character lenght of the last read character. */
   int error;             /* error code. */
 
   CHARSET_INFO *cs;      /* Character set of the JSON string. */
@@ -103,9 +82,7 @@ enum json_path_step_types
   JSON_PATH_KEY_WILD= 1+4,
   JSON_PATH_KEY_DOUBLEWILD= 1+8,
   JSON_PATH_ARRAY_WILD= 2+4,
-  JSON_PATH_ARRAY_DOUBLEWILD= 2+8,
-  JSON_PATH_NEGATIVE_INDEX= 16,
-  JSON_PATH_ARRAY_RANGE= 32
+  JSON_PATH_ARRAY_DOUBLEWILD= 2+8
 };
 
 
@@ -115,16 +92,15 @@ typedef struct st_json_path_step_t
                                    /* see json_path_step_types */
   const uchar *key; /* Pointer to the beginning of the key. */
   const uchar *key_end;  /* Pointer to the end of the key. */
-  int n_item;  /* Item number in an array. No meaning for the key step. */
-  int n_item_end; /* Last index of the range. */
+  uint n_item;      /* Item number in an array. No meaning for the key step. */
 } json_path_step_t;
 
 
 typedef struct st_json_path_t
 {
   json_string_t s;  /* The string to be parsed. */
-  MEM_ROOT_DYNAMIC_ARRAY steps; /* Steps of the path. */
-  int last_step_idx;
+  json_path_step_t steps[JSON_DEPTH_LIMIT]; /* Steps of the path. */
+  json_path_step_t *last_step; /* Points to the last step. */
 
   int mode_strict; /* TRUE if the path specified as 'strict' */
   enum json_path_step_types types_used; /* The '|' of all step's 'type'-s */
@@ -197,7 +173,7 @@ enum json_states {
 
 enum json_value_types
 {
-  JSON_VALUE_UNINITIALIZED=0,
+  JSON_VALUE_UNINITALIZED=0,
   JSON_VALUE_OBJECT=1,
   JSON_VALUE_ARRAY=2,
   JSON_VALUE_STRING=3,
@@ -244,8 +220,8 @@ typedef struct st_json_engine_t
   const uchar *value_end; /* Points to the next character after the value. */
   int value_len; /* The length of the value. Does not count quotations for */
                  /* string constants. */
-  /* Keeps the stack of nested JSON structures. */
-  MEM_ROOT_DYNAMIC_ARRAY stack;
+
+  int stack[JSON_DEPTH_LIMIT]; /* Keeps the stack of nested JSON structures. */
   int stack_p;                 /* The 'stack' pointer. */
   volatile uchar *killed_ptr;
 } json_engine_t;
@@ -360,13 +336,6 @@ int json_skip_level_and_count(json_engine_t *j, int *n_items_skipped);
 */
 #define json_value_scalar(je)  ((je)->value_type > JSON_VALUE_ARRAY)
 
-#define report_json_error(js, je, n_param) \
-  report_json_error_ex(js->ptr(), je, func_name(), n_param, \
-      Sql_condition::WARN_LEVEL_WARN)
-
-#define report_path_error(js, je, n_param) \
-  report_path_error_ex(js->ptr(), je, func_name(), n_param,\
-      Sql_condition::WARN_LEVEL_WARN)
 
 /*
   Look for the JSON PATH in the json string.
@@ -376,7 +345,7 @@ int json_skip_level_and_count(json_engine_t *j, int *n_items_skipped);
   initialized with the JSON string, and the json_path_t with the JSON path
   appropriately. The 'p_cur_step' should point at the first
   step of the path.
-  The 'array_counters' is the array of 'curr_json_depth_limit' size.
+  The 'array_counters' is the array of JSON_DEPTH_LIMIT size.
   It stores the array counters of the parsed JSON.
   If function returns 0, it means it found the match. The position of
   the match is je->s.c_str. Then we can call the json_find_path()
@@ -386,7 +355,7 @@ int json_skip_level_and_count(json_engine_t *j, int *n_items_skipped);
 */
 int json_find_path(json_engine_t *je,
                    json_path_t *p, json_path_step_t **p_cur_step,
-                   MEM_ROOT_DYNAMIC_ARRAY *array_counters);
+                   uint *array_counters);
 
 
 typedef struct st_json_find_paths_t
@@ -395,7 +364,7 @@ typedef struct st_json_find_paths_t
   json_path_t *paths;
   uint cur_depth;
   uint *path_depths;
-  MEM_ROOT_DYNAMIC_ARRAY array_counters;
+  uint array_counters[JSON_DEPTH_LIMIT];
 } json_find_paths_t;
 
 
@@ -404,31 +373,24 @@ int json_find_paths_first(json_engine_t *je, json_find_paths_t *state,
 int json_find_paths_next(json_engine_t *je, json_find_paths_t *state);
 
 
-#define JSON_ERROR_OUT_OF_SPACE  (-1)
-#define JSON_ERROR_ILLEGAL_SYMBOL (-2)
-
 /*
   Convert JSON string constant into ordinary string constant
   which can involve unpacking json escapes and changing character set.
   Returns negative integer in the case of an error,
   the length of the result otherwise.
 */
-int __attribute__((warn_unused_result)) json_unescape(CHARSET_INFO *json_cs,
+int json_unescape(CHARSET_INFO *json_cs,
                   const uchar *json_str, const uchar *json_end,
                   CHARSET_INFO *res_cs,
                   uchar *res, uchar *res_end);
 
 /*
-  Convert a string constant into JSON string constant.
-  This can involve appropriate escaping and changing the character set.
-  Returns the length of the result on success,
-  on error returns a negative error code.
-  Some error codes:
-    JSON_ERROR_OUT_OF_SPACE    Not enough space in the provided buffer
-    JSON_ERROR_ILLEGAL_SYMBOL  Source symbol cannot be represented in JSON
+  Convert ordinary string constant into JSON string constant.
+  which can involve appropriate escaping and changing character set.
+  Returns negative integer in the case of an error,
+  the length of the result otherwise.
 */
-int  __attribute__((warn_unused_result)) json_escape(CHARSET_INFO *str_cs,
-		const uchar *str, const uchar *str_end,
+int json_escape(CHARSET_INFO *str_cs, const uchar *str, const uchar *str_end,
                 CHARSET_INFO *json_cs, uchar *json, uchar *json_end);
 
 
@@ -456,32 +418,20 @@ int json_get_path_start(json_engine_t *je, CHARSET_INFO *i_cs,
 
 int json_get_path_next(json_engine_t *je, json_path_t *p);
 
+
+int json_path_parts_compare(
+        const json_path_step_t *a, const json_path_step_t *a_end,
+        const json_path_step_t *b, const json_path_step_t *b_end,
+        enum json_value_types vt);
 int json_path_compare(const json_path_t *a, const json_path_t *b,
-                      enum json_value_types vt,
-                      MEM_ROOT_DYNAMIC_ARRAY* array_size_counter);
+                      enum json_value_types vt);
 
-int json_valid(const char *js, size_t js_len,
-               CHARSET_INFO *cs, json_engine_t *je);
+int json_valid(const char *js, size_t js_len, CHARSET_INFO *cs);
 
-int json_locate_key(json_engine_t *je, const char *js, const char *js_end,
+int json_locate_key(const char *js, const char *js_end,
                     const char *kname,
                     const char **key_start, const char **key_end,
                     int *comma_pos);
-
-int json_normalize(DYNAMIC_STRING *result,
-                   const char *s, size_t size, CHARSET_INFO *cs,
-                   MEM_ROOT *current_mem_root,
-                   json_engine_t *temp_je,
-                   MEM_ROOT_DYNAMIC_ARRAY *stack);
-
-int json_skip_array_and_count(json_engine_t *j, int* n_item);
-
-inline static int json_scan_ended(json_engine_t *j)
-{
-  return (j->state == JST_ARRAY_END && j->stack_p == 0);
-}
-
-void initJsonArray(MEM_ROOT *mem_root, MEM_ROOT_DYNAMIC_ARRAY *mem_root_array, size_t size, void *buffer, myf myflag);
 
 #ifdef  __cplusplus
 }

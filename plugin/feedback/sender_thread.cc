@@ -108,9 +108,9 @@ static int prepare_for_fill(TABLE_LIST *tables)
   thd->security_ctx->master_access= ALL_KNOWN_ACL;
   bzero((char*) &thd->net, sizeof(thd->net));
   lex_start(thd);
-  thd->lex->init_select();
+  mysql_init_select(thd->lex);
 
-  const LEX_CSTRING tbl_name= i_s_feedback->table_name;
+  LEX_CSTRING tbl_name= {i_s_feedback->table_name, strlen(i_s_feedback->table_name) };
 
   tables->init_one_table(&INFORMATION_SCHEMA_NAME, &tbl_name, 0, TL_READ);
   tables->schema_table= i_s_feedback;
@@ -257,8 +257,7 @@ ret:
       the effect of the background thread on SHOW STATUS.
     */
     server_threads.erase(thd);
-    DBUG_ASSERT(thd->status_var.tmp_space_used == 0);
-    thd->set_status_var_init(clear_for_new_connection);
+    thd->set_status_var_init();
     thd->killed= KILL_CONNECTION;
     delete thd;
     thd= 0;

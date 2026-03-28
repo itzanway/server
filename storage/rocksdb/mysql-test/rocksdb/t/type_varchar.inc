@@ -12,11 +12,11 @@ eval CREATE TABLE t1 (
   v64 VARCHAR(64) $extra_col_opts,
   v65000 VARCHAR(65000) $extra_col_opts,
   PRIMARY KEY (v64)
-) ENGINE=rocksdb CHARSET=latin1;
+) ENGINE=rocksdb;
 
 SHOW COLUMNS IN t1;
 
-CREATE TABLE t2 (v VARCHAR(65532), PRIMARY KEY (v(255))) ENGINE=rocksdb CHARSET=latin1;
+CREATE TABLE t2 (v VARCHAR(65532), PRIMARY KEY (v(255))) ENGINE=rocksdb;
 SHOW COLUMNS IN t2;
 
 # Valid values 

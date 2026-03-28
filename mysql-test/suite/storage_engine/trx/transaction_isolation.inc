@@ -10,6 +10,13 @@
 
 --source ../have_engine.inc
 
+# Save the initial number of concurrent sessions
+--source include/count_sessions.inc
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
 connect (con1,localhost,root,,);
 eval SET SESSION TRANSACTION ISOLATION LEVEL $trx_isolation;
 connect (con2,localhost,root,,);
@@ -85,3 +92,6 @@ connection default;
 disconnect con1;
 disconnect con2;
 DROP TABLE t1;
+
+--source include/wait_until_count_sessions.inc
+

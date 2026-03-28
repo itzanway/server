@@ -7,21 +7,19 @@ call mtr.add_suppression("Read semi-sync reply");
 call mtr.add_suppression("Unsafe statement written to the binary log using statement format since BINLOG_FORMAT = STATEMENT.");
 call mtr.add_suppression("mysqld: Got an error reading communication packets");
 connection slave;
-set sql_log_bin=0;
 call mtr.add_suppression("Semi-sync slave .* reply");
 call mtr.add_suppression("Slave SQL.*Request to stop slave SQL Thread received while applying a group that has non-transactional changes; waiting for completion of the group");
-set sql_log_bin=1;
 connection master;
 #
 # Uninstall semi-sync plugins on master and slave
 #
 connection slave;
 include/stop_slave.inc
-include/reset_slave.inc
+reset slave;
 set global rpl_semi_sync_master_enabled= 0;
 set global rpl_semi_sync_slave_enabled= 0;
 connection master;
-include/reset_master.inc
+reset master;
 set global rpl_semi_sync_master_enabled= 0;
 set global rpl_semi_sync_slave_enabled= 0;
 #
@@ -62,7 +60,7 @@ Rpl_semi_sync_master_status	OFF
 show status like 'Rpl_semi_sync_master_yes_tx';
 Variable_name	Value
 Rpl_semi_sync_master_yes_tx	0
-include/reset_master.inc
+reset master;
 connection slave;
 [ default state of semi-sync on slave should be OFF ]
 show variables like 'rpl_semi_sync_slave_enabled';
@@ -262,7 +260,7 @@ Rpl_semi_sync_master_no_tx	12
 SHOW STATUS LIKE 'Rpl_semi_sync_master_yes_tx';
 Variable_name	Value
 Rpl_semi_sync_master_yes_tx	15
-FLUSH NO_WRITE_TO_BINLOG GLOBAL STATUS;
+FLUSH NO_WRITE_TO_BINLOG STATUS;
 [ Semi-sync master status variables after FLUSH STATUS ]
 SHOW STATUS LIKE 'Rpl_semi_sync_master_no_tx';
 Variable_name	Value
@@ -302,10 +300,9 @@ connection master;
 create table t1 (a int) engine = ENGINE_TYPE;
 drop table t1;
 connection slave;
-include/stop_slave.inc
 [ test reset master ]
 connection master;
-include/reset_master.inc
+reset master;
 show status like 'Rpl_semi_sync_master_status';
 Variable_name	Value
 Rpl_semi_sync_master_status	ON
@@ -316,7 +313,8 @@ show status like 'Rpl_semi_sync_master_yes_tx';
 Variable_name	Value
 Rpl_semi_sync_master_yes_tx	0
 connection slave;
-include/reset_slave.inc
+include/stop_slave.inc
+reset slave;
 include/kill_binlog_dump_threads.inc
 connection slave;
 include/start_slave.inc
@@ -348,9 +346,9 @@ Rpl_semi_sync_master_yes_tx	3
 #
 connection slave;
 include/stop_slave.inc
-include/reset_slave.inc
+reset slave;
 connection master;
-include/reset_master.inc
+reset master;
 include/kill_binlog_dump_threads.inc
 set sql_log_bin=0;
 grant replication slave on *.* to rpl@127.0.0.1 identified by 'rpl_password';

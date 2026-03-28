@@ -27,6 +27,7 @@ Created 12/29/1997 Heikki Tuuri
 
 #include "que0que.h"
 #include "rem0cmp.h"
+#include "pars0grm.h"
 
 /*****************************************************************//**
 Evaluates a function node. */

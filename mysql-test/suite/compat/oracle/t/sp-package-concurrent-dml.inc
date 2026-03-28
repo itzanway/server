@@ -2,6 +2,8 @@
 --echo # Start of sp-package-concurrent-dml.inc
 --echo #
 
+--source include/count_sessions.inc
+
 let $object_type= `SELECT @object_type`;
 
 SET sql_mode=ORACLE;
@@ -101,3 +103,5 @@ connection default;
 reap;
 
 DROP PACKAGE IF EXISTS pkg1;
+
+--source include/wait_until_count_sessions.inc

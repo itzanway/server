@@ -19,7 +19,6 @@
 #define USE_MY_FUNC			/* We need at least my_malloc */
 #endif
 
-#define VER "1.0"
 #include "maria_def.h"
 #include "trnman_public.h"
 #include "trnman.h"
@@ -34,7 +33,6 @@
 #endif
 #include <my_getopt.h>
 #include <my_handler_errors.h>
-#include <welcome_copyright_notice.h>
 
 #if SIZEOF_LONG_LONG > 4
 #define BITS_SAVED 64
@@ -241,8 +239,7 @@ int main(int argc, char **argv)
   if (!opt_ignore_control_file &&
       (no_control_file= ma_control_file_open(FALSE,
                                              (opt_require_control_file ||
-                                              !silent), FALSE,
-                                             control_file_open_flags)) &&
+                                              !silent), FALSE)) &&
        opt_require_control_file)
   {
     error= 1;
@@ -291,9 +288,11 @@ end:
   maria_end();
   my_end(verbose ? MY_CHECK_ERROR | MY_GIVE_INFO : MY_CHECK_ERROR);
   exit(error ? 2 : 0);
+#ifndef _lint
+  return 0;					/* No compiler warning */
+#endif
 }
 
-ATTRIBUTE_NORETURN
 static void my_exit(int error)
 {
   free_defaults(default_argv);
@@ -352,6 +351,12 @@ static struct my_option my_long_options[] =
    &opt_wait, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   { 0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
+
+
+static void print_version(void)
+{
+  printf("%s Ver 1.0 for %s on %s\n", my_progname, SYSTEM_TYPE, MACHINE_TYPE);
+}
 
 
 static void usage(void)
@@ -521,7 +526,7 @@ static MARIA_HA *open_maria_file(char *name,int mode)
     }
     if (verbose)
       puts("Recompressing already compressed table");
-    share->options&= ~HA_OPTION_READ_ONLY_DATA; /* We are modifying it */
+    share->options&= ~HA_OPTION_READ_ONLY_DATA; /* We are modifing it */
   }
   if (! force_pack && share->state.state.records != 0 &&
       (share->state.state.records <= 1 ||
@@ -611,15 +616,12 @@ static int compress(PACK_MRG_INFO *mrg,char *result_table)
   else
     fn_format(org_name,isam_file->s->open_file_name.str, "",MARIA_NAME_DEXT, 2+4+16);
 
-  if (multi_init_pagecache(&maria_pagecaches, 1, MARIA_MIN_PAGE_CACHE_SIZE,
-                           0, 0, maria_block_size, 0, MY_WME))
+  if (init_pagecache(maria_pagecache, MARIA_MIN_PAGE_CACHE_SIZE, 0, 0,
+                     maria_block_size, 0, MY_WME) == 0)
   {
     fprintf(stderr, "Can't initialize page cache\n");
     goto err;
   }
-  /* The pagecache is initialized. Update the table pagecaches pointers */
-  for (i=0 ; i < mrg->count ; i++)
-    ma_change_pagecache(mrg->file[i]);
 
   if (!test_only && result_table)
   {
@@ -868,7 +870,7 @@ static int compress(PACK_MRG_INFO *mrg,char *result_table)
   if (join_maria_file >= 0)
     my_close(join_maria_file,MYF(0));
   mrg_close(mrg);
-  multi_end_pagecache(&maria_pagecaches);
+  end_pagecache(maria_pagecache, 1);
   fprintf(stderr, "Aborted: %s is not compressed\n", org_name);
   DBUG_RETURN(-1);
 }
@@ -1498,7 +1500,7 @@ test_space_compress(HUFF_COUNTS *huff_counts, my_off_t records,
   min_pos= -2;
   huff_counts->counts[(uint) ' ']=space_count;
 
-	/* Test with always space-count */
+	/* Test with allways space-count */
   new_length=huff_counts->bytes_packed+length_bits*records/8;
   if (new_length+1 < min_pack)
   {
@@ -2906,7 +2908,7 @@ static char *make_old_name(char *new_name, char *old_name)
   return fn_format(new_name,old_name,"",OLD_EXT,2+4);
 }
 
-	/* routines for bit writing buffer */
+	/* rutines for bit writing buffer */
 
 static void init_file_buffer(File file, pbool read_buffer)
 {

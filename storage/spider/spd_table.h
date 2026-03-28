@@ -220,6 +220,28 @@ int spider_free_wide_share(
   SPIDER_WIDE_SHARE *wide_share
 );
 
+void spider_copy_sts_to_wide_share(
+  SPIDER_WIDE_SHARE *wide_share,
+  SPIDER_SHARE *share
+);
+
+void spider_copy_sts_to_share(
+  SPIDER_SHARE *share,
+  SPIDER_WIDE_SHARE *wide_share
+);
+
+void spider_copy_crd_to_wide_share(
+  SPIDER_WIDE_SHARE *wide_share,
+  SPIDER_SHARE *share,
+  int fields
+);
+
+void spider_copy_crd_to_share(
+  SPIDER_SHARE *share,
+  SPIDER_WIDE_SHARE *wide_share,
+  int fields
+);
+
 int spider_open_all_tables(
   SPIDER_TRX *trx,
   bool lock
@@ -322,6 +344,7 @@ bool spider_check_pk_update(
   TABLE *table
 );
 
+
 void spider_set_tmp_share_pointer(
   SPIDER_SHARE *tmp_share,
   char **tmp_connect_info,
@@ -423,6 +446,7 @@ double spider_rand(
   uint32 rand_source
 );
 
+#ifdef SPIDER_HAS_DISCOVER_TABLE_STRUCTURE
 int spider_discover_table_structure_internal(
   SPIDER_TRX *trx,
   SPIDER_SHARE *spider_share,
@@ -435,7 +459,9 @@ int spider_discover_table_structure(
   TABLE_SHARE *share,
   HA_CREATE_INFO *info
 );
+#endif
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
 int spider_create_spider_object_for_share(
   SPIDER_TRX *trx,
   SPIDER_SHARE *share,
@@ -478,6 +504,7 @@ void spider_table_remove_share_from_sts_thread(
 void spider_table_remove_share_from_crd_thread(
   SPIDER_SHARE *share
 );
+#endif
 uchar *spider_duplicate_char(
   uchar *dst,
   uchar esc,

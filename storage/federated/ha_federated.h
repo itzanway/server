@@ -20,6 +20,10 @@
   that you can implement.
 */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface			/* gcc class implementation */
+#endif
+
 #include <mysql.h>
 
 /* 
@@ -176,29 +180,26 @@ public:
     The reason for "records * 1000" is that such a large number forces 
     this to use indexes "
   */
-
-  IO_AND_CPU_COST scan_time() override
+  double scan_time() override
   {
     DBUG_PRINT("info", ("records %lu", (ulong) stats.records));
-    return
-    {
-      0,
-        (double) (stats.mean_rec_length * stats.records)/8192 * DISK_READ_COST+
-        1000,
-    };
+    return (double)(stats.records*1000); 
   }
-  IO_AND_CPU_COST keyread_time(uint index, ulong ranges, ha_rows rows,
-                               ulonglong blocks) override
+  /*
+    The next method will never be called if you do not implement indexes.
+  */
+  double read_time(uint index, uint ranges, ha_rows rows) override 
   {
-    return {0, (double) (ranges + rows) * DISK_READ_COST };
+    /*
+      Per Brian, this number is bugus, but this method must be implemented,
+      and at a later date, he intends to document this issue for handler code
+    */
+    return (double) rows /  20.0+1;
   }
-  IO_AND_CPU_COST rnd_pos_time(ha_rows rows) override
-  {
-    return {0, (double) rows * DISK_READ_COST };
-  }
+
   const key_map *keys_to_use_for_scanning() override { return &key_map_full; }
   /*
-    Everything below are methods that we implement in ha_federated.cc.
+    Everything below are methods that we implment in ha_federated.cc.
 
     Most of these methods are not obligatory, skip them and
     MySQL will treat them as not implemented
@@ -239,11 +240,16 @@ public:
   void position(const uchar *record) override;                            //required
   /*
     A ref is a pointer inside a local buffer. It is not comparable to
-    other ref's.
+    other ref's. This is never called as HA_NON_COMPARABLE_ROWID is set.
   */
   int cmp_ref(const uchar *ref1, const uchar *ref2) override
   {
-    return handler::cmp_ref(ref1,ref2);    /* Works if table scan is used */
+#ifdef NOT_YET
+    DBUG_ASSERT(0);
+    return 0;
+#else
+    return handler::cmp_ref(ref1,ref2);         /* Works if table scan is used */
+#endif
   }
   int info(uint) override;                                              //required
   int extra(ha_extra_function operation) override;
@@ -279,3 +285,4 @@ public:
   int execute_simple_query(const char *query, int len);
   int reset(void) override;
 };
+

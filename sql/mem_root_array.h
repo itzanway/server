@@ -17,7 +17,6 @@
 #ifndef MEM_ROOT_ARRAY_INCLUDED
 #define MEM_ROOT_ARRAY_INCLUDED
 
-#include <type_traits>
 #include <my_alloc.h>
 
 /**
@@ -44,10 +43,7 @@
           __has_trivial_destructor is supported by some (but not all)
           compilers we use.
 */
-
-template<typename Element_type,
-         bool has_trivial_destructor=
-                     std::is_trivially_destructible<Element_type>::value>
+template<typename Element_type, bool has_trivial_destructor>
 class Mem_root_array
 {
 public:
@@ -57,26 +53,13 @@ public:
   Mem_root_array(MEM_ROOT *root)
     : m_root(root), m_array(NULL), m_size(0), m_capacity(0)
   {
+    DBUG_ASSERT(m_root != NULL);
   }
 
   Mem_root_array(MEM_ROOT *root, size_t n, const value_type &val= value_type())
     : m_root(root), m_array(NULL), m_size(0), m_capacity(0)
   {
     resize(n, val);
-  }
-
-  Mem_root_array(const Mem_root_array& other)
-  {
-    do_copy_construct(other);
-  }
-
-  Mem_root_array &operator=(const Mem_root_array& other)
-  {
-    if(this != &other)
-    {
-      clear();
-      do_copy_construct(other);
-    }
   }
 
   ~Mem_root_array()
@@ -248,22 +231,15 @@ public:
   const MEM_ROOT *mem_root() const { return m_root; }
 
 private:
-  MEM_ROOT       *m_root;
-  Element_type   *m_array= nullptr;
-  size_t          m_size= 0;
-  size_t          m_capacity= 0;
+  MEM_ROOT *const m_root;
+  Element_type   *m_array;
+  size_t          m_size;
+  size_t          m_capacity;
 
-  void do_copy_construct(const Mem_root_array& other)
-  {
-    m_root= other.m_root;
-    reserve(other.size());
-    for (size_t ix= 0; ix < other.size(); ++ix)
-    {
-      Element_type *p= &m_array[ix];
-      new (p) Element_type(other[ix]);
-    }
-    m_size= other.m_size;
-  }
+  // Not (yet) implemented.
+  Mem_root_array(const Mem_root_array&);
+  Mem_root_array &operator=(const Mem_root_array&);
 };
+
 
 #endif  // MEM_ROOT_ARRAY_INCLUDED

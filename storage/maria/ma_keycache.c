@@ -46,7 +46,6 @@
     #  Error code
 */
 
-#ifdef NOT_USED
 int maria_assign_to_pagecache(MARIA_HA *info,
                               ulonglong key_map __attribute__((unused)),
                               PAGECACHE *pagecache)
@@ -113,7 +112,6 @@ int maria_assign_to_pagecache(MARIA_HA *info,
   mysql_mutex_unlock(&share->intern_lock);
   DBUG_RETURN(error);
 }
-#endif
 
 
 /*
@@ -137,7 +135,6 @@ int maria_assign_to_pagecache(MARIA_HA *info,
 */
 
 
-#ifdef NOT_USED
 void maria_change_pagecache(PAGECACHE *old_pagecache,
                             PAGECACHE *new_pagecache)
 {
@@ -165,4 +162,3 @@ void maria_change_pagecache(PAGECACHE *old_pagecache,
   mysql_mutex_unlock(&THR_LOCK_maria);
   DBUG_VOID_RETURN;
 }
-#endif

@@ -31,7 +31,6 @@
 #include "grn_token_cursor.h"
 #include "grn_mrb.h"
 #include "mrb/mrb_expr.h"
-#include "my_attribute.h"
 
 #ifdef GRN_WITH_ONIGMO
 # define GRN_SUPPORT_REGEXP
@@ -6702,8 +6701,6 @@ grn_table_select_index_range(grn_ctx *ctx, grn_obj *table, grn_obj *index,
   }
 }
 
-PRAGMA_DISABLE_CHECK_STACK_FRAME
-
 static inline grn_bool
 grn_table_select_index(grn_ctx *ctx, grn_obj *table, scan_info *si,
                        grn_obj *res, grn_id *min_id)
@@ -6820,8 +6817,6 @@ grn_table_select_index(grn_ctx *ctx, grn_obj *table, scan_info *si,
   }
   return processed;
 }
-
-PRAGMA_REENABLE_CHECK_STACK_FRAME
 
 grn_obj *
 grn_table_select(grn_ctx *ctx, grn_obj *table, grn_obj *expr,

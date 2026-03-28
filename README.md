@@ -4,7 +4,7 @@
 
 ## MariaDB: The innovative open source database
 
-MariaDB was designed as a drop-in replacement for MySQL(R) with more 
+MariaDB was designed as a drop-in replacement of MySQL(R) with more
 features, new storage engines, fewer bugs, and better performance.
 
 MariaDB is brought to you by the MariaDB Foundation and the MariaDB Corporation.
@@ -63,7 +63,8 @@ license information can be found in the THIRDPARTY file.
 Bug and/or error reports regarding MariaDB should be submitted at:
 https://jira.mariadb.org
 
-For reporting security vulnerabilities, see our [security-policy](https://mariadb.org/about/security-policy/).
+For reporting security vulnerabilities see:
+https://mariadb.org/about/security-policy/
 
 The code for MariaDB, including all revision history, can be found at:
 https://github.com/MariaDB/server

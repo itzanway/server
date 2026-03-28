@@ -15,6 +15,10 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111-1301 USA */
 #pragma once
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface /* gcc class implementation */
+#endif
+
 /* C++ standard header files */
 #include <set>
 #include <string>
@@ -393,7 +397,7 @@ class ha_rocksdb : public my_core::handler {
     current lookup to be covered. If the bitmap field is null, that means this
     index does not cover the current lookup for any record.
    */
-  MY_BITMAP m_lookup_bitmap = {nullptr, nullptr, 0, 0, 0};
+  MY_BITMAP m_lookup_bitmap = {nullptr, nullptr, nullptr, 0, 0, 0};
 
   int alloc_key_buffers(const TABLE *const table_arg,
                         const Rdb_tbl_def *const tbl_def_arg,
@@ -619,18 +623,14 @@ public:
                        bool sorted) override
       MY_ATTRIBUTE((__warn_unused_result__));
 
-  IO_AND_CPU_COST scan_time() override
-  {
-    IO_AND_CPU_COST cost;
+  double scan_time() override {
     DBUG_ENTER_FUNC();
-    cost= handler::scan_time();
-    cost.cpu+= stats.deleted * ROW_NEXT_FIND_COST; // We have to skip over deleted rows
-    DBUG_RETURN(cost);
-  }
-  IO_AND_CPU_COST keyread_time(uint index, ulong ranges,
-                               ha_rows rows, ulonglong blocks) override;
 
-  ulonglong index_blocks(uint index, uint ranges, ha_rows rows) override;
+    DBUG_RETURN(
+        static_cast<double>((stats.records + stats.deleted) / 20.0 + 10));
+  }
+
+  double read_time(uint, uint, ha_rows rows) override;
   void print_error(int error, myf errflag) override;
 
   int open(const char *const name, int mode, uint test_if_locked) override
@@ -1062,10 +1062,11 @@ std::string rdb_corruption_marker_file_name();
 
 const int MYROCKS_MARIADB_PLUGIN_MATURITY_LEVEL= MariaDB_PLUGIN_MATURITY_STABLE;
 
+extern bool prevent_myrocks_loading;
+
 extern uint32_t rocksdb_ignore_datadic_errors;
 
-void sql_print_verbose_info(const char *format, ...)
-  ATTRIBUTE_FORMAT(printf, 1, 2);
+void sql_print_verbose_info(const char *format, ...);
 
 }  // namespace myrocks
 

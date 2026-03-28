@@ -88,7 +88,7 @@
 #   User=%I
 #   ProtectHome=false
 #   ExecStartPre=
-#   ExecStartPre=@scriptdir@/mariadb-install-db $MYSQLD_MULTI_INSTANCE \
+#   ExecStartPre=@scriptdir@/mysql_install_db $MYSQLD_MULTI_INSTANCE \
 #       --auth-root-authentication-method=socket --auth-root-socket-user=%I
 #   Environment=MYSQLD_MULTI_INSTANCE="--defaults-file=/home/%I/my%I.cnf \
 #       --datadir=/home/%I/mysqldatadir --skip-networking --socket=@mysql-%I"
@@ -181,6 +181,10 @@ PrivateNetwork=false
 # These are enabled by default
 AmbientCapabilities=CAP_IPC_LOCK
 
+# PrivateDevices=true implies NoNewPrivileges=true and
+# SUID auth_pam_tool suddenly doesn't do setuid anymore
+PrivateDevices=false
+
 # Prevent writes to /usr, /boot, and /etc
 ProtectSystem=full
 
@@ -193,12 +197,12 @@ ProtectSystem=full
 # Prevent accessing /home, /root and /run/user
 ProtectHome=true
 
-# Needed to create system tables etc. --rpm to not do pam permission changes.
-ExecStartPre=@scriptdir@/mariadb-install-db $MYSQLD_MULTI_INSTANCE --rpm
+# Needed to create system tables etc.
+ExecStartPre=@scriptdir@/mysql_install_db $MYSQLD_MULTI_INSTANCE
 
 # Start main service
 # A few variables are here:
-# * MYSQLD_MULTI_INSTANCE - control how multiple instances are distinguishable
+# * MYSQLD_MULTI_INSTANCE - control how multiple instances are distinguisable
 # * MYSQLD_OPTS - user definable extras - not a replacement for my.cnf
 #
 # Note 1: Place $MYSQLD_OPTS at the very end for its options to take precedence.
@@ -283,7 +287,7 @@ LimitNOFILE=32768
 
 # Library substitutions. previously [mysqld_safe] malloc-lib with explicit paths
 # (in LD_LIBRARY_PATH) and library name (in LD_PRELOAD).
-# Environment="LD_LIBRARY_PATH=/path1 /path2" "LD_PRELOAD="
+# Environment="LD_LIBRARY_PATH=/path1 /path2" "LD_PRELOAD=
 
 # Flush caches. previously [mysqld_safe] flush-caches=1
 # ExecStartPre=sync

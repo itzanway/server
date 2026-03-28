@@ -108,7 +108,7 @@ void maria_end(void)
     if (translog_status == TRANSLOG_OK || translog_status == TRANSLOG_READONLY)
       translog_destroy();
     end_pagecache(maria_log_pagecache, TRUE);
-    multi_end_pagecache(&maria_pagecaches);
+    end_pagecache(maria_pagecache, TRUE);
     ma_control_file_end();
     mysql_mutex_destroy(&THR_LOCK_maria);
     my_hash_free(&maria_stored_state);
@@ -141,7 +141,7 @@ my_bool maria_upgrade()
       We start by renaming all log files, so that if we get a crash
       we will continue from where we left.
     */
-    size_t i;
+    uint i;
     MY_DIR *dir= my_dir(maria_data_root, MYF(MY_WME));
     if (!dir)
       DBUG_RETURN(1);

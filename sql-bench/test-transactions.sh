@@ -45,6 +45,13 @@ if ($opt_small_test || $opt_small_tables)
   $opt_medium_loop_count/=10;
 }
 
+
+if (!$server->{transactions} && !$opt_force)
+{
+  print "Test skipped because the database doesn't support transactions\n";
+  exit(0);
+}
+
 ####
 ####  Connect and start timeing
 ####
@@ -83,10 +90,7 @@ $dbh->{AutoCommit} = 0;
 ### Test insert perfomance
 ###
 
-if ($server->{transactions})
-{
-    test_insert("bench1","insert_commit",0);
-}
+test_insert("bench1","insert_commit",0);
 test_insert("bench2","insert_autocommit",1);
 
 sub test_insert
@@ -126,7 +130,6 @@ print "Test transactions rollback performance\n" if($opt_debug);
 # then doing a rollback on these
 #
 
-if ($server->{transactions})
 {
   my ($id,$rev_id,$grp,$region,$end,$loop_time,$end_time,$commit_loop,$count);
 
@@ -168,7 +171,6 @@ if ($server->{transactions})
 # then doing a rollback on these
 #
 
-if ($server->{transactions})
 {
   my ($id,$loop_time,$end_time,$commit_loop,$count);
 
@@ -206,7 +208,6 @@ if ($server->{transactions})
 # then doing a rollback on these
 #
 
-if ($server->{transactions})
 {
   my ($id,$loop_time,$end_time,$commit_loop,$count);
 
@@ -240,10 +241,7 @@ if ($server->{transactions})
 ### Test update perfomance
 ###
 
-if ($server->{transactions})
-{
-    test_update("bench1","update_commit",0);
-}
+test_update("bench1","update_commit",0);
 test_update("bench2","update_autocommit",1);
 
 sub test_update
@@ -269,10 +267,7 @@ sub test_update
 ### Test delete perfomance
 ###
 
-if ($server->{transactions})
-{
-    test_delete("bench1","delete_commit",0);
-}
+test_delete("bench1","delete_commit",0);
 test_delete("bench2","delete_autocommit",1);
 
 sub test_delete

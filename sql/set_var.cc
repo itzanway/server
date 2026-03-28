@@ -66,8 +66,8 @@ int sys_var_init()
   DBUG_ASSERT(system_charset_info != NULL);
 
   if (my_hash_init(PSI_INSTRUMENT_ME, &system_variable_hash,
-                   Lex_ident_sys_var::charset_info(), 700, 0,
-                   0, get_sys_var_length, 0, HASH_UNIQUE))
+                   system_charset_info, 700, 0, 0, get_sys_var_length, 0,
+                   HASH_UNIQUE))
     goto error;
 
   if (mysql_add_sys_var_chain(all_sys_vars.first))
@@ -87,7 +87,7 @@ uint sys_var_elements()
 
 int sys_var_add_options(DYNAMIC_ARRAY *long_options, int parse_flags)
 {
-  size_t saved_elements= long_options->elements;
+  uint saved_elements= long_options->elements;
 
   DBUG_ENTER("sys_var_add_options");
 
@@ -155,7 +155,8 @@ sys_var::sys_var(sys_var_chain *chain, const char *name_arg,
                  const char *substitute) :
   next(0), binlog_status(binlog_status_arg), value_origin(COMPILE_TIME),
   flags(flags_arg), show_val_type(show_val_type_arg),
-  guard(lock), offset(off), on_check(on_check_func), on_update(on_update_func)
+  guard(lock), offset(off), on_check(on_check_func), on_update(on_update_func),
+  deprecation_substitute(substitute)
 {
   /*
     There is a limitation in handle_options() related to short options:
@@ -171,8 +172,6 @@ sys_var::sys_var(sys_var_chain *chain, const char *name_arg,
   name.str= name_arg;     // ER_NO_DEFAULT relies on 0-termination of name_arg
   name.length= strlen(name_arg);                // and so does this.
   DBUG_ASSERT(name.length <= NAME_CHAR_LEN);
-  DBUG_ASSERT(!comment || !comment[0] || comment[strlen(comment)-1] != '.');
-  DBUG_ASSERT(!comment || !comment[0] || comment[strlen(comment)-1] != ' ');
 
   bzero(&option, sizeof(option));
   option.name= name_arg;
@@ -183,7 +182,6 @@ sys_var::sys_var(sys_var_chain *chain, const char *name_arg,
   option.def_value= def_val;
   option.app_type= this;
   option.var_type= flags & AUTO_SET ? GET_AUTO : 0;
-  option.deprecation_substitute= substitute;
 
   if (chain->last)
     chain->last->next= this;
@@ -218,9 +216,8 @@ bool sys_var::update(THD *thd, set_var *var)
 
     /*
       Make sure we don't session-track variables that are not actually
-      part of the session. transaction_isolation and transaction_read_only for
-      example exist as GLOBAL, SESSION, and one-shot ("for next transaction
-      only").
+      part of the session. tx_isolation and and tx_read_only for example
+      exist as GLOBAL, SESSION, and one-shot ("for next transaction only").
     */
     if ((var->type == OPT_SESSION) && (!ret))
     {
@@ -315,7 +312,7 @@ do {                                                \
     case SHOW_HA_ROWS:  do_num_val (ha_rows,CMD);
 
 #define case_for_double(CMD)                        \
-    case SHOW_DOUBLE:   do_num_val (double,CMD);
+    case SHOW_DOUBLE:   do_num_val (double,CMD)
 
 #define case_get_string_as_lex_string               \
     case SHOW_CHAR:                                 \
@@ -421,26 +418,27 @@ double sys_var::val_real(bool *is_null,
   return ret;
 }
 
-/* Marker if the variable is deleted instead of depricated */
-const char *UNUSED_HELP="Unused";
 
 void sys_var::do_deprecated_warning(THD *thd)
 {
-  if (option.deprecation_substitute != NULL)
+  if (deprecation_substitute != NULL)
   {
-    if (option.comment == UNUSED_HELP ||
-        strcmp(option.comment, UNUSED_HELP) == 0)
-      my_error(ER_VARIABLE_IGNORED, MYF(ME_WARNING), name.str);
+    char buf1[NAME_CHAR_LEN + 3];
+    strxnmov(buf1, sizeof(buf1)-1, "@@", name.str, 0);
+
+    /* 
+       if deprecation_substitute is an empty string,
+       there is no replacement for the syntax
+    */
+    uint errmsg= deprecation_substitute[0] == '\0'
+      ? ER_WARN_DEPRECATED_SYNTAX_NO_REPLACEMENT
+      : ER_WARN_DEPRECATED_SYNTAX;
+    if (thd)
+      push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
+                          ER_WARN_DEPRECATED_SYNTAX, ER_THD(thd, errmsg),
+                          buf1, deprecation_substitute);
     else
-    {
-      char buf1[NAME_CHAR_LEN + 3], buf2[NAME_CHAR_LEN + 3];
-      strxnmov(buf1, sizeof(buf1)-1, "@@", name.str, 0);
-      if (!IS_DEPRECATED_NO_REPLACEMENT(option.deprecation_substitute))
-        strxnmov(buf2, sizeof(buf2)-1, "@@", option.deprecation_substitute, 0);
-      else
-        buf2[0]= 0;
-      warn_deprecated<999999>(thd, buf1, buf2);
-    }
+      sql_print_warning(ER_DEFAULT(errmsg), buf1, deprecation_substitute);
   }
 }
 
@@ -515,31 +513,31 @@ bool throw_bounds_warning(THD *thd, const char *name, bool fixed, double v)
 
 typedef struct old_names_map_st
 {
-  const Lex_ident_charset old_name;
+  const char *old_name;
   const char *new_name;
 } my_old_conv;
 
 static my_old_conv old_conv[]=
 {
-  {     "cp1251_koi8"_Lex_ident_charset          ,       "cp1251"        },
-  {     "cp1250_latin2"_Lex_ident_charset        ,       "cp1250"        },
-  {     "kam_latin2"_Lex_ident_charset           ,       "keybcs2"       },
-  {     "mac_latin2"_Lex_ident_charset           ,       "MacRoman"      },
-  {     "macce_latin2"_Lex_ident_charset         ,       "MacCE"         },
-  {     "pc2_latin2"_Lex_ident_charset           ,       "pclatin2"      },
-  {     "vga_latin2"_Lex_ident_charset           ,       "pclatin1"      },
-  {     "koi8_cp1251"_Lex_ident_charset          ,       "koi8r"         },
-  {     "win1251ukr_koi8_ukr"_Lex_ident_charset  ,       "win1251ukr"    },
-  {     "koi8_ukr_win1251ukr"_Lex_ident_charset  ,       "koi8u"         },
-  {     Lex_ident_charset()                      ,       NULL            }
+  {     "cp1251_koi8"           ,       "cp1251"        },
+  {     "cp1250_latin2"         ,       "cp1250"        },
+  {     "kam_latin2"            ,       "keybcs2"       },
+  {     "mac_latin2"            ,       "MacRoman"      },
+  {     "macce_latin2"          ,       "MacCE"         },
+  {     "pc2_latin2"            ,       "pclatin2"      },
+  {     "vga_latin2"            ,       "pclatin1"      },
+  {     "koi8_cp1251"           ,       "koi8r"         },
+  {     "win1251ukr_koi8_ukr"   ,       "win1251ukr"    },
+  {     "koi8_ukr_win1251ukr"   ,       "koi8u"         },
+  {     NULL                    ,       NULL            }
 };
 
-CHARSET_INFO *get_old_charset_by_name(const LEX_CSTRING &name)
+CHARSET_INFO *get_old_charset_by_name(const char *name)
 {
   my_old_conv *conv;
-  for (conv= old_conv; conv->old_name.str; conv++)
+  for (conv= old_conv; conv->old_name; conv++)
   {
-    if (conv->old_name.streq(name))
+    if (!my_strcasecmp(&my_charset_latin1, name, conv->old_name))
       return get_charset_by_csname(conv->new_name, MY_CS_PRIMARY, MYF(0));
   }
   return NULL;
@@ -651,7 +649,8 @@ ulong get_system_variable_hash_records(void)
 SHOW_VAR* enumerate_sys_vars(THD *thd, bool sorted, enum enum_var_type scope)
 {
   int count= system_variable_hash.records, i;
-  SHOW_VAR *result= thd->alloc<SHOW_VAR>(count + 1);
+  int size= sizeof(SHOW_VAR) * (count + 1);
+  SHOW_VAR *result= (SHOW_VAR*) thd->alloc(size);
 
   if (result)
   {
@@ -858,7 +857,7 @@ int set_var::light_check(THD *thd)
   @returns 0|1    ok or ERROR
 
   @note ERROR can be only due to abnormal operations involving
-  the server's execution environment such as
+  the server's execution evironment such as
   out of memory, hard disk failure or the computer blows up.
   Consider set_var::check() method if there is a need to return
   an error due to logics.
@@ -972,46 +971,13 @@ int set_var_password::update(THD *thd)
 }
 
 /*****************************************************************************
-  Functions to handle SET SESSION AUTHORIZATION
-*****************************************************************************/
-
-int set_var_authorization::check(THD *thd)
-{
-  /*
-    SET SESSION AUTHORIZATION cannot be combined with other variables,
-    so most of the checks are only done in update.
-  */
-  if (!thd->stmt_arena->is_conventional())
-    my_error(ER_UNSUPPORTED_PS, MYF(0));
-  else
-  if (thd->in_active_multi_stmt_transaction())
-    my_error(ER_CANT_SET_IN_TRANSACTION, MYF(0), "SESSION AUTHORIZATION");
-  else
-    return 0;
-
-  return 1;
-}
-
-int set_var_authorization::update(THD *thd)
-{
-#ifndef NO_EMBEDDED_ACCESS_CHECKS
-  int res= acl_setauthorization(thd, user);
-  if (!res)
-    thd->session_tracker.state_change.mark_as_changed(thd);
-  return res;
-#else
-  return 0;
-#endif
-}
-
-/*****************************************************************************
   Functions to handle SET ROLE
 *****************************************************************************/
 
 int set_var_role::check(THD *thd)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
-  int status= acl_check_setrole(thd, role, &access);
+  int status= acl_check_setrole(thd, role.str, &access);
   return status;
 #else
   return 0;
@@ -1021,7 +987,7 @@ int set_var_role::check(THD *thd)
 int set_var_role::update(THD *thd)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
-  int res= acl_setrole(thd, role, access);
+  int res= acl_setrole(thd, role.str, access);
   if (!res)
     thd->session_tracker.state_change.mark_as_changed(thd);
   return res;
@@ -1038,17 +1004,17 @@ int set_var_default_role::check(THD *thd)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   real_user= get_current_user(thd, user);
-  real_role= role;
+  real_role= role.str;
   if (role.str == current_role.str)
   {
     if (!thd->security_ctx->priv_role[0])
-      real_role= "NONE"_LEX_CSTRING;
+      real_role= "NONE";
     else
-      real_role= Lex_cstring_strlen(thd->security_ctx->priv_role);
+      real_role= thd->security_ctx->priv_role;
   }
 
-  return acl_check_set_default_role(thd, real_user->host,
-                                    real_user->user, real_role);
+  return acl_check_set_default_role(thd, real_user->host.str,
+                                    real_user->user.str, real_role);
 #else
   return 0;
 #endif
@@ -1059,7 +1025,7 @@ int set_var_default_role::update(THD *thd)
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   Reprepare_observer *save_reprepare_observer= thd->m_reprepare_observer;
   thd->m_reprepare_observer= 0;
-  int res= acl_set_default_role(thd, real_user->host, real_user->user,
+  int res= acl_set_default_role(thd, real_user->host.str, real_user->user.str,
                                 real_role);
   thd->m_reprepare_observer= save_reprepare_observer;
   return res;
@@ -1127,6 +1093,7 @@ static void store_var(Field *field, sys_var *var, enum_var_type scope,
 
 int fill_sysvars(THD *thd, TABLE_LIST *tables, COND *cond)
 {
+  char name_buffer[NAME_CHAR_LEN];
   bool res= 1;
   CHARSET_INFO *scs= system_charset_info;
   StringBuffer<STRING_BUFFER_USUAL_SIZE> strbuf(scs);
@@ -1142,14 +1109,15 @@ int fill_sysvars(THD *thd, TABLE_LIST *tables, COND *cond)
   for (uint i= 0; i < system_variable_hash.records; i++)
   {
     sys_var *var= (sys_var*) my_hash_element(&system_variable_hash, i);
-    CharBuffer<NAME_CHAR_LEN> name_buffer;
-    name_buffer.copy_caseup(scs, var->name);
+
+    strmake_buf(name_buffer, var->name.str);
+    my_caseup_str(system_charset_info, name_buffer);
 
     /* this must be done before evaluating cond */
     restore_record(tables->table, s->default_values);
-    fields[0]->store(name_buffer.to_lex_cstring(), scs);
+    fields[0]->store(name_buffer, strlen(name_buffer), scs);
 
-    if ((wild && wild_case_compare(scs, name_buffer.ptr(), wild))
+    if ((wild && wild_case_compare(system_charset_info, name_buffer, wild))
         || (cond && !cond->val_bool()))
       continue;
 
@@ -1225,7 +1193,7 @@ int fill_sysvars(THD *thd, TABLE_LIST *tables, COND *cond)
 
     // VARIABLE_COMMENT
     fields[7]->store(var->option.comment, strlen(var->option.comment),
-                    scs);
+                           scs);
 
     // NUMERIC_MIN_VALUE
     // NUMERIC_MAX_VALUE
@@ -1263,21 +1231,9 @@ int fill_sysvars(THD *thd, TABLE_LIST *tables, COND *cond)
       strbuf.length(0);
       for (i=0; i < tl->count; i++)
       {
-        bool show= TRUE;
-        if (tl->hidden_values)
-        {
-          for (uint j= 0; tl->hidden_values[j] >= 0; j++)
-          {
-            if (tl->hidden_values[j] == (int)i)
-              show= FALSE;
-          }
-        }
-        if (show)
-        {
-          const char *name= tl->type_names[i];
-          strbuf.append(name, strlen(name));
-          strbuf.append(',');
-        }
+        const char *name= tl->type_names[i];
+        strbuf.append(name, strlen(name));
+        strbuf.append(',');
       }
       if (!strbuf.is_empty())
         strbuf.chop();
@@ -1463,7 +1419,7 @@ resolve_engine_list(THD *thd, const char *str_arg, size_t str_arg_len,
   }
 
   if (temp_copy)
-    res= thd->calloc<plugin_ref>(count+1);
+    res= (plugin_ref *)thd->calloc((count+1)*sizeof(*res));
   else
     res= (plugin_ref *)my_malloc(PSI_INSTRUMENT_ME, (count+1)*sizeof(*res), MYF(MY_ZEROFILL|MY_WME));
   if (!res)
@@ -1541,7 +1497,7 @@ temp_copy_engine_list(THD *thd, plugin_ref *list)
 
   for (p= list, count= 0; *p; ++p, ++count)
     ;
-  p= thd->alloc<plugin_ref>(count+1);
+  p= (plugin_ref *)thd->alloc((count+1)*sizeof(*p));
   if (!p)
   {
     my_error(ER_OUTOFMEMORY, MYF(0), (int)((count+1)*sizeof(*p)));
@@ -1567,7 +1523,7 @@ pretty_print_engine_list(THD *thd, plugin_ref *list)
   size= 0;
   for (p= list; *p; ++p)
     size+= plugin_name(*p)->length + 1;
-  buf= thd->alloc(size);
+  buf= static_cast<char *>(thd->alloc(size));
   if (!buf)
     return NULL;
   pos= buf;
@@ -1600,3 +1556,4 @@ ulonglong get_system_variable_hash_version(void)
 {
   return system_variable_hash_version;
 }
+

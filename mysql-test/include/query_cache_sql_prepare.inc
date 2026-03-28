@@ -30,7 +30,7 @@ connection default;
 
 set @initial_query_cache_size = @@global.query_cache_size;
 set @@global.query_cache_size=102400;
-flush global status;
+flush status;
 --disable_warnings
 drop table if exists t1;
 --enable_warnings
@@ -485,7 +485,7 @@ drop table if exists t1;
 --enable_warnings
 create table t1 (a varchar(255));
 insert into t1 (a) values ("Pack my box with five dozen liquor jugs.");
-flush global status;
+flush status;
 prepare stmt from "select a from t1";
 execute stmt;
 set @@global.query_cache_size=0;

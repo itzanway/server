@@ -34,7 +34,7 @@ fi
 
 commands=""
 # git clean -fdX removes all ignored (build) files
-if test -d .git && test -d libmariadb/CMakeFiles
+if test -d .git
 then
     commands="\
 git clean -fdX

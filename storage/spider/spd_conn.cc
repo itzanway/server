@@ -57,6 +57,7 @@ pthread_mutex_t spider_conn_id_mutex;
 pthread_mutex_t spider_ipport_conn_mutex;
 ulonglong spider_conn_id;
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
 extern pthread_attr_t spider_pt_attr;
 
 #ifdef HAVE_PSI_INTERFACE
@@ -64,6 +65,7 @@ extern PSI_mutex_key spd_key_mutex_mta_conn;
 extern PSI_mutex_key spd_key_mutex_conn_i;
 extern PSI_mutex_key spd_key_mutex_conn_loop_check;
 extern PSI_cond_key spd_key_cond_conn_i;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
 extern PSI_mutex_key spd_key_mutex_bg_conn_chain;
 extern PSI_mutex_key spd_key_mutex_bg_conn_sync;
 extern PSI_mutex_key spd_key_mutex_bg_conn;
@@ -81,6 +83,8 @@ extern PSI_thread_key spd_key_thd_bg;
 extern PSI_thread_key spd_key_thd_bg_sts;
 extern PSI_thread_key spd_key_thd_bg_crd;
 extern PSI_thread_key spd_key_thd_bg_mon;
+#endif
+#endif
 #endif
 
 /* UTC time zone for timestamp columns */
@@ -266,7 +270,9 @@ int spider_free_conn_alloc(
   SPIDER_CONN *conn
 ) {
   DBUG_ENTER("spider_free_conn_alloc");
+#ifndef WITHOUT_SPIDER_BG_SEARCH
   spider_free_conn_thread(conn);
+#endif
   spider_db_disconnect(conn);
   if (conn->db_conn)
   {
@@ -404,7 +410,7 @@ SPIDER_CONN *spider_create_conn(
   char *tmp_name, *tmp_host, *tmp_username, *tmp_password, *tmp_socket;
   char *tmp_wrapper, *tmp_db, *tmp_ssl_ca, *tmp_ssl_capath, *tmp_ssl_cert;
   char *tmp_ssl_cipher, *tmp_ssl_key, *tmp_default_file, *tmp_default_group;
-  char *tmp_dsn, *tmp_filedsn, *tmp_driver, *tmp_odbc_conn_str;
+  char *tmp_dsn, *tmp_filedsn, *tmp_driver;
   DBUG_ENTER("spider_create_conn");
 
   if (unlikely(!UTC))
@@ -456,8 +462,6 @@ SPIDER_CONN *spider_create_conn(
           (uint) (share->tgt_filedsns_lengths[all_link_idx] + 1),
         &tmp_driver,
           (uint) (share->tgt_drivers_lengths[all_link_idx] + 1),
-        &tmp_odbc_conn_str,
-          (uint) (share->tgt_odbc_conn_strs_lengths[all_link_idx] + 1),
         &need_mon, (uint) (sizeof(int)),
         NullS))
     ) {
@@ -533,10 +537,6 @@ SPIDER_CONN *spider_create_conn(
     spider_memcpy_or_null(&conn->tgt_driver, tmp_driver, share->tgt_drivers[all_link_idx],
                           &conn->tgt_driver_length,
                           share->tgt_drivers_lengths[all_link_idx]);
-    spider_memcpy_or_null(&conn->tgt_odbc_conn_str, tmp_odbc_conn_str,
-                          share->tgt_odbc_conn_strs[all_link_idx],
-                          &conn->tgt_odbc_conn_str_length,
-                          share->tgt_odbc_conn_strs_lengths[all_link_idx]);
     conn->tgt_port = share->tgt_ports[all_link_idx];
     conn->tgt_ssl_vsc = share->tgt_ssl_vscs[all_link_idx];
     conn->dbton_id = share->sql_dbton_ids[all_link_idx];
@@ -1399,10 +1399,6 @@ int spider_conn_queue_loop_check(
     lcptr->merged_value.str = merged_value;
     lcptr->hash_value_to = my_calc_hash(&conn->loop_check_queue,
       (uchar *) to_str.str, to_str.length);
-    /*
-      Mark as checked. It will be added to loop_check_queue in
-      spider_conn_queue_and_merge_loop_check() below for checking
-    */
     if (unlikely(my_hash_insert(&conn->loop_checked, (uchar *) lcptr)))
     {
       my_safe_afree(loop_check_buf, buf_sz);
@@ -1704,6 +1700,7 @@ SPIDER_CONN *spider_tree_delete(
   DBUG_RETURN(top);
 }
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
 int spider_set_conn_bg_param(
   ha_spider *spider
 ) {
@@ -1952,8 +1949,10 @@ void spider_bg_all_conn_wait(
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
     conn = spider->conns[roop_count];
+#ifndef WITHOUT_SPIDER_BG_SEARCH
     if (conn && result_list->bgs_working)
       spider_bg_conn_wait(conn);
+#endif
   }
   DBUG_VOID_RETURN;
 }
@@ -1962,10 +1961,13 @@ int spider_bg_all_conn_pre_next(
   ha_spider *spider,
   int link_idx
 ) {
+#ifndef WITHOUT_SPIDER_BG_SEARCH
   int roop_start, roop_end, roop_count, lock_mode, link_ok, error_num;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   SPIDER_SHARE *share = spider->share;
+#endif
   DBUG_ENTER("spider_bg_all_conn_pre_next");
+#ifndef WITHOUT_SPIDER_BG_SEARCH
   if (result_list->bgs_phase > 0)
   {
     lock_mode = spider_conn_lock_mode(spider);
@@ -1995,6 +1997,7 @@ int spider_bg_all_conn_pre_next(
         DBUG_RETURN(error_num);
     }
   }
+#endif
   DBUG_RETURN(0);
 }
 
@@ -2040,8 +2043,10 @@ void spider_bg_all_conn_break(
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
     conn = spider->conns[roop_count];
+#ifndef WITHOUT_SPIDER_BG_SEARCH
     if (conn && result_list->bgs_working)
       spider_bg_conn_break(conn, spider);
+#endif
     if (spider->quick_targets[roop_count])
     {
       spider_db_free_one_quick_result((SPIDER_RESULT *) result_list->current);
@@ -2171,6 +2176,8 @@ int spider_bg_conn_search(
               result_list->split_read ?
               result_list->split_read :
               result_list->internal_limit - result_list->record_num;
+            DBUG_PRINT("info",("spider sql_kinds=%u", spider->sql_kinds));
+            if (spider->sql_kinds & SPIDER_SQL_KIND_SQL)
             {
               if ((error_num = spider->reappend_limit_sql_part(
                 result_list->internal_offset + result_list->record_num,
@@ -2185,6 +2192,17 @@ int spider_bg_conn_search(
                 (error_num = spider->append_select_lock_sql_part(
                   SPIDER_SQL_TYPE_SELECT_SQL))
               ) {
+                pthread_mutex_unlock(&conn->bg_conn_mutex);
+                DBUG_RETURN(error_num);
+              }
+            }
+            if (spider->sql_kinds & SPIDER_SQL_KIND_HANDLER)
+            {
+              spider_db_append_handler_next(spider);
+              if ((error_num = spider->reappend_limit_sql_part(
+                0, result_list->limit_num,
+                SPIDER_SQL_TYPE_HANDLER)))
+              {
                 pthread_mutex_unlock(&conn->bg_conn_mutex);
                 DBUG_RETURN(error_num);
               }
@@ -2307,6 +2325,8 @@ int spider_bg_conn_search(
             result_list->split_read ?
             result_list->split_read :
             result_list->internal_limit - result_list->record_num;
+          DBUG_PRINT("info",("spider sql_kinds=%u", spider->sql_kinds));
+          if (spider->sql_kinds & SPIDER_SQL_KIND_SQL)
           {
             if ((error_num = spider->reappend_limit_sql_part(
               result_list->internal_offset + result_list->record_num,
@@ -2321,6 +2341,17 @@ int spider_bg_conn_search(
               (error_num = spider->append_select_lock_sql_part(
                 SPIDER_SQL_TYPE_SELECT_SQL))
             ) {
+              pthread_mutex_unlock(&conn->bg_conn_mutex);
+              DBUG_RETURN(error_num);
+            }
+          }
+          if (spider->sql_kinds & SPIDER_SQL_KIND_HANDLER)
+          {
+            spider_db_append_handler_next(spider);
+            if ((error_num = spider->reappend_limit_sql_part(
+              0, result_list->limit_num,
+              SPIDER_SQL_TYPE_HANDLER)))
+            {
               pthread_mutex_unlock(&conn->bg_conn_mutex);
               DBUG_RETURN(error_num);
             }
@@ -2526,7 +2557,12 @@ void *spider_bg_conn_action(
         !result_list->bgs_current->result
       ) {
         ulong sql_type;
-        sql_type= SPIDER_SQL_TYPE_SELECT_SQL | SPIDER_SQL_TYPE_TMP_SQL;
+          if (spider->sql_kind[conn->link_idx] == SPIDER_SQL_KIND_SQL)
+          {
+            sql_type = SPIDER_SQL_TYPE_SELECT_SQL | SPIDER_SQL_TYPE_TMP_SQL;
+          } else {
+            sql_type = SPIDER_SQL_TYPE_HANDLER;
+          }
         if (spider->use_fields)
         {
           if ((error_num = dbton_handler->set_sql_for_exec(sql_type,
@@ -3602,6 +3638,7 @@ void *spider_bg_mon_action(
     }
   }
 }
+#endif
 
 /**
   Returns a random (active) server with a maximum required link status
@@ -3629,35 +3666,35 @@ int spider_conn_first_link_idx(
   int link_count,
   int link_status
 ) {
-  int eligible_link_idx, eligible_links = 0;
-  longlong balance_total = 0, balance_threshold;
+  int roop_count, active_links = 0;
+  longlong balance_total = 0, balance_val;
   double rand_val;
-  int *link_idxs, result= -1;
+  int *link_idxs, link_idx;
+  long *balances;
   DBUG_ENTER("spider_conn_first_link_idx");
   char *ptr;
-  /* Allocate memory for link_idxs */
-  ptr = (char *) my_alloca((sizeof(int) * link_count));
+  ptr = (char *) my_alloca((sizeof(int) * link_count) + (sizeof(long) * link_count));
   if (!ptr)
   {
     DBUG_PRINT("info",("spider out of memory"));
     DBUG_RETURN(-2);
   }
   link_idxs = (int *) ptr;
-
-  /* Filter for eligible servers, store their indexes and calculate
-  the total balances */
-  for (int link_idx = 0; link_idx < link_count; link_idx++)
+  ptr += sizeof(int) * link_count;
+  balances = (long *) ptr;
+  for (roop_count = 0; roop_count < link_count; roop_count++)
   {
-    DBUG_ASSERT((conn_link_idx[link_idx] - link_idx) % link_count == 0);
-    if (link_statuses[conn_link_idx[link_idx]] <= link_status)
+    DBUG_ASSERT((conn_link_idx[roop_count] - roop_count) % link_count == 0);
+    if (link_statuses[conn_link_idx[roop_count]] <= link_status)
     {
-      link_idxs[eligible_links] = link_idx;
-      balance_total += access_balances[link_idx];
-      eligible_links++;
+      link_idxs[active_links] = roop_count;
+      balances[active_links] = access_balances[roop_count];
+      balance_total += access_balances[roop_count];
+      active_links++;
     }
   }
 
-  if (eligible_links == 0)
+  if (active_links == 0)
   {
     DBUG_PRINT("info",("spider all links are failed"));
     my_afree(link_idxs);
@@ -3667,25 +3704,21 @@ int spider_conn_first_link_idx(
   DBUG_PRINT("info",("spider thread_id=%lu", thd_get_thread_id(thd)));
   rand_val = spider_rand(thd->variables.server_id + thd_get_thread_id(thd));
   DBUG_PRINT("info",("spider rand_val=%f", rand_val));
-  balance_threshold = (longlong) (rand_val * balance_total);
-  DBUG_PRINT("info",("spider balance_threshold=%lld", balance_threshold));
-  /* Since balance_threshold < total balance, this loop WILL break */
-  for (eligible_link_idx = 0;
-       eligible_link_idx < eligible_links;
-       eligible_link_idx++)
+  balance_val = (longlong) (rand_val * balance_total);
+  DBUG_PRINT("info",("spider balance_val=%lld", balance_val));
+  for (roop_count = 0; roop_count < active_links - 1; roop_count++)
   {
-    result = link_idxs[eligible_link_idx];
-    const long balance = access_balances[result];
     DBUG_PRINT("info",("spider balances[%d]=%ld",
-      link_idxs[eligible_link_idx], balance));
-    if (balance_threshold < balance)
+      roop_count, balances[roop_count]));
+    if (balance_val < balances[roop_count])
       break;
-    balance_threshold -= balance;
+    balance_val -= balances[roop_count];
   }
 
-  DBUG_PRINT("info",("spider first link_idx=%d", result));
+  DBUG_PRINT("info",("spider first link_idx=%d", link_idxs[roop_count]));
+  link_idx = link_idxs[roop_count];
   my_afree(link_idxs);
-  DBUG_RETURN(result);
+  DBUG_RETURN(link_idx);
 }
 
 int spider_conn_next_link_idx(
@@ -3786,6 +3819,89 @@ bool spider_conn_check_recovery_link(
       DBUG_RETURN(TRUE);
   }
   DBUG_RETURN(FALSE);
+}
+
+bool spider_conn_use_handler(
+  ha_spider *spider,
+  int lock_mode,
+  int link_idx
+) {
+  THD *thd = spider->wide_handler->trx->thd;
+  int use_handler = spider_param_use_handler(thd,
+    spider->share->use_handlers[link_idx]);
+  DBUG_ENTER("spider_conn_use_handler");
+  DBUG_PRINT("info",("spider use_handler=%d", use_handler));
+  if (spider->do_direct_update)
+  {
+    spider->sql_kinds |= SPIDER_SQL_KIND_SQL;
+    spider->sql_kind[link_idx] = SPIDER_SQL_KIND_SQL;
+      spider->direct_update_kinds |= SPIDER_SQL_KIND_SQL;
+      DBUG_PRINT("info",("spider FALSE by using direct_update"));
+      DBUG_RETURN(FALSE);
+  }
+  if (spider->use_spatial_index)
+  {
+    DBUG_PRINT("info",("spider FALSE by use_spatial_index"));
+    spider->sql_kinds |= SPIDER_SQL_KIND_SQL;
+    spider->sql_kind[link_idx] = SPIDER_SQL_KIND_SQL;
+    DBUG_RETURN(FALSE);
+  }
+  uint dbton_id;
+  spider_db_handler *dbton_hdl;
+  dbton_id = spider->share->sql_dbton_ids[spider->conn_link_idx[link_idx]];
+  dbton_hdl = spider->dbton_handler[dbton_id];
+  if (!dbton_hdl->support_use_handler(use_handler))
+  {
+    DBUG_PRINT("info",("spider FALSE by dbton"));
+    spider->sql_kinds |= SPIDER_SQL_KIND_SQL;
+    spider->sql_kind[link_idx] = SPIDER_SQL_KIND_SQL;
+    DBUG_RETURN(FALSE);
+  }
+  if (
+    spider->wide_handler->sql_command == SQLCOM_HA_READ &&
+    (
+      !(use_handler & 2) ||
+      (
+        spider_param_sync_trx_isolation(thd) &&
+        thd_tx_isolation(thd) == ISO_SERIALIZABLE
+      )
+    )
+  ) {
+    DBUG_PRINT("info",("spider TRUE by HA"));
+    spider->sql_kinds |= SPIDER_SQL_KIND_HANDLER;
+    spider->sql_kind[link_idx] = SPIDER_SQL_KIND_HANDLER;
+    DBUG_RETURN(TRUE);
+  }
+  if (
+    spider->wide_handler->sql_command != SQLCOM_HA_READ &&
+    lock_mode == SPIDER_LOCK_MODE_NO_LOCK &&
+    spider_param_sync_trx_isolation(thd) &&
+    thd_tx_isolation(thd) != ISO_SERIALIZABLE &&
+    (use_handler & 1)
+  ) {
+    DBUG_PRINT("info",("spider TRUE by PARAM"));
+    spider->sql_kinds |= SPIDER_SQL_KIND_HANDLER;
+    spider->sql_kind[link_idx] = SPIDER_SQL_KIND_HANDLER;
+    DBUG_RETURN(TRUE);
+  }
+  spider->sql_kinds |= SPIDER_SQL_KIND_SQL;
+  spider->sql_kind[link_idx] = SPIDER_SQL_KIND_SQL;
+  DBUG_RETURN(FALSE);
+}
+
+bool spider_conn_need_open_handler(
+  ha_spider *spider,
+  uint idx,
+  int link_idx
+) {
+  DBUG_ENTER("spider_conn_need_open_handler");
+  DBUG_PRINT("info",("spider spider=%p", spider));
+  if (spider->handler_opened(link_idx))
+  {
+      DBUG_PRINT("info",("spider HA already opened"));
+      DBUG_RETURN(FALSE);
+  }
+  DBUG_RETURN(TRUE);
 }
 
 SPIDER_CONN* spider_get_conn_from_idle_connection(

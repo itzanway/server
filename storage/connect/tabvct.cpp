@@ -290,7 +290,7 @@ PCOL TDBVCT::MakeCol(PGLOBAL g, PCOLDEF cdp, PCOL cprec, int n)
 /***********************************************************************/
 bool TDBVCT::IsUsingTemp(PGLOBAL)
   {
-  // For developers
+  // For developpers
   return (UseTemp() == TMP_TEST);
   } // end of IsUsingTemp
 

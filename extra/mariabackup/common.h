@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1335  USA
 
 #include <my_global.h>
 #include <mysql_version.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <my_sys.h>
 
@@ -148,9 +149,10 @@ static inline ATTRIBUTE_FORMAT(printf, 1,2) ATTRIBUTE_NORETURN void die(const ch
 /***********************************************************************
 Computes bit shift for a given value. If the argument is not a power
 of 2, returns 0.*/
-static inline unsigned get_bit_shift(size_t value)
+static inline size_t
+get_bit_shift(size_t value)
 {
-    unsigned shift;
+    size_t shift;
 
     if (value == 0)
 	return 0;

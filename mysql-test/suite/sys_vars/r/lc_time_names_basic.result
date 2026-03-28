@@ -456,6 +456,12 @@ SET @@session.lc_time_names=sq_AL;
 SELECT @@session.lc_time_names;
 @@session.lc_time_names
 sq_AL
+SET @@session.lc_time_names=sr_YU;
+Warnings:
+Warning	1287	'sr_YU' is deprecated and will be removed in a future release. Please use sr_RS instead
+SELECT @@session.lc_time_names;
+@@session.lc_time_names
+sr_RS
 SET @@session.lc_time_names=sv_FI;
 SELECT @@session.lc_time_names;
 @@session.lc_time_names
@@ -897,6 +903,12 @@ SET @@global.lc_time_names=sq_AL;
 SELECT @@global.lc_time_names;
 @@global.lc_time_names
 sq_AL
+SET @@global.lc_time_names=sr_YU;
+Warnings:
+Warning	1287	'sr_YU' is deprecated and will be removed in a future release. Please use sr_RS instead
+SELECT @@global.lc_time_names;
+@@global.lc_time_names
+sr_RS
 SET @@global.lc_time_names=sv_FI;
 SELECT @@global.lc_time_names;
 @@global.lc_time_names
@@ -1012,23 +1024,7 @@ SELECT @@lc_time_names;
 @@lc_time_names
 rm_CH
 SET @@lc_time_names = 111;
-SELECT @@lc_time_names;
-@@lc_time_names
-ka_GE
-SET @@lc_time_names = 112;
-SELECT @@lc_time_names;
-@@lc_time_names
-sw_KE
-SET @@lc_time_names = 113;
-SELECT @@lc_time_names;
-@@lc_time_names
-sr_Latn_RS
-SET @@lc_time_names = 114;
-SELECT @@lc_time_names;
-@@lc_time_names
-sr_Cyrl_RS
-SET @@lc_time_names = 180;
-ERROR HY000: Unknown locale: '180'
+ERROR HY000: Unknown locale: '111'
 '#--------------------FN_DYNVARS_060_10-------------------------#'
 SET @@lc_time_names = en_EN;
 ERROR HY000: Unknown locale: 'en_EN'
@@ -1042,8 +1038,6 @@ SET @@lc_time_names = 'en US';
 ERROR HY000: Unknown locale: 'en US'
 SET @@lc_time_names = 'enUS';
 ERROR HY000: Unknown locale: 'enUS'
-SET @@session.lc_time_names=sr_YU;
-ERROR HY000: Unknown locale: 'sr_YU'
 SET @@lc_time_names = true;
 SELECT @@lc_time_names AS res_with_true;
 res_with_true

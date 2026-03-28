@@ -333,9 +333,6 @@ fsp_header_check_encryption_key(
 dberr_t fsp_header_init(fil_space_t *space, uint32_t size, mtr_t *mtr)
   MY_ATTRIBUTE((nonnull, warn_unused_result));
 
-buf_block_t* fsp_page_create(fil_space_t *space, uint32_t offset,
-                             mtr_t *mtr) noexcept;
-
 /** Create a new segment.
 @param space                tablespace
 @param byte_offset          byte offset of the created segment header
@@ -358,9 +355,9 @@ and how many pages are currently used.
 @param[out]     used    number of pages that are used (not more than reserved)
 @param[in,out]  mtr     mini-transaction
 @return number of reserved pages */
-uint32_t fseg_n_reserved_pages(const buf_block_t &block,
-                               const fseg_header_t *header, uint32_t *used,
-                               mtr_t *mtr) noexcept
+ulint fseg_n_reserved_pages(const buf_block_t &block,
+                            const fseg_header_t *header, ulint *used,
+                            mtr_t *mtr)
   MY_ATTRIBUTE((nonnull));
 /**********************************************************************//**
 Allocates a single free page from a segment. This function implements
@@ -455,14 +452,12 @@ fseg_free_page(
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
 
 /** Determine whether a page is allocated.
-@param mtr     mini-transaction
 @param space   tablespace
 @param page    page number
 @return error code
 @retval DB_SUCCESS             if the page is marked as free
 @retval DB_SUCCESS_LOCKED_REC  if the page is marked as allocated */
-dberr_t fseg_page_is_allocated(mtr_t *mtr, fil_space_t *space, unsigned page)
-  noexcept
+dberr_t fseg_page_is_allocated(fil_space_t *space, unsigned page)
   MY_ATTRIBUTE((nonnull, warn_unused_result));
 
 MY_ATTRIBUTE((nonnull, warn_unused_result))
@@ -554,13 +549,6 @@ inline void fsp_init_file_page(
 	mtr->init(block);
 }
 
-/** Truncate the system tablespace
-@param shutdown Called during shutdown */
-void fsp_system_tablespace_truncate(bool shutdown);
-
-/** Truncate the temporary tablespace */
-void fsp_shrink_temp_space();
-
 #ifndef UNIV_DEBUG
 # define fsp_init_file_page(space, block, mtr) fsp_init_file_page(block, mtr)
 #endif
@@ -578,11 +566,14 @@ fseg_print(
 /** Convert FSP_SPACE_FLAGS from the buggy MariaDB 10.1.0..10.1.20 format.
 @param[in]	flags	the contents of FSP_SPACE_FLAGS
 @return	the flags corrected from the buggy MariaDB 10.1 format
-@retval	UINT32_MAX  if the flags are not in the buggy 10.1 format */
+@retval	ULINT_UNDEFINED	if the flags are not in the buggy 10.1 format */
 MY_ATTRIBUTE((warn_unused_result, const))
-inline uint32_t fsp_flags_convert_from_101(uint32_t flags)
+UNIV_INLINE
+ulint
+fsp_flags_convert_from_101(ulint flags)
 {
-	DBUG_EXECUTE_IF("fsp_flags_is_valid_failure", return UINT32_MAX;);
+	DBUG_EXECUTE_IF("fsp_flags_is_valid_failure",
+			return(ULINT_UNDEFINED););
 	if (flags == 0 || fil_space_t::full_crc32(flags)) {
 		return(flags);
 	}
@@ -591,7 +582,7 @@ inline uint32_t fsp_flags_convert_from_101(uint32_t flags)
 		/* The most significant FSP_SPACE_FLAGS bit that was ever set
 		by MariaDB 10.1.0 to 10.1.20 was bit 17 (misplaced DATA_DIR flag).
 		The flags must be less than 1<<18 in order to be valid. */
-		return UINT32_MAX;
+		return(ULINT_UNDEFINED);
 	}
 
 	if ((flags & (FSP_FLAGS_MASK_POST_ANTELOPE | FSP_FLAGS_MASK_ATOMIC_BLOBS))
@@ -600,7 +591,7 @@ inline uint32_t fsp_flags_convert_from_101(uint32_t flags)
 		ROW_FORMAT=DYNAMIC or ROW_FORMAT=COMPRESSED) flag
 		is set, then the "post Antelope" (ROW_FORMAT!=REDUNDANT) flag
 		must also be set. */
-		return UINT32_MAX;
+		return(ULINT_UNDEFINED);
 	}
 
 	/* Bits 6..10 denote compression in MariaDB 10.1.0 to 10.1.20.
@@ -629,19 +620,19 @@ inline uint32_t fsp_flags_convert_from_101(uint32_t flags)
 	invalid (COMPRESSION_LEVEL=3 but COMPRESSION=0)
 	+0b00000: innodb_page_size=16k (looks like COMPRESSION=0)
 	???	Could actually be compressed; see PAGE_SSIZE below */
-	const uint32_t level = FSP_FLAGS_GET_PAGE_COMPRESSION_LEVEL_MARIADB101(
+	const ulint level = FSP_FLAGS_GET_PAGE_COMPRESSION_LEVEL_MARIADB101(
 		flags);
 	if (FSP_FLAGS_GET_PAGE_COMPRESSION_MARIADB101(flags) != (level != 0)
 	    || level > 9) {
 		/* The compression flags are not in the buggy MariaDB
 		10.1 format. */
-		return UINT32_MAX;
+		return(ULINT_UNDEFINED);
 	}
 	if (!(~flags & FSP_FLAGS_MASK_ATOMIC_WRITES_MARIADB101)) {
 		/* The ATOMIC_WRITES flags cannot be 0b11.
 		(The bits 11..12 should actually never be 0b11,
 		because in MySQL they would be SHARED|TEMPORARY.) */
-		return UINT32_MAX;
+		return(ULINT_UNDEFINED);
 	}
 
 	/* Bits 13..16 are the wrong position for PAGE_SSIZE, and they
@@ -656,23 +647,23 @@ inline uint32_t fsp_flags_convert_from_101(uint32_t flags)
 	will be properly rejected by older MariaDB 10.1.x because they
 	would read as PAGE_SSIZE>=8 which is not valid. */
 
-	const uint32_t ssize = FSP_FLAGS_GET_PAGE_SSIZE_MARIADB101(flags);
+	const ulint	ssize = FSP_FLAGS_GET_PAGE_SSIZE_MARIADB101(flags);
 	if (ssize == 1 || ssize == 2 || ssize == 5 || ssize & 8) {
 		/* the page_size is not between 4k and 64k;
 		16k should be encoded as 0, not 5 */
-		return UINT32_MAX;
+		return(ULINT_UNDEFINED);
 	}
-	const uint32_t zssize = FSP_FLAGS_GET_ZIP_SSIZE(flags);
+	const ulint	zssize = FSP_FLAGS_GET_ZIP_SSIZE(flags);
 	if (zssize == 0) {
 		/* not ROW_FORMAT=COMPRESSED */
 	} else if (zssize > (ssize ? ssize : 5)) {
 		/* invalid KEY_BLOCK_SIZE */
-		return UINT32_MAX;
+		return(ULINT_UNDEFINED);
 	} else if (~flags & (FSP_FLAGS_MASK_POST_ANTELOPE
 			     | FSP_FLAGS_MASK_ATOMIC_BLOBS)) {
 		/* both these flags should be set for
 		ROW_FORMAT=COMPRESSED */
-		return UINT32_MAX;
+		return(ULINT_UNDEFINED);
 	}
 
 	flags = ((flags & 0x3f) | ssize << FSP_FLAGS_POS_PAGE_SSIZE
@@ -687,11 +678,19 @@ inline uint32_t fsp_flags_convert_from_101(uint32_t flags)
 @param[in]	actual		flags read from FSP_SPACE_FLAGS
 @return whether the flags match */
 MY_ATTRIBUTE((warn_unused_result))
-inline bool fsp_flags_match(uint32_t expected, uint32_t actual)
+UNIV_INLINE
+bool
+fsp_flags_match(ulint expected, ulint actual)
 {
-  expected&= ~FSP_FLAGS_MEM_MASK;
-  ut_ad(fil_space_t::is_valid_flags(expected, false));
-  return actual == expected || fsp_flags_convert_from_101(actual) == expected;
+	expected &= ~FSP_FLAGS_MEM_MASK;
+	ut_ad(fil_space_t::is_valid_flags(expected, false));
+
+	if (actual == expected) {
+		return(true);
+	}
+
+	actual = fsp_flags_convert_from_101(actual);
+	return(actual == expected);
 }
 
 /** Determine if FSP_SPACE_FLAGS are from an incompatible MySQL format.
@@ -699,11 +698,11 @@ inline bool fsp_flags_match(uint32_t expected, uint32_t actual)
 @return	MySQL flags shifted.
 @retval	0, if not a MySQL incompatible format. */
 MY_ATTRIBUTE((warn_unused_result, const))
-inline uint32_t fsp_flags_is_incompatible_mysql(uint32_t flags)
+inline ulint fsp_flags_is_incompatible_mysql(ulint flags)
 {
   /*
     MySQL-8.0 SDI flag (bit 14),
-    or MySQL 5.7 Encryption flag (bit 13)
+    or MySQL 5.7 Encyption flag (bit 13)
   */
   return flags >> 13 & 3;
 }

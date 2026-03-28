@@ -47,25 +47,6 @@ fts_string_dup(
 }
 
 /******************************************************************//**
-Duplicate a string with lower case conversion */
-UNIV_INLINE
-fts_string_t
-fts_string_dup_casedn(
-/*===========*/
-	CHARSET_INFO *cs,			/*!< in: the character set */
-	const fts_string_t&	src,		/*!< in: src string */
-	mem_heap_t*		heap)		/*!< in: heap to use */
-{
-	size_t dst_nbytes = src.f_len * cs->casedn_multiply() + 1;
-	fts_string_t dst;
-	dst.f_str = (byte*)mem_heap_alloc(heap, dst_nbytes);
-	dst.f_len = cs->casedn_z((const char *) src.f_str, src.f_len,
-				(char *) dst.f_str, dst_nbytes);
-	dst.f_n_char = src.f_n_char;
-	return dst;
-}
-
-/******************************************************************//**
 Get the first character's code position for FTS index partition */
 extern
 ulint
@@ -142,7 +123,8 @@ fts_select_index_by_hash(
 	const byte*		str,
 	ulint			len)
 {
-  my_hasher_st hasher= my_hasher_mysql5x();
+	ulong	nr1 = 1;
+	ulong	nr2 = 4;
 
 	ut_ad(!(str == NULL && len > 0));
 
@@ -160,9 +142,9 @@ fts_select_index_by_hash(
 	ut_ad(char_len <= len);
 
 	/* Get collation hash code */
-	my_ci_hash_sort(&hasher, cs, str, char_len);
+	my_ci_hash_sort(cs, str, char_len, &nr1, &nr2);
 
-	return(hasher.m_nr1 % FTS_NUM_AUX_INDEX);
+	return(nr1 % FTS_NUM_AUX_INDEX);
 }
 
 /** Select the FTS auxiliary index for the given character.

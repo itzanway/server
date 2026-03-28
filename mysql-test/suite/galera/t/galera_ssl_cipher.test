@@ -1,5 +1,5 @@
 #
-# Test upgrading the SSL cipher
+# Test upgrading the SSL chipher
 #
 
 --source include/galera_cluster.inc

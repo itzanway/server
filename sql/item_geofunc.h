@@ -20,11 +20,12 @@
 
 /* This file defines all spatial functions */
 
+#ifdef HAVE_SPATIAL
+
 #ifdef USE_PRAGMA_INTERFACE
 #pragma interface			/* gcc class implementation */
 #endif
 
-#include <bitset>
 #include "sql_type_geom.h"
 #include "item.h"
 #include "gstream.h"
@@ -41,7 +42,7 @@ public:
   Item_geometry_func(THD *thd, Item *a, Item *b, Item *c):
     Item_str_func(thd, a, b, c) {}
   Item_geometry_func(THD *thd, List<Item> &list): Item_str_func(thd, list) {}
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   const Type_handler *type_handler() const override
   { return &type_handler_geometry; }
 };
@@ -145,7 +146,7 @@ public:
 
 
 /*
-  Functions returning GEOMETRY measurements of a single GEOMETRY argument
+  Functions returning GEOMETRY measurements of a single GEOEMETRY argument
 */
 class Item_geometry_func_args_geometry: public Item_geometry_func
 {
@@ -252,10 +253,6 @@ protected:
 class Item_func_geometry_from_json: public Item_geometry_func
 {
   String tmp_js;
-  json_engine_t je;
-  MEM_ROOT current_mem_root;
-  int mem_root_inited;
-
   bool check_arguments() const override
   {
     // TODO: check with Alexey, for better args[1] and args[2] type control
@@ -263,18 +260,16 @@ class Item_func_geometry_from_json: public Item_geometry_func
            check_argument_types_traditional_scalar(1, MY_MIN(3, arg_count));
   }
 public:
-  Item_func_geometry_from_json(THD *thd, Item *js): Item_geometry_func(thd, js)
-  { mem_root_inited= false; }
+  Item_func_geometry_from_json(THD *thd, Item *js): Item_geometry_func(thd, js) {}
   Item_func_geometry_from_json(THD *thd, Item *js, Item *opt):
-    Item_geometry_func(thd, js, opt) { mem_root_inited= false; }
+    Item_geometry_func(thd, js, opt) {}
   Item_func_geometry_from_json(THD *thd, Item *js, Item *opt, Item *srid):
-    Item_geometry_func(thd, js, opt, srid) { mem_root_inited= false; }
+    Item_geometry_func(thd, js, opt, srid) {}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("st_geomfromgeojson") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override;
   String *val_str(String *) override;
 
 protected:
@@ -294,7 +289,7 @@ public:
     return name;
   }
   String *val_str_ascii(String *) override;
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
 
 protected:
   Item *shallow_copy(THD *thd) const override
@@ -314,7 +309,7 @@ public:
   String *val_str(String *) override;
   const Type_handler *type_handler() const override
   { return &type_handler_long_blob; }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     collation.set(&my_charset_bin);
     decimals=0;
@@ -349,7 +344,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_asgeojson") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   String *val_str_ascii(String *) override;
 
 protected:
@@ -369,7 +364,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_geometrytype") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     // "GeometryCollection" is the longest
     fix_length_and_charset(20, default_charset());
@@ -619,9 +614,9 @@ public:
     item_type=it;
   }
   String *val_str(String *) override;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    if (Item_geometry_func::fix_length_and_dec(thd))
+    if (Item_geometry_func::fix_length_and_dec())
       return TRUE;
     for (unsigned int i= 0; i < arg_count; ++i)
     {
@@ -1006,7 +1001,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_isempty") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { set_maybe_null(); return FALSE; }
   bool need_parentheses_in_default() override { return false; }
 
@@ -1017,6 +1012,9 @@ protected:
 
 class Item_func_issimple: public Item_long_func_args_geometry
 {
+  Gcalc_heap collector;
+  Gcalc_function func;
+  Gcalc_scan_iterator scan_it;
   String tmp;
 public:
   Item_func_issimple(THD *thd, Item *a)
@@ -1027,35 +1025,12 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_issimple") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override { decimals=0; max_length=2; return FALSE; }
+  bool fix_length_and_dec() override { decimals=0; max_length=2; return FALSE; }
   decimal_digits_t decimal_precision() const override { return 1; }
 
 protected:
   Item *shallow_copy(THD *thd) const override
   { return get_item_copy<Item_func_issimple>(thd, this); }
-};
-
-class Item_func_simplify: public Item_geometry_func_args_geometry
-{
-  String tmp_value;
-  Gcalc_heap collector;
-  Gcalc_function func;
-  Gcalc_scan_iterator scan_it;
-public:
-  Item_func_simplify(THD *thd, Item *a, Item *b)
-   :Item_geometry_func_args_geometry(thd, a, b) {}
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("st_simplify") };
-    return name;
-  }
-  String *val_str(String *) override;
-  const Type_handler *type_handler() const override
-  {
-    return &type_handler_geometry;
-  }
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_simplify>(thd, this); }
 };
 
 class Item_func_isclosed: public Item_long_func_args_geometry
@@ -1069,7 +1044,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_isclosed") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override { decimals=0; max_length=2; return FALSE; }
+  bool fix_length_and_dec() override { decimals=0; max_length=2; return FALSE; }
   decimal_digits_t decimal_precision() const override { return 1; }
 
 protected:
@@ -1093,41 +1068,6 @@ protected:
   { return get_item_copy<Item_func_isring>(thd, this); }
 };
 
-class Item_func_isvalid: public Item_long_func_args_geometry
-{
-public:
-  String tmp;
-  Item_func_isvalid(THD *thd, Item *a): Item_long_func_args_geometry(thd, a) {}
-  longlong val_int() override;
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("st_isvalid") };
-    return name;
-  }
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_isvalid>(thd, this); }
-};
-
-class Item_func_validate: public Item_geometry_func_args_geometry
-{
-public:
-  String tmp;
-  Item_func_validate(THD *thd, Item *a):
-    Item_geometry_func_args_geometry(thd, a) {}
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("st_validate") };
-    return name;
-  }
-  String *val_str(String *) override;
-  const Type_handler *type_handler() const override
-  {
-    return &type_handler_geometry;
-  }
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_validate>(thd, this); }
-};
-
 class Item_func_dimension: public Item_long_func_args_geometry
 {
 public:
@@ -1139,7 +1079,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_dimension") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { max_length= 10; set_maybe_null(); return FALSE; }
 
 protected:
@@ -1158,9 +1098,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_x") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    if (Item_real_func::fix_length_and_dec(thd))
+    if (Item_real_func::fix_length_and_dec())
       return TRUE;
     set_maybe_null();
     return FALSE;
@@ -1182,9 +1122,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_y") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    if (Item_real_func::fix_length_and_dec(thd))
+    if (Item_real_func::fix_length_and_dec())
       return TRUE;
     set_maybe_null();
     return FALSE;
@@ -1207,7 +1147,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_numgeometries") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { max_length= 10; set_maybe_null(); return FALSE; }
 
 protected:
@@ -1227,7 +1167,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_numinteriorrings") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { max_length= 10; set_maybe_null(); return FALSE; }
 
 protected:
@@ -1247,7 +1187,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_numpoints") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { max_length= 10; set_maybe_null(); return FALSE; }
 
 protected:
@@ -1266,9 +1206,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_area") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    if (Item_real_func::fix_length_and_dec(thd))
+    if (Item_real_func::fix_length_and_dec())
       return TRUE;
     set_maybe_null();
     return FALSE;
@@ -1292,9 +1232,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("st_length") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    if (Item_real_func::fix_length_and_dec(thd))
+    if (Item_real_func::fix_length_and_dec())
       return TRUE;
     set_maybe_null();
     return FALSE;
@@ -1317,7 +1257,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("srid") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { max_length= 10; set_maybe_null(); return FALSE; }
 
 protected:
@@ -1369,109 +1309,6 @@ protected:
 };
 
 
-class Item_func_geohash: public Item_str_ascii_checksum_func
-{
-  void encode_geohash(String *str, double longitude, double latitude,
-                      uint length);
-  void set_bit(double &max_value, double &min_value, const double &target_value,
-               std::bitset<5> &base_set, const uint &bit_index);
-  bool is_invalid_length_field(enum_field_types field_type);
-  bool is_invalid_longitude_field(enum_field_types field_type);
-  bool is_invalid_latitude_field(enum_field_types field_type);
-
-public:
-  Item_func_geohash(THD *thd, Item *point, Item *max_length):
-    Item_str_ascii_checksum_func(thd, point, max_length) {}
-  Item_func_geohash(THD *thd, Item *longitude, Item *latitude,
-                    Item *max_length):
-    Item_str_ascii_checksum_func(thd, longitude, latitude, max_length) {}
-  bool fix_length_and_dec(THD *thd) override
-  {
-    fix_length_and_charset(UINT_MAX32, default_charset());
-    return FALSE;
-  }
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("st_geohash") };
-    return name;
-  }
-  String *val_str_ascii(String *) override;
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_geohash>(thd, this); }
-};
-
-
-class Item_func_latlongfromgeohash : public Item_real_func
-{
-private:
-  String buf;
-  static const uint8_t geohash_alphabet[256];
-  const bool decode_longitude;
-  static bool convert_character(char in, int &out);
-
-public:
-  Item_func_latlongfromgeohash(THD *thd, Item *a, bool start_on_even_bit_arg)
-      : Item_real_func(thd, a),
-        decode_longitude(start_on_even_bit_arg) {}
-  double val_real() override;
-  static bool is_invalid_geohash_field(const enum_field_types field_type);
-  static bool decode_geohash(String *geohash, double *result_latitude,
-                             double *result_longitude);
-  static double round_latlongitude(double latlongitude, double error_range,
-                                   double lower_limit, double upper_limit);
-};
-
-
-class Item_func_latfromgeohash: public Item_func_latlongfromgeohash
-{
-public:
-  Item_func_latfromgeohash(THD *thd, Item *a)
-   :Item_func_latlongfromgeohash(thd, a, false) {}
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("st_latfromgeohash") };
-    return name;
-  }
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_latfromgeohash>(thd, this); }
-};
-
-
-class Item_func_longfromgeohash: public Item_func_latlongfromgeohash
-{
-public:
-  Item_func_longfromgeohash(THD *thd, Item *a)
-   :Item_func_latlongfromgeohash(thd, a, true) {}
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("st_longfromgeohash") };
-    return name;
-  }
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_longfromgeohash>(thd, this); }
-};
-
-
-class Item_func_pointfromgeohash: public Item_geometry_func
-{
-private:
-  String buf;
-  static bool is_invalid_SRID_field(const enum_field_types field_type);
-
-public:
-  Item_func_pointfromgeohash(THD *thd, Item *a, Item *b)
-   :Item_geometry_func(thd, a, b) {}
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("st_pointfromgeohash") };
-    return name;
-  }
-  String *val_str(String *) override;
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_pointfromgeohash>(thd, this); }
-};
-
-
 class Item_func_pointonsurface: public Item_geometry_func_args_geometry
 {
   String tmp_value;
@@ -1504,7 +1341,7 @@ class Item_func_gis_debug: public Item_long_func
   public:
     Item_func_gis_debug(THD *thd, Item *a): Item_long_func(thd, a)
     { null_value= false; }
-    bool fix_length_and_dec(THD *thd) override { fix_char_length(10); return FALSE; }
+    bool fix_length_and_dec() override { fix_char_length(10); return FALSE; }
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("st_gis_debug") };
@@ -1526,4 +1363,10 @@ protected:
 #define GEOM_NEW(thd, obj_constructor) new (thd->mem_root) obj_constructor
 #define GEOM_TYPE(x) (x)
 
+#else /*HAVE_SPATIAL*/
+
+#define GEOM_NEW(thd, obj_constructor) NULL
+#define GEOM_TYPE(x) NULL
+
+#endif /*HAVE_SPATIAL*/
 #endif /* ITEM_GEOFUNC_INCLUDED */

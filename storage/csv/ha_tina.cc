@@ -169,9 +169,9 @@ static void init_tina_psi_keys(void)
   extensions exist for this handler.
 */
 static const char *ha_tina_exts[] = {
-  CSN_EXT,
   CSV_EXT,
   CSM_EXT,
+  CSN_EXT,
   NullS
 };
 
@@ -299,7 +299,7 @@ error:
   DESCRIPTION
 
     Read the meta-file info. For now we are only interested in
-    rows count, crashed bit and magic number.
+    rows counf, crashed bit and magic number.
 
   RETURN
     0 - OK
@@ -544,7 +544,7 @@ int ha_tina::encode_quote(const uchar *buf)
   char attribute_buffer[1024];
   String attribute(attribute_buffer, sizeof(attribute_buffer),
                    &my_charset_bin);
-  bool ietf_quotes= option_struct->ietf_quotes;
+  bool ietf_quotes= table_share->option_struct->ietf_quotes;
   MY_BITMAP *org_bitmap= dbug_tmp_use_all_columns(table, &table->read_set);
   buffer.length(0);
 
@@ -679,7 +679,7 @@ int ha_tina::find_current_row(uchar *buf)
   int eoln_len;
   int error;
   bool read_all;
-  bool ietf_quotes= option_struct->ietf_quotes;
+  bool ietf_quotes= table_share->option_struct->ietf_quotes;
   DBUG_ENTER("ha_tina::find_current_row");
 
   free_root(&blobroot, MYF(0));
@@ -1006,7 +1006,7 @@ int ha_tina::open(const char *name, int mode, uint open_options)
 
 
 /*
-  Close a database file. We remove ourselves from the shared structure.
+  Close a database file. We remove ourselves from the shared strucutre.
   If it is empty we destroy it.
 */
 int ha_tina::close(void)
@@ -1189,7 +1189,7 @@ int ha_tina::init_data_file()
   ha_tina::info
   ha_tina::rnd_init
   ha_tina::extra
-  ENUM HA_EXTRA_CACHE   Cache record in HA_rrnd()
+  ENUM HA_EXTRA_CACHE   Cash record in HA_rrnd()
   ha_tina::rnd_next
   ha_tina::rnd_next
   ha_tina::rnd_next
@@ -1292,7 +1292,7 @@ void ha_tina::position(const uchar *record)
 
 
 /*
-  Used to fetch a row from a position stored with ::position().
+  Used to fetch a row from a posiion stored with ::position().
   my_get_ptr() retrieves the data for you.
 */
 
@@ -1397,7 +1397,7 @@ int ha_tina::rnd_end()
 
     /*
       The sort is needed when there were updates/deletes with random orders.
-      It sorts so that we move the first blocks to the beginning.
+      It sorts so that we move the firts blocks to the beginning.
     */
     my_qsort(chain, (size_t)(chain_ptr - chain), sizeof(tina_set),
              (qsort_cmp)sort_set);
@@ -1463,7 +1463,6 @@ int ha_tina::rnd_end()
       of the old datafile.
     */
     if (mysql_file_close(data_file, MYF(0)) ||
-        mysql_file_delete(csv_key_file_data, share->data_file_name, MYF(0)) ||
         mysql_file_rename(csv_key_file_data,
                           fn_format(updated_fname, share->table_name,
                                     "", CSN_EXT,
@@ -1516,10 +1515,10 @@ error:
     check_opt   The options for repair. We do not use it currently.
 
   DESCRIPTION
-    Scan the table looking for bad rows. If none were found,
+    If the file is empty, change # of rows in the file and complete recovery.
+    Otherwise, scan the table looking for bad rows. If none were found,
     we mark file as a good one and return. If a bad row was encountered,
     we truncate the datafile up to the last good row.
-    If the file is empty, then do nothing and complete recovery.
 
    TODO: Make repair more clever - it should try to recover subsequent
          rows (after the first bad one) as well.
@@ -1537,7 +1536,10 @@ int ha_tina::repair(THD* thd, HA_CHECK_OPT* check_opt)
 
   /* empty file */
   if (!share->saved_data_file_length)
+  {
+    share->rows_recorded= 0;
     goto end;
+  }
 
   /* Don't assert in field::val() functions */
   table->use_all_columns();
@@ -1559,7 +1561,6 @@ int ha_tina::repair(THD* thd, HA_CHECK_OPT* check_opt)
   current_position= next_position= 0;
 
   /* Read the file row-by-row. If everything is ok, repair is not needed. */
-  thd_inc_error_row(thd);
   while (!(rc= find_current_row(buf)))
   {
     thd_inc_error_row(thd);
@@ -1670,7 +1671,7 @@ int ha_tina::delete_all_rows()
       DBUG_RETURN(-1);
 
   /* Truncate the file to zero size */
-  rc= mysql_file_chsize(share->tina_write_filedes, 0, 0, MYF(MY_WME)) > 0;
+  rc= mysql_file_chsize(share->tina_write_filedes, 0, 0, MYF(MY_WME));
 
   stats.records=0;
   /* Update shared info */
@@ -1727,11 +1728,6 @@ int ha_tina::create(const char *name, TABLE *table_arg,
     }
   }
   
-  if (create_info->data_file_name)
-    my_error(WARN_OPTION_IGNORED, ME_NOTE, "DATA DIRECTORY");
-
-  if (create_info->index_file_name && table_arg->s->keys)
-    my_error(WARN_OPTION_IGNORED, ME_NOTE, "INDEX DIRECTORY");
 
   if ((create_file= mysql_file_create(csv_key_file_metadata,
                                       fn_format(name_buff, name, "", CSM_EXT,
@@ -1813,7 +1809,8 @@ int ha_tina::reset(void)
 bool ha_tina::check_if_incompatible_data(HA_CREATE_INFO *info_arg,
 					   uint table_changes)
 {
-  if (info_arg->option_struct->ietf_quotes != option_struct->ietf_quotes)
+  if (info_arg->option_struct->ietf_quotes !=
+      table_share->option_struct->ietf_quotes)
     return COMPATIBLE_DATA_NO;
 
   return COMPATIBLE_DATA_YES;

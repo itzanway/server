@@ -1,22 +1,23 @@
+drop table if exists t0,t1,t2,t3;
 #
 # BUG#38049 incorrect rows estimations with references from preceding table
 #
 create table t0 (a int);
 insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
-create table t1 (a varchar(32)) charset=latin1;
+create table t1 (a varchar(32));
 insert into t1 values ('owner'),('requester'),('admincc'),('cc');
 CREATE TABLE t2 (
 id int(11) NOT NULL,
 type varchar(32) default NULL,
 PRIMARY KEY  (id)
-) CHARSET=latin1;
+);
 insert into t2 values (1,'owner'), (2,'admincc');
 CREATE TABLE t3 (
 id int(11) NOT NULL,
 domain varchar(32) default NULL,
 type varchar(32) default NULL,
 PRIMARY KEY  (id)
-) CHARSET=latin1;
+);
 set @domain='system';
 set @pk=0;
 INSERT INTO t3 select @pk:=@pk+1, 'system', t1.a from t1;
@@ -55,12 +56,4 @@ explain select * from t1 where col1=1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ref	idx1	idx1	5	const	1	Using index
 drop table t1;
-# End of 10.5 tests
-#
-# MDEV-38168 Lots of joins can crash the server
-#
-create table t1 (x int) engine=innodb;
-$many_joins;
-ERROR HY000: Too many tables; MariaDB can only use 61 tables in a join
-drop table t1;
-# End of 10.11 tests
+End of 10.5 tests

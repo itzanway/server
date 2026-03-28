@@ -32,7 +32,7 @@ set GLOBAL query_cache_size = 1355776;
 #
 # Without auto_commit.
 #
-flush global status;
+flush status;
 set autocommit=0;
 eval create table t1 (a int not null)$partitions_a;
 insert into t1 values (1),(2),(3);
@@ -132,7 +132,7 @@ SHOW VARIABLES LIKE 'have_query_cache';
 
 --disable_cursor_protocol
 SET GLOBAL query_cache_size = 204800;
-flush global status;
+flush status;
 SET @@autocommit=1;
 eval SET SESSION DEFAULT_STORAGE_ENGINE = $engine_type;
 eval CREATE TABLE t2 (s1 int, s2 varchar(1000), key(s1))$partitions_s1;
@@ -189,6 +189,7 @@ show status like "Qcache_hits";
 
 # Final cleanup
 disconnect connection1;
+--source include/wait_until_disconnected.inc
 connection default;
 set @@global.query_cache_size = @save_query_cache_size;
 drop table t2;

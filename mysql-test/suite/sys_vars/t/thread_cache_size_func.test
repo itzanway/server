@@ -31,10 +31,12 @@
 --source include/one_thread_per_connection.inc
 SET @global_thread_cache_size = @@GLOBAL.thread_cache_size;
 
+FLUSH STATUS;
+
 -- ECHO '# Test1#'
 SET @@GLOBAL.thread_cache_size=3;
-FLUSH THREADS;
-select variable_value<=@@global.thread_cache_size from information_schema.global_status where variable_name="Threads_cached";
+SHOW STATUS LIKE 'Threads_cached';
+--echo 0 Expected
 
 ##################################
 # Make 4 connections             #
@@ -51,7 +53,8 @@ CONNECTION default;
 let $wait_condition= SELECT COUNT(*)= 5 FROM INFORMATION_SCHEMA.PROCESSLIST;
 --source include/wait_condition.inc
 
-select variable_value<=@@global.thread_cache_size from information_schema.global_status where variable_name="Threads_cached";
+SHOW STATUS LIKE 'Threads_cached';
+--echo 0 Expected
 
 ####################################
 #Disconnecting all the connections #
@@ -78,7 +81,6 @@ let $wait_condition= SELECT variable_value = 3 FROM INFORMATION_SCHEMA.global_st
 # Decreasing cache size to 1
 #
 SET @@GLOBAL.thread_cache_size= 1;
-FLUSH THREADS;
 
 CONNECT (conn1,localhost,root,,);
 CONNECT (conn2,localhost,root,,);

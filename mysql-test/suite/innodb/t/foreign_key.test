@@ -1,4 +1,5 @@
 --source include/have_innodb.inc
+--source include/count_sessions.inc
 --source include/default_charset.inc
 
 --disable_query_log
@@ -21,11 +22,11 @@ constraint c1 foreign key (f1) references t1(f1)) engine=InnoDB;
 create table t2 (f1 int primary key,
    constraint c1 foreign key (f1) references t1(f1)) engine=innodb;
 
---error ER_DUP_CONSTRAINT_NAME
+--error ER_CANT_CREATE_TABLE
 alter table t2 add constraint c1 foreign key (f1) references t1(f1);
 
+set foreign_key_checks = 0;
 --error ER_DUP_CONSTRAINT_NAME
-set statement foreign_key_checks = 0 for
 alter table t2 add constraint c1 foreign key (f1) references t1(f1);
 
 drop table t2, t1;
@@ -194,9 +195,9 @@ CREATE TABLE t3 (a INT PRIMARY KEY,
 CONSTRAINT t2_ibfk_1 FOREIGN KEY (a) REFERENCES t1(a)) ENGINE=InnoDB;
 CREATE TABLE best.t2 (a INT PRIMARY KEY, b TEXT, FULLTEXT INDEX(b),
 FOREIGN KEY (a) REFERENCES test.t1(a)) ENGINE=InnoDB;
+--replace_regex /Table '.*t2'/Table 't2'/
+--error ER_TABLE_EXISTS_ERROR
 RENAME TABLE best.t2 TO test.t2;
-SHOW CREATE TABLE test.t2;
-RENAME TABLE test.t2 TO best.t2;
 SHOW CREATE TABLE best.t2;
 DROP DATABASE best;
 
@@ -244,8 +245,7 @@ ALTER TABLE t1 CHANGE COLUMN a a TIME NOT NULL;
 ALTER TABLE t1 ADD pk INT NOT NULL AUTO_INCREMENT PRIMARY KEY;
 --error ER_ALTER_OPERATION_NOT_SUPPORTED_REASON
 ALTER TABLE t1 CHANGE COLUMN a b TIME;
-SHOW CREATE TABLE t1;
-ALTER TABLE t1 CHANGE COLUMN a b TIME, DROP FOREIGN KEY `1`;
+ALTER TABLE t1 CHANGE COLUMN a b TIME, DROP FOREIGN KEY t1_ibfk_1;
 SET SESSION FOREIGN_KEY_CHECKS = ON;
 DROP TABLE t1;
 
@@ -749,7 +749,7 @@ DROP TABLE t1;
 --echo # with CONSTRAINTs
 --echo #
 
-call mtr.add_suppression("\\[Warning\\] InnoDB: In ALTER TABLE `test`\\.`t[12]` has or is referenced in foreign key constraints which are not compatible with the new table definition.");
+call mtr.add_suppression("\\[Warning\\] InnoDB: In ALTER TABLE `test`\\.`t2` has or is referenced in foreign key constraints which are not compatible with the new table definition.");
 
 set foreign_key_checks=on;
 create table t1 (id int not null primary key) engine=innodb;
@@ -1297,29 +1297,3 @@ ALTER TABLE t2 DROP FOREIGN KEY IF EXISTS f1, DROP FOREIGN KEY IF EXISTS f1, ALG
 DROP TABLE t2, t1;
 
 --echo # End of 10.6 tests
-
-CREATE TABLE t1
-(
-f1 VARCHAR(32)BINARY NOT NULL,
-f2 VARCHAR(32)BINARY NOT NULL,
-PRIMARY KEY (f1),
-INDEX(f2)
-) ENGINE=InnoDB;
-INSERT INTO t1 VALUES('MySQL', 'InnoDB'), ('MariaDB', 'NDB');
-
-CREATE TABLE t2
-(
-f1 VARCHAR(32)BINARY NOT NULL,
-f2 VARCHAR(255)BINARY NOT NULL,
-f3 int, PRIMARY KEY (f1), INDEX(f1), INDEX(f2)
-) ENGINE=InnoDB;
-INSERT INTO t2 VALUES('MySQL', 'MySQL', 1),
-                     ('MariaDB', 'MariaDB', 1);
-ALTER TABLE t1 ADD FOREIGN KEY (f1) REFERENCES t2 (f2);
-# MDEV-33927 TODO: change the warning message
---error ER_FK_CANNOT_DELETE_PARENT
-ALTER TABLE t2 ADD FOREIGN KEY (f2) REFERENCES t2 (f2),
-ADD UNIQUE INDEX(f3);
-drop table t1, t2;
-
---echo # End of 10.11 tests

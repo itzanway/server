@@ -27,7 +27,7 @@
   The problem here is that mysql_parse calls free_item to free all the
   items allocated at the end of every query. The workaround would to
   keep two item lists per THD - normal free_list and handler_items.
-  The second is to be freed only on thread end. mysql_ha_open should
+  The second is to be freeed only on thread end. mysql_ha_open should
   then do { handler_items=concat(handler_items, free_list); free_list=0; }
 
   But !!! do_command calls free_root at the end of every query and frees up
@@ -61,6 +61,10 @@
 #include "sql_base.h"                           // insert_fields
 #include "sql_select.h"
 #include "transaction.h"
+
+#ifdef USE_PRAGMA_IMPLEMENTATION
+#pragma implementation				// gcc: Class implementation
+#endif
 
 #define HANDLER_TABLES_HASH_SIZE 120
 
@@ -102,7 +106,7 @@ SQL_HANDLER::~SQL_HANDLER()
     The hash object is an TABLE_LIST struct.
     The hash key is the alias name.
     The hash key length is the alias name length plus one for the
-    terminating NULL character.
+    terminateing NUL character.
 
   RETURN
     Pointer to the TABLE_LIST struct.
@@ -186,7 +190,7 @@ static void mysql_ha_close_childs(THD *thd, TABLE_LIST *current_table_list,
 
   @note Though this function takes a list of tables, only the first list entry
   will be closed.
-  @note handler_object is not deleted!
+  @mote handler_object is not deleted!
   @note Broadcasts refresh if it closed a table with old version.
 */
 
@@ -601,7 +605,7 @@ static SQL_HANDLER *mysql_ha_find_handler(THD *thd, const LEX_CSTRING *name)
    @param keyname	Key to use.
    @param key_expr      List of key column values
    @param cond		Where clause
-   @param in_prepare	If we are in prepare phase (we can't evaluate items yet)
+   @param in_prepare	If we are in prepare phase (we can't evalute items yet)
 
    @return 0 ok
    @return 1 error
@@ -627,7 +631,7 @@ mysql_ha_fix_cond_and_key(SQL_HANDLER *handler,
     if (table->query_id != thd->query_id)
       cond->cleanup();                          // File was reopened
 
-    ret= cond->walk(&Item::check_handler_func_processor, &res, 0);
+    ret= cond->walk(&Item::check_handler_func_processor, 0, &res);
     if (ret || res.errors)
     {
       my_error(ER_GENERATED_COLUMN_FUNCTION_IS_NOT_ALLOWED, MYF(0), res.name,
@@ -643,8 +647,9 @@ mysql_ha_fix_cond_and_key(SQL_HANDLER *handler,
   {
     /* Check if same as last keyname. If not, do a full lookup */
     if (handler->keyno < 0 ||
-        !Lex_ident_column(Lex_cstring_strlen(keyname)).
-          streq(table->s->key_info[handler->keyno].name))
+        my_strcasecmp(&my_charset_latin1,
+                      keyname,
+                      table->s->key_info[handler->keyno].name.str))
     {
       if ((handler->keyno= find_type(keyname, &table->s->keynames,
                                      FIND_TYPE_NO_PREFIX) - 1) < 0)
@@ -656,11 +661,9 @@ mysql_ha_fix_cond_and_key(SQL_HANDLER *handler,
     }
 
     const KEY *c_key= table->s->key_info + handler->keyno;
-
     if (c_key->algorithm == HA_KEY_ALG_FULLTEXT ||
-        c_key->algorithm == HA_KEY_ALG_VECTOR ||
         (ha_rkey_mode != HA_READ_KEY_EXACT &&
-         (table->key_info[handler->keyno].index_flags &
+         (table->file->index_flags(handler->keyno, 0, TRUE) &
           (HA_READ_NEXT | HA_READ_PREV | HA_READ_RANGE)) == 0))
     {
       my_error(ER_KEY_DOESNT_SUPPORT, MYF(0),
@@ -686,7 +689,8 @@ mysql_ha_fix_cond_and_key(SQL_HANDLER *handler,
       }
 
       if (key_expr->elements < keyinfo->user_defined_key_parts &&
-          (table->key_info[handler->keyno].index_flags & HA_ONLY_WHOLE_INDEX))
+               (table->file->index_flags(handler->keyno, 0, TRUE) &
+                HA_ONLY_WHOLE_INDEX))
       {
         my_error(ER_KEY_DOESNT_SUPPORT, MYF(0),
                  table->file->index_type(handler->keyno), keyinfo->name.str);
@@ -951,7 +955,7 @@ retry:
     {
       DBUG_ASSERT(keyname != 0);
 
-      if (unlikely(!(key= thd->calloc<uchar>(ALIGN_SIZE(handler->key_len)))))
+      if (unlikely(!(key= (uchar*) thd->calloc(ALIGN_SIZE(handler->key_len)))))
 	goto err;
       if (unlikely((error= table->file->ha_index_or_rnd_end())))
         break;
@@ -985,7 +989,6 @@ retry:
       }
       goto ok;
     }
-    thd->inc_examined_row_count();
     if (cond && !cond->val_bool())
     {
       if (thd->is_error())
@@ -1000,7 +1003,6 @@ retry:
         goto err;
 
       protocol->write();
-      thd->inc_sent_row_count(1);
     }
     num_rows++;
   }
@@ -1078,8 +1080,9 @@ static SQL_HANDLER *mysql_ha_find_match(THD *thd, TABLE_LIST *tables)
       if (tables->is_anonymous_derived_table())
         continue;
       if ((! tables->db.str[0] ||
-          tables->get_db_name().streq(hash_tables->db)) &&
-          tables->get_table_name().streq(hash_tables->table_name))
+          Lex_ident_db(tables->get_db_name()).streq(hash_tables->db)) &&
+          Lex_ident_table(tables->get_table_name()).
+            streq(hash_tables->table_name))
       {
         /* Link into hash_tables list */
         hash_tables->next= head;

@@ -9,7 +9,6 @@
 
 # Tests' global declarations
 --let $trx = _trx_
---let $slave_timeout= -1
 
 call mtr.add_suppression("Deadlock found when trying to get lock; try restarting transaction");
 call mtr.add_suppression("WSREP: handlerton rollback failed");
@@ -110,6 +109,7 @@ while ($iter)
 	--let $_k = $k
   while ($k)
   {
+		--source include/count_sessions.inc
 		--connect(con$k,localhost,root,,)
     #
     # create XA events alternating gtid domains to run them in parallel on slave.
@@ -123,6 +123,7 @@ while ($iter)
 
 		--disconnect con$k
     --connection master
+    --source include/wait_until_count_sessions.inc
 
 		--dec $k
   }

@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2017, 2023, MariaDB Corporation.
+Copyright (c) 2017, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -43,10 +43,8 @@ typedef std::deque<const char*, ut_allocator<const char*> >	dict_names_t;
 /** Check MAX(SPACE) FROM SYS_TABLES and store it in fil_system.
 Open each data file if an encryption plugin has been loaded.
 
-@param spaces  set of tablespace files to open
-@param upgrade whether we need to invoke ibuf_upgrade() */
-void dict_load_tablespaces(const std::set<uint32_t> *spaces= nullptr,
-                           bool upgrade= false);
+@param spaces  set of tablespace files to open */
+void dict_check_tablespaces_and_store_max_id(const std::set<uint32_t> *spaces);
 
 /** Make sure the data_file_name is saved in dict_table_t if needed.
 @param[in,out]	table		Table object */
@@ -61,19 +59,14 @@ dict_load_table_on_id(
 	table_id_t		table_id,	/*!< in: table id */
 	dict_err_ignore_t	ignore_err);	/*!< in: errors to ignore
 						when loading the table */
-/** Load definitions for table indexes. Adds them to the data dictionary cache.
-@param mtr         mini-transaction
-@param table       table definition
-@param uncommitted false=READ COMMITTED, true=READ UNCOMMITTED
-@param heap        memory heap for temporary storage
-@param ignore_err  errors to be ignored when loading the index definition
-@return error code
-@retval DB_SUCCESS if all indexes were successfully loaded
-@retval DB_CORRUPTION if corruption of dictionary table
-@retval DB_UNSUPPORTED if table has unknown index type */
-MY_ATTRIBUTE((nonnull))
-dberr_t dict_load_indexes(mtr_t *mtr, dict_table_t *table, bool uncommitted,
-                          mem_heap_t *heap, dict_err_ignore_t ignore_err);
+/********************************************************************//**
+This function is called when the database is booted.
+Loads system table index definitions except for the clustered index which
+is added to the dictionary cache at booting before calling this function. */
+void
+dict_load_sys_table(
+/*================*/
+	dict_table_t*	table);	/*!< in: system table */
 /***********************************************************************//**
 Loads foreign key constraints where the table is either the foreign key
 holder or where the table is referenced by a foreign key. Adds these
@@ -87,7 +80,6 @@ cache, then it is added to the output parameter (fk_tables).
 dberr_t
 dict_load_foreigns(
 /*===============*/
-	mtr_t&			mtr,		/*!< in/out: mini-transaction*/
 	const char*		table_name,	/*!< in: table name */
 	const char**		col_names,	/*!< in: column names, or NULL
 						to use table->col_names */
@@ -102,7 +94,7 @@ dict_load_foreigns(
 						which must be loaded
 						subsequently to load all the
 						foreign key constraints. */
-	MY_ATTRIBUTE((nonnull(2)));
+	MY_ATTRIBUTE((nonnull(1)));
 
 /********************************************************************//**
 This function opens a system table, and return the first record.
@@ -219,12 +211,4 @@ dict_process_sys_foreign_col_rec(
 					in referenced table */
 	ulint*		pos);		/*!< out: column position */
 
-/** This function gets the next system table record as it scans
-the table.
-@param pcur persistent cursor
-@param mtr  mini-transaction
-@return the next record if found
-@retval nullptr at the end of the table */
-const rec_t*
-dict_getnext_system_low(btr_pcur_t *pcur, mtr_t *mtr);
 #endif

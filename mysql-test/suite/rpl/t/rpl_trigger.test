@@ -5,12 +5,6 @@
 --source include/have_binlog_format_mixed_or_statement.inc 
 --source include/have_innodb.inc
 --source include/master-slave.inc
-
-connection slave;
---source include/stop_slave.inc
-CHANGE MASTER TO MASTER_USE_GTID=NO;
---source include/start_slave.inc
-
 connection master;
 
 disable_query_log;
@@ -335,8 +329,7 @@ let $binlog_version= query_get_value(SHOW BINLOG EVENTS, Info, 1);
 # Make the slave to replay the new binlog.
 
 connection slave;
---let $master_use_gtid_option= No
---source include/reset_slave.inc
+RESET SLAVE;
 START SLAVE;
 
 SELECT MASTER_POS_WAIT('master-bin.000001', 513) >= 0;
@@ -369,7 +362,7 @@ DROP TABLE t1;
 DROP TABLE t2;
 
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 
 # The master should be clean.
 
@@ -378,7 +371,6 @@ SHOW TABLES LIKE 't_';
 --replace_column 6 #
 SHOW TRIGGERS;
 
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 # Restart slave.
@@ -506,10 +498,6 @@ connection master;
 --source include/rpl_reset.inc
 
 connection slave;
---source include/stop_slave.inc
-CHANGE MASTER TO MASTER_USE_GTID=NO;
---source include/start_slave.inc
-
 connection master;
 
 create table t1 ( f int ) engine = innodb;

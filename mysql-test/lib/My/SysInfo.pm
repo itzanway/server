@@ -185,7 +185,7 @@ sub isvm {
 }
 
 
-# Print the cpuinfo
+# Prit the cpuinfo
 sub print_info {
   my ($self)= @_;
 

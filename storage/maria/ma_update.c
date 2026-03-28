@@ -92,7 +92,7 @@ int maria_update(register MARIA_HA *info, const uchar *oldrec,
   {
     if (maria_is_key_active(share->state.key_map, i))
     {
-      if (keyinfo->key_alg == HA_KEY_ALG_FULLTEXT)
+      if (keyinfo->flag & HA_FULLTEXT )
       {
 	if (_ma_ft_cmp(info,i,oldrec, newrec))
 	{
@@ -179,7 +179,7 @@ int maria_update(register MARIA_HA *info, const uchar *oldrec,
   }
 
   /*
-    We can't yet have HA_STATE_AKTIV here, as block_record doesn't support it
+    We can't yet have HA_STATE_AKTIV here, as block_record dosn't support it
   */
   info->update= (HA_STATE_CHANGED | HA_STATE_ROW_CHANGED | key_changed);
   info->row_changes++;
@@ -222,7 +222,7 @@ err:
     {
       if (((ulonglong) 1 << i) & changed)
       {
-	if (share->keyinfo[i].key_alg == HA_KEY_ALG_FULLTEXT)
+	if (share->keyinfo[i].flag & HA_FULLTEXT)
 	{
 	  if ((flag++ && _ma_ft_del(info,i,new_key_buff,newrec,pos)) ||
 	      _ma_ft_add(info,i,old_key_buff,oldrec,pos))

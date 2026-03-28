@@ -16,6 +16,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface			/* gcc class implementation */
+#endif
+
 #include "sql_alloc.h"
 #include <iterator>
 
@@ -61,7 +65,7 @@ public:
     next= &first;
   }
 
-  inline void insert(T *element, T **next_ptr)
+  inline void link_in_list(T *element, T **next_ptr)
   {
     elements++;
     (*next)= element;
@@ -150,7 +154,6 @@ public:
     return *this;
   }
 
-  inline uint size() { return elements; }
   inline void empty() { elements=0; first= &end_of_list; last=&first;}
   inline base_list() { empty(); }
   /**
@@ -207,9 +210,9 @@ public:
     }
     return 1;
   }
-  inline bool push_front(const void *info)
+  inline bool push_front(void *info)
   { return push_front_impl(new list_node(info, first)); }
-  inline bool push_front(const void *info, MEM_ROOT *mem_root)
+  inline bool push_front(void *info, MEM_ROOT *mem_root)
   { return push_front_impl(new (mem_root) list_node(info,first)); }
   void remove(list_node **prev)
   {
@@ -293,9 +296,8 @@ public:
   inline list_node* last_node() { return *last; }
   inline list_node* first_node() { return first;}
   inline void *head() { return first->info; }
-  inline const void *head() const { return first->info; }
   inline void **head_ref() { return first != &end_of_list ? &first->info : 0; }
-  inline bool is_empty() const { return first == &end_of_list ; }
+  inline bool is_empty() { return first == &end_of_list ; }
   inline list_node *last_ref() { return &end_of_list; }
   template <typename T= void>
   inline bool add_unique(T *info, bool (*eq)(T *a, T *b))
@@ -497,14 +499,13 @@ public:
   inline List() :base_list() {}
   inline List(const List<T> &tmp, MEM_ROOT *mem_root) :
     base_list(tmp, mem_root) {}
-  inline bool push_back(const T *a) { return base_list::push_back((void *)a); }
-  inline bool push_back(const T *a, MEM_ROOT *mem_root)
+  inline bool push_back(T *a) { return base_list::push_back(a); }
+  inline bool push_back(T *a, MEM_ROOT *mem_root)
   { return base_list::push_back((void*) a, mem_root); }
-  inline bool push_front(const T *a) { return base_list::push_front(a); }
-  inline bool push_front(const T *a, MEM_ROOT *mem_root)
+  inline bool push_front(T *a) { return base_list::push_front(a); }
+  inline bool push_front(T *a, MEM_ROOT *mem_root)
   { return base_list::push_front((void*) a, mem_root); }
   inline T* head() {return (T*) base_list::head(); }
-  inline const T* head() const {return (const T*) base_list::head(); }
   inline T** head_ref() {return (T**) base_list::head_ref(); }
   inline T* pop()  {return (T*) base_list::pop(); }
   inline void append(List<T> *list) { base_list::append(list); }
@@ -535,6 +536,7 @@ public:
   class Iterator;
   using value_type= T;
   using iterator= Iterator;
+
   iterator begin() const { return iterator(first); }
   iterator end() const { return iterator(); }
 
@@ -736,7 +738,7 @@ class base_ilist
 public:
   inline void empty() { first= &last; last.prev= &first; }
   base_ilist() { empty(); }
-  inline bool is_empty() const {  return first == &last; }
+  inline bool is_empty() {  return first == &last; }
   // Returns true if p is the last "real" object in the list,
   // i.e. p->next points to the sentinel.
   inline bool is_last(ilink *p) { return p->next == NULL || p->next == &last; }
@@ -834,7 +836,9 @@ public:
   inline void move_elements_to(I_List<T>* new_owner) {
     base_ilist::move_elements_to(new_owner);
   }
+#ifndef _lint
   friend class I_List_iterator<T>;
+#endif
 };
 
 
@@ -879,6 +883,7 @@ list_copy_and_replace_each_value(List<T> &list, MEM_ROOT *mem_root)
     it.replace(el->clone(mem_root));
 }
 
+void free_list(I_List <i_string_pair> *list);
 void free_list(I_List <i_string> *list);
 
 #endif // INCLUDES_MYSQL_SQL_LIST_H

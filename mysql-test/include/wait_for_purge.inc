@@ -20,7 +20,7 @@
 #
 # SIDE EFFECTS:
 #
-#    Disables --query_log and warnings while running, enables them afterwards.
+#    Disables --query_log while running, enables it afterwards.
 
 --echo include/wait_for_purge.inc "$purge_binlogs_to"
 
@@ -28,8 +28,6 @@ let $_wait_count= 300;
 let $_done= 0;
 
 --disable_query_log
---disable_warnings
-
 while ($_wait_count)
 {
   dec $_wait_count;
@@ -52,5 +50,4 @@ if (!$_done)
   eval SHOW BINARY LOGS;
   --die ERROR: failed while waiting for binlog purge to $purge_binlogs_to
 }
---enable_warnings
 --enable_query_log

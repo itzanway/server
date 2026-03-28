@@ -28,7 +28,7 @@ Item_window_func::resolve_window_name(THD *thd)
     return false;
   }
   DBUG_ASSERT(window_name != NULL && window_spec == NULL);
-  const LEX_CSTRING &ref_name= *window_name;
+  const char *ref_name= window_name->str;
 
   /* !TODO: Add the code to resolve ref_name in outer queries */ 
   /* 
@@ -41,8 +41,9 @@ Item_window_func::resolve_window_name(THD *thd)
   Window_spec *win_spec;
   while((win_spec= it++))
   {
-    const Lex_ident_window win_spec_name(win_spec->name());
-    if (win_spec_name.str && win_spec_name.streq(ref_name))
+    const char *win_spec_name= win_spec->name();
+    if (win_spec_name &&
+        my_strcasecmp(system_charset_info, ref_name, win_spec_name) == 0)
     {
       window_spec= win_spec;
       break;
@@ -51,7 +52,7 @@ Item_window_func::resolve_window_name(THD *thd)
 
   if (!window_spec)
   {
-    my_error(ER_WRONG_WINDOW_SPEC_NAME, MYF(0), ref_name.str);
+    my_error(ER_WRONG_WINDOW_SPEC_NAME, MYF(0), ref_name);
     return true;
   }
 
@@ -125,7 +126,7 @@ Item_window_func::fix_fields(THD *thd, Item **ref)
 
   with_flags= (with_flags & ~item_with_t::SUM_FUNC) | item_with_t::WINDOW_FUNC;
 
-  if (fix_length_and_dec(thd))
+  if (fix_length_and_dec())
     return TRUE;
 
   max_length= window_func()->max_length;
@@ -351,7 +352,7 @@ bool Item_sum_hybrid_simple::fix_fields(THD *thd, Item **ref)
     with_flags|= args[i]->with_flags;
   }
 
-  if (fix_length_and_dec(thd))
+  if (fix_length_and_dec())
     return TRUE;
 
   setup_hybrid(thd, args[0]);
@@ -367,7 +368,7 @@ bool Item_sum_hybrid_simple::fix_fields(THD *thd, Item **ref)
 }
 
 
-bool Item_sum_hybrid_simple::fix_length_and_dec(THD *thd)
+bool Item_sum_hybrid_simple::fix_length_and_dec()
 {
   set_maybe_null();
   null_value= true;

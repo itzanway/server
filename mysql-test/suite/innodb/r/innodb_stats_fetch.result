@@ -125,22 +125,22 @@ WHERE
 table_name = 'test_ps_fetch' AND
 index_name = 'idx' AND
 stat_name = 'n_diff_pfx02';
-RENAME TABLE test_ps_fetch TO tmp, tmp TO test_ps_fetch;
+FLUSH TABLE test_ps_fetch;
 SELECT seq_in_index, column_name, cardinality
 FROM information_schema.statistics WHERE table_name = 'test_ps_fetch'
 ORDER BY index_name, seq_in_index;
 seq_in_index	1
 column_name	c
-cardinality	3
+cardinality	6
 seq_in_index	2
 column_name	d
-cardinality	11
+cardinality	22
 seq_in_index	1
 column_name	a
-cardinality	20
+cardinality	40
 seq_in_index	2
 column_name	b
-cardinality	90
+cardinality	200
 SELECT
 table_rows, avg_row_length, max_data_length, index_length
 FROM information_schema.tables WHERE table_name = 'test_ps_fetch';
@@ -177,9 +177,9 @@ DROP TABLE t1;
 #
 # MDEV-33462 Disallow LOCK=NONE operation on statistics table
 #
-ALTER TABLE mysql.innodb_table_stats FORCE, LOCK=NONE, ALGORITHM=INPLACE;
+ALTER TABLE mysql.innodb_table_stats FORCE, LOCK=NONE;
 ERROR 0A000: LOCK=NONE is not supported. Reason: innodb_table_stats. Try LOCK=SHARED
-ALTER TABLE mysql.innodb_index_stats FORCE, LOCK=NONE, ALGORITHM=INPLACE;
+ALTER TABLE mysql.innodb_index_stats FORCE, LOCK=NONE;
 ERROR 0A000: LOCK=NONE is not supported. Reason: innodb_index_stats. Try LOCK=SHARED
 #
 #  MDEV-34474 InnoDB: Failing assertion: stat_n_leaf_pages > 0

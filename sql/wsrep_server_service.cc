@@ -39,7 +39,6 @@ static void init_service_thd(THD* thd, void* thread_stack)
   thd->thread_stack= thread_stack;
   thd->real_id= pthread_self();
   thd->prior_thr_create_utime= thd->start_utime= microsecond_interval_timer();
-  thd->security_ctx->skip_grants();
   thd->mark_connection_idle();
   thd->reset_for_next_command(true);
   server_threads.insert(thd); // as wsrep_innobase_kill_one_trx() uses find_thread_by_id()
@@ -80,22 +79,11 @@ void Wsrep_server_service::release_storage_service(
 {
   Wsrep_storage_service* ss=
     static_cast<Wsrep_storage_service*>(storage_service);
-  DBUG_ASSERT(ss && ss->m_thd);
-
-  // Do not crash server on production
-  if (ss)
-  {
-    THD* thd= ss->m_thd;
-    if (thd)
-    {
-      wsrep_reset_threadvars(thd);
-      server_threads.erase(thd);
-      delete ss;
-      delete thd;
-    }
-    else
-      delete ss;
-  }
+  THD* thd= ss->m_thd;
+  wsrep_reset_threadvars(thd);
+  server_threads.erase(thd);
+  delete ss;
+  delete thd;
 }
 
 Wsrep_applier_service*
@@ -152,23 +140,12 @@ void Wsrep_server_service::release_high_priority_service(wsrep::high_priority_se
 {
   Wsrep_high_priority_service* hps=
     static_cast<Wsrep_high_priority_service*>(high_priority_service);
-  DBUG_ASSERT(hps && hps->m_thd);
-
-  // Do not crash server on production
-  if (hps)
-  {
-    THD* thd= hps->m_thd;
-    if (thd)
-    {
-      delete hps;
-      wsrep_store_threadvars(thd);
-      server_threads.erase(thd);
-      delete thd;
-      wsrep_delete_threadvars();
-    }
-    else
-      delete hps;
-  }
+  THD* thd= hps->m_thd;
+  delete hps;
+  wsrep_store_threadvars(thd);
+  server_threads.erase(thd);
+  delete thd;
+  wsrep_delete_threadvars();
 }
 
 void Wsrep_server_service::background_rollback(

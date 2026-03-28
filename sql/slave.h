@@ -32,6 +32,16 @@
   @file
 */
 
+/** 
+   Some of defines are need in parser even though replication is not 
+   compiled in (embedded).
+*/
+
+/**
+   The maximum is defined as (ULONG_MAX/1000) with 4 bytes ulong
+*/
+#define SLAVE_MAX_HEARTBEAT_PERIOD 4294967
+
 #ifdef HAVE_REPLICATION
 
 #include "log.h"
@@ -53,6 +63,12 @@ class Master_info;
 class Master_info_index;
 struct rpl_group_info;
 struct rpl_parallel_thread;
+
+int init_intvar_from_file(int* var, IO_CACHE* f, int default_val);
+int init_strvar_from_file(char *var, int max_size, IO_CACHE *f,
+                          const char *default_val);
+int init_floatvar_from_file(float* var, IO_CACHE* f, float default_val);
+int init_dynarray_intvar_from_file(DYNAMIC_ARRAY* arr, IO_CACHE* f);
 
 /*****************************************************************************
 
@@ -113,7 +129,7 @@ struct rpl_parallel_thread;
   (so that you have to update the .index file).
 */
 
-extern uint64_t master_retry_count;
+extern ulong master_retry_count;
 extern MY_BITMAP slave_error_mask;
 extern char slave_skip_error_names[];
 extern bool use_slave_mask;
@@ -244,12 +260,16 @@ void set_slave_thread_default_charset(THD *thd, rpl_group_info *rgi);
 int rotate_relay_log(Master_info* mi);
 int has_temporary_error(THD *thd);
 int sql_delay_event(Log_event *ev, THD *thd, rpl_group_info *rgi);
-int apply_event_and_update_pos_setup(Log_event *ev, THD *thd,
-                                     struct rpl_group_info *rgi);
 int apply_event_and_update_pos(Log_event* ev, THD* thd,
                                struct rpl_group_info *rgi);
 int apply_event_and_update_pos_for_parallel(Log_event* ev, THD* thd,
                                             struct rpl_group_info *rgi);
+
+int init_intvar_from_file(int* var, IO_CACHE* f, int default_val);
+int init_floatvar_from_file(float* var, IO_CACHE* f, float default_val);
+int init_strvar_from_file(char *var, int max_size, IO_CACHE *f,
+                          const char *default_val);
+int init_dynarray_intvar_from_file(DYNAMIC_ARRAY* arr, IO_CACHE* f);
 
 pthread_handler_t handle_slave_io(void *arg);
 void slave_output_error_info(rpl_group_info *rgi, THD *thd);
@@ -259,9 +279,7 @@ void slave_background_kill_request(THD *to_kill);
 void slave_background_gtid_pos_create_request
         (rpl_slave_state::gtid_pos_table *table_entry);
 void slave_background_gtid_pending_delete_request(void);
-void store_master_info(THD *thd, Master_info *mi, TABLE *table,
-                       String *gtid_pos);
-int cmp_mi_by_name(const void *arg1_, const void *arg2_);
+
 extern Master_info *active_mi; /* active_mi for multi-master */
 extern Master_info *default_master_info; /* To replace active_mi */
 extern Master_info_index *master_info_index;

@@ -16,6 +16,9 @@
 #include "mariadb.h"
 #include "sql_priv.h"
 #include "unireg.h"
+#ifdef USE_PRAGMA_IMPLEMENTATION
+#pragma implementation
+#endif
 #include "sp_cache.h"
 #include "sp_head.h"
 
@@ -177,7 +180,7 @@ void sp_cache_insert(sp_cache **cp, sp_head *sp)
   SYNOPSIS
     sp_cache_lookup()
       cp    Cache to look into
-      name  Name of routine to find
+      name  Name of rutine to find
 
   NOTE
     An obsolete (but not more obsolete then since last
@@ -192,10 +195,9 @@ sp_head *sp_cache_lookup(sp_cache **cp, const Database_qualified_name *name)
 {
   char buf[NAME_LEN * 2 + 2];
   sp_cache *c= *cp;
-  if (! c || !name->m_db.str)
+  if (! c)
     return NULL;
-  return c->lookup(buf, name->to_identifier_chain2().
-                          make_qname_casedn_part1(buf, sizeof(buf)));
+  return c->lookup(buf, name->make_qname(buf, sizeof(buf), true));
 }
 
 
@@ -229,10 +231,13 @@ void sp_cache_invalidate()
   inside SP'.
 */
 
-void sp_cache_remove(sp_cache **cp, sp_head **sp)
+void sp_cache_flush_obsolete(sp_cache **cp, sp_head **sp)
 {
-  (*cp)->remove(*sp);
-  *sp= NULL;
+  if ((*sp)->sp_cache_version() < Cversion && !(*sp)->is_invoked())
+  {
+    (*cp)->remove(*sp);
+    *sp= NULL;
+  }
 }
 
 /**

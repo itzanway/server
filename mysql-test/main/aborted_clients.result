@@ -1,4 +1,4 @@
-FLUSH GLOBAL STATUS;
+FLUSH STATUS;
 connect  con1,localhost,root,,;
 disconnect con1;
 connection default;

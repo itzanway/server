@@ -1097,7 +1097,7 @@ DROP PROCEDURE IF EXISTS sp4;
 --enable_warnings
 
 delimiter //;
-# 0 - without handler
+# 0 - wihtout handler
 CREATE PROCEDURE sp0()
 BEGIN
    DECLARE f1_value CHAR(20);

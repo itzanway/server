@@ -19,9 +19,6 @@
 #include "my_static.h"
 #include "mysys_err.h"
 #include <m_string.h>
-#include <my_atomic.h>
-
-int64 my_malloc_init_memory_allocated= 0;
 
 /*
   Alloc for things we don't nend to free run-time (that only
@@ -65,9 +62,6 @@ void* my_once_alloc(size_t Size, myf MyFlags)
 	my_error(EE_OUTOFMEMORY, MYF(ME_BELL+ME_FATAL), get_size);
       return((uchar*) 0);
     }
-    my_atomic_add64_explicit(&my_malloc_init_memory_allocated,
-                             (int64) get_size,
-                             MY_MEMORY_ORDER_RELAXED);
     DBUG_PRINT("test",("my_once_malloc %lu byte malloced", (ulong) get_size));
     my_once_allocated+= get_size;
     update_malloc_size(get_size, 0);
@@ -124,7 +118,6 @@ void my_once_free(void)
   update_malloc_size(- (longlong) my_once_allocated, 0);
   my_once_root_block=0;
   my_once_allocated= 0;
-  my_malloc_init_memory_allocated= 0;
 
   DBUG_VOID_RETURN;
 } /* my_once_free */

@@ -1,4 +1,5 @@
-SET GLOBAL transaction_isolation='REPEATABLE-READ';
+SET GLOBAL tx_isolation='REPEATABLE-READ';
+SET GLOBAL innodb_file_per_table=on;
 CREATE TABLE bug56680(
 a INT AUTO_INCREMENT PRIMARY KEY,
 b CHAR(1),
@@ -28,7 +29,7 @@ connection default;
 SELECT b FROM bug56680;
 b
 x
-SET GLOBAL transaction_isolation='READ-UNCOMMITTED';
+SET GLOBAL tx_isolation='READ-UNCOMMITTED';
 INSERT INTO bug56680 SELECT 0,b,c FROM bug56680;
 INSERT INTO bug56680 SELECT 0,b,c FROM bug56680;
 INSERT INTO bug56680 SELECT 0,b,c FROM bug56680;

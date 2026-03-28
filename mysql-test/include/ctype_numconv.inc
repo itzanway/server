@@ -1149,6 +1149,13 @@ insert into t1 values (1.1), (10.1), (100.1), (1000.1), (10000.1);
 select hex(concat(a)), a from t1;
 drop table t1;
 
+create table t1 (a year(2));
+insert into t1 values (1);
+select hex(concat(a)) from t1;
+create table t2 as select concat(a) from t1;
+show create table t2;
+drop table t1, t2;
+
 create table t1 (a year);
 insert into t1 values (1);
 select hex(concat(a)) from t1;
@@ -1450,6 +1457,14 @@ select hex(a) from v1;
 drop table t1;
 drop view v1;
 
+create table t1 (a year(2));
+insert into t1 values (1);
+create view v1(a) as select concat(a) from t1;
+show columns from v1;
+select hex(a) from v1;
+drop table t1;
+drop view v1;
+
 create table t1 (a year);
 insert into t1 values (1);
 create view v1(a) as select concat(a) from t1;
@@ -1729,7 +1744,6 @@ CREATE TABLE t1 (
   date_column DATE DEFAULT NULL,
   KEY(date_column));
 INSERT INTO t1 VALUES (1,'2010-09-01'),(2,'2010-10-01');
-INSERT INTO t1 VALUES (3,'2012-09-01'),(4,'2012-10-01'),(5,'2012-10-01');
 EXPLAIN SELECT * FROM t1 WHERE date_column BETWEEN '2010-09-01' AND '2010-10-01';
 ALTER TABLE t1 MODIFY date_column DATETIME DEFAULT NULL;
 EXPLAIN SELECT * FROM t1 WHERE date_column BETWEEN '2010-09-01' AND '2010-10-01';

@@ -39,7 +39,7 @@ execute dump_hosts;
 #
 # To avoid noise from main, the background threads are disabled.
 
-connect (con1, localhost, user1, ,test);
+connect (con1, localhost, user1, , );
 
 --connection default
 
@@ -122,7 +122,7 @@ execute dump_hosts;
 # select * from performance_schema.events_waits_history_long;
 # select PROCESSLIST_USER, PROCESSLIST_HOST, INSTRUMENTED from performance_schema.threads;
 
-connect (con2, localhost, user2, ,test);
+connect (con2, localhost, user2, , );
 
 --connection default
 
@@ -201,7 +201,7 @@ execute dump_accounts;
 execute dump_users;
 execute dump_hosts;
 
-connect (con3, localhost, user3, ,test);
+connect (con3, localhost, user3, , );
 
 --connection default
 
@@ -280,7 +280,7 @@ execute dump_accounts;
 execute dump_users;
 execute dump_hosts;
 
-connect (con4, localhost, user4, ,test);
+connect (con4, localhost, user4, , );
 
 --connection default
 

@@ -15,6 +15,9 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
 #include "myisamdef.h"
+
+#ifdef HAVE_RTREE_KEYS
+
 #include "rt_index.h"
 #include "rt_key.h"
 #include "rt_mbr.h"
@@ -341,3 +344,5 @@ split_err:
   my_afree((uchar*) coord_buf);
   DBUG_RETURN(err_code);
 }
+
+#endif /*HAVE_RTREE_KEYS*/

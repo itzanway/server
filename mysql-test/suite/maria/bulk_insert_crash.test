@@ -20,7 +20,7 @@ insert into t1 select seq,seq+100, seq+200 from seq_1_to_10;
 
 select sum(a),sum(b),sum(c) from t1;
 
-# Insert into t1 with batch insert where we get rows replaced after
+# Insert into t1 with batch insert where we get a rows replaced after
 # a few sucessful inserts
 
 SET GLOBAL debug_dbug="+d,crash_end_bulk_insert";

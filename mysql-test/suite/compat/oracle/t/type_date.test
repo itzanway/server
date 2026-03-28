@@ -75,12 +75,11 @@ DROP TABLE t1;
 --echo #
 --echo # Qualified syntax is not supported yet in SP
 --echo # See MDEV-23353 Qualified data types in SP
---echo # For now it's trying to parse as "RETURN mariadb_schema.DATE%ROWTYPE"
 --echo #
 
 SET sql_mode=ORACLE;
 DELIMITER $$;
---error ER_PARSE_ERROR
+--error ER_UNKNOWN_DATA_TYPE
 CREATE FUNCTION f1() RETURN mariadb_schema.DATE AS
 BEGIN
   RETURN CURRENT_DATE;

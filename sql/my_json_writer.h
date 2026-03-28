@@ -17,7 +17,6 @@
 #define JSON_WRITER_INCLUDED
 
 #include "my_base.h"
-#include "sql_string.h"
 
 #if !defined(NDEBUG) || defined(JSON_WRITER_UNIT_TEST) || defined ENABLED_JSON_WRITER_CONSISTENCY_CHECKS
 #include <set>
@@ -27,11 +26,12 @@
 #endif
 
 #ifdef JSON_WRITER_UNIT_TEST
+#include "sql_string.h"
+constexpr uint FAKE_SELECT_LEX_ID= UINT_MAX;
 // Also, mock objects are defined in my_json_writer-t.cc
 #define VALIDITY_ASSERT(x) if (!(x)) this->invalid_json= true;
 #else
-#include "sql_class.h"  // For class THD
-#include "log.h" // for sql_print_error
+#include "sql_select.h"
 #define VALIDITY_ASSERT(x) DBUG_ASSERT(x)
 #endif
 
@@ -40,10 +40,8 @@
 class Opt_trace_stmt;
 class Opt_trace_context;
 class Json_writer;
+struct TABLE_LIST;
 
-struct TABLE;
-struct st_join_table;
-using JOIN_TAB= struct st_join_table;
 
 /*
   Single_line_formatting_helper is used by Json_writer to do better formatting
@@ -53,8 +51,8 @@ using JOIN_TAB= struct st_join_table;
 
     arrayName : [ "boo", 123, 456 ] 
 
-  and actually print them on one line. Arrays that occupy too much space on
-  the line, or have nested members, cannot be printed on one line.
+  and actually print them on one line. Arrrays that occupy too much space on
+  the line, or have nested members cannot be printed on one line.
   
   We hook into JSON printing functions and try to detect the pattern. While
   detecting the pattern, we will accumulate "boo", 123, 456 as strings.
@@ -76,7 +74,7 @@ class Single_line_formatting_helper
   };
 
   /*
-    This works like a finite automation.
+    This works like a finite automaton. 
 
     state=DISABLED means the helper is disabled - all on_XXX functions will
     return false (which means "not handled") and do nothing.
@@ -218,7 +216,6 @@ class Json_writer
     produce an invalid JSON document (e.g. JSON array having named elements).
   */
   std::vector<bool> named_items_expectation;
-  std::stack<std::set<std::string> > named_items;
 
   bool named_item_expected() const;
 
@@ -238,8 +235,6 @@ public:
   Json_writer& add_member(const char *name, size_t len);
   
   /* Add atomic values */
-
-  /* Note: the add_str methods do not do escapes. Should this change? */
   void add_str(const char* val);
   void add_str(const char* val, size_t num_bytes);
   void add_str(const String &str);
@@ -407,7 +402,7 @@ public:
   virtual ~Json_writer_struct() = default;
 #endif
 
-  inline bool trace_started() const
+  bool trace_started() const
   {
     return my_writer != 0;
   }
@@ -738,7 +733,7 @@ public:
 /*
   RAII-based class to disable writing into the JSON document
   The tracing is disabled as soon as the object is created.
-  The destructor is called as soon as we exit the scope of the object
+  The destuctor is called as soon as we exit the scope of the object
   and the tracing is enabled back.
 */
 
@@ -754,7 +749,7 @@ public:
   RAII-based helper class to detect incorrect use of Json_writer.
 
   The idea is that a function typically must leave Json_writer at the same
-  indentation level as it was when it was invoked. Leaving it at a different
+  identation level as it was when it was invoked. Leaving it at a different 
   level typically means we forgot to close an object or an array
 
   So, here is a way to guard

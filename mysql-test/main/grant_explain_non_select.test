@@ -3,7 +3,10 @@
 #
 
 # Grant tests not performed with embedded server
---source include/not_embedded.inc
+-- source include/not_embedded.inc
+
+# Save the initial number of concurrent sessions
+--source include/count_sessions.inc
 --source include/default_optimizer_switch.inc
 
 set GLOBAL sql_mode="";
@@ -258,3 +261,5 @@ DROP DATABASE privtest_db;
 
 set GLOBAL sql_mode=default;
 set LOCAL sql_mode=default;
+# Wait till we reached the initial number of concurrent sessions
+--source include/wait_until_count_sessions.inc 

@@ -15,6 +15,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma implementation /* gcc class implementation */
+#endif
+
 /**
   @file
 
@@ -193,7 +197,8 @@ bool init_read_record(READ_RECORD *info,THD *thd, TABLE *table,
   info->table=table;
   info->sort_info= filesort;
   
-  if ((table->s->tmp_table == INTERNAL_TMP_TABLE) && !using_addon_fields)
+  if ((table->s->tmp_table == INTERNAL_TMP_TABLE) &&
+      !using_addon_fields)
     (void) table->file->extra(HA_EXTRA_MMAP);
   
   if (using_addon_fields)
@@ -251,10 +256,10 @@ bool init_read_record(READ_RECORD *info,THD *thd, TABLE *table,
 	!(table->file->ha_table_flags() & HA_FAST_KEY_READ) &&
 	(table->db_stat & HA_READ_ONLY ||
 	 table->reginfo.lock_type < TL_FIRST_WRITE) &&
-	(ulonglong) table->s->stored_rec_length *
-                  (table->file->stats.records + table->file->stats.deleted) >
-	MIN_FILE_LENGTH_TO_USE_ROW_CACHE &&
-	info->io_cache->end_of_file/info->ref_length * table->s->stored_rec_length >
+	(ulonglong) table->s->reclength* (table->file->stats.records+
+                                          table->file->stats.deleted) >
+	(ulonglong) MIN_FILE_LENGTH_TO_USE_ROW_CACHE &&
+	info->io_cache->end_of_file/info->ref_length * table->s->reclength >
 	(my_off_t) MIN_ROWS_TO_USE_TABLE_CACHE &&
 	!table->s->blob_fields &&
         info->ref_length <= MAX_REFLENGTH)
@@ -395,8 +400,11 @@ static int rr_handle_error(READ_RECORD *info, int error)
 static int rr_quick(READ_RECORD *info)
 {
   int tmp;
-  if ((tmp= info->select->quick->get_next()))
+  while ((tmp= info->select->quick->get_next()))
+  {
     tmp= rr_handle_error(info, tmp);
+    break;
+  }
   return tmp;
 }
 
@@ -419,14 +427,16 @@ static int rr_index_first(READ_RECORD *info)
   int tmp;
   // tell handler that we are doing an index scan
   if ((tmp = info->table->file->prepare_index_scan())) 
-    goto err;
-
-  info->read_record_func= rr_index;
-  if (!(tmp= info->table->file->ha_index_first(info->record())))
+  {
+    tmp= rr_handle_error(info, tmp);
     return tmp;
+  }
 
-err:
-  return rr_handle_error(info, tmp);
+  tmp= info->table->file->ha_index_first(info->record());
+  info->read_record_func= rr_index;
+  if (tmp)
+    tmp= rr_handle_error(info, tmp);
+  return tmp;
 }
 
 
@@ -445,9 +455,9 @@ err:
 
 static int rr_index_last(READ_RECORD *info)
 {
-  int tmp;
+  int tmp= info->table->file->ha_index_last(info->record());
   info->read_record_func= rr_index_desc;
-  if ((tmp= info->table->file->ha_index_last(info->record())))
+  if (tmp)
     tmp= rr_handle_error(info, tmp);
   return tmp;
 }
@@ -661,11 +671,11 @@ static int init_rr_cache(THD *thd, READ_RECORD *info)
   uint rec_cache_size, cache_records;
   DBUG_ENTER("init_rr_cache");
 
-  info->reclength= ALIGN_SIZE(info->table->s->stored_rec_length + 1);
+  info->reclength= ALIGN_SIZE(info->table->s->reclength+1);
   if (info->reclength < STRUCT_LENGTH)
     info->reclength= ALIGN_SIZE(STRUCT_LENGTH);
 
-  info->error_offset= info->table->s->stored_rec_length;
+  info->error_offset= info->table->s->reclength;
   cache_records= thd->variables.read_rnd_buff_size /
                  (info->reclength + STRUCT_LENGTH);
   rec_cache_size= cache_records * info->reclength;
@@ -696,7 +706,6 @@ static int rr_from_cache(READ_RECORD *info)
   int16 error;
   uchar *position,*ref_position,*record_pos;
   ulong record;
-  TABLE *table= info->table;
 
   for (;;)
   {
@@ -706,14 +715,13 @@ static int rr_from_cache(READ_RECORD *info)
       {
 	shortget(error,info->cache_pos);
 	if (info->print_error)
-	  table->file->print_error(error,MYF(0));
+	  info->table->file->print_error(error,MYF(0));
       }
       else
       {
 	error=0;
-        memcpy(info->record(), info->cache_pos, table->s->stored_rec_length);
-        if (table->vfield)
-          table->update_virtual_fields(table->file, VCOL_UPDATE_FOR_READ);
+        memcpy(info->record(), info->cache_pos,
+               (size_t) info->table->s->reclength);
       }
       info->cache_pos+=info->reclength;
       return ((int) error);
@@ -748,7 +756,8 @@ static int rr_from_cache(READ_RECORD *info)
       record=uint3korr(position);
       position+=3;
       record_pos=info->cache+record*info->reclength;
-      if ((error= (int16) table->file->ha_rnd_pos(record_pos,info->ref_pos)))
+      if (unlikely((error= (int16) info->table->file->
+                    ha_rnd_pos(record_pos,info->ref_pos))))
       {
 	record_pos[info->error_offset]=1;
 	shortstore(record_pos,error);

@@ -36,8 +36,6 @@
 #include "sp.h"
 #include "sql_time.h"
 #include "sql_type_geom.h"
-#include "item_vectorfunc.h"
-#include "item_numconvfunc.h"
 #include <mysql/plugin_function.h>
 
 
@@ -50,7 +48,9 @@ extern "C" const uchar *get_native_fct_hash_key(const void *buff,
 }
 
 
+#ifdef HAVE_SPATIAL
 extern Native_func_registry_array native_func_registry_array_geom;
+#endif
 
 
 /*
@@ -67,10 +67,9 @@ class Create_sp_func : public Create_qfunc
 {
 public:
   Item *create_with_db(THD *thd,
-                       const Lex_ident_db_normalized &db,
-                       const Lex_ident_routine &name,
-                       bool use_explicit_name,
-                       List<Item> *item_list) override;
+                               const LEX_CSTRING *db,
+                               const LEX_CSTRING *name,
+                               bool use_explicit_name, List<Item> *item_list) override;
 
   static Create_sp_func s_singleton;
 
@@ -140,11 +139,10 @@ protected:
 };
 
 
-class Create_func_aes_encrypt : public Create_native_func
+class Create_func_aes_encrypt : public Create_func_arg2
 {
 public:
-  Item *create_native(THD *thd, const LEX_CSTRING *name,
-                      List<Item> *item_list) override;
+  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
 
   static Create_func_aes_encrypt s_singleton;
 
@@ -154,31 +152,16 @@ protected:
 };
 
 
-class Create_func_aes_decrypt : public Create_native_func
+class Create_func_aes_decrypt : public Create_func_arg2
 {
 public:
-  Item *create_native(THD *thd, const LEX_CSTRING *name,
-                      List<Item> *item_list) override;
+  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
 
   static Create_func_aes_decrypt s_singleton;
 
 protected:
   Create_func_aes_decrypt() = default;
   ~Create_func_aes_decrypt() override = default;
-};
-
-
-class Create_func_kdf : public Create_native_func
-{
-public:
-  Item *create_native(THD *thd, const LEX_CSTRING *name,
-                      List<Item> *item_list) override;
-
-  static Create_func_kdf s_singleton;
-
-protected:
-  Create_func_kdf() = default;
-  virtual ~Create_func_kdf() = default;
 };
 
 
@@ -606,31 +589,16 @@ protected:
 };
 
 
-class Create_func_crc32 : public Create_native_func
+class Create_func_crc32 : public Create_func_arg1
 {
 public:
-  Item *create_native(THD *thd, const LEX_CSTRING *, List<Item> *item_list)
-    override;
+  Item *create_1_arg(THD *thd, Item *arg1) override;
 
   static Create_func_crc32 s_singleton;
 
 protected:
   Create_func_crc32() = default;
   ~Create_func_crc32() override = default;
-};
-
-
-class Create_func_crc32c : public Create_native_func
-{
-public:
-  Item *create_native(THD *thd, const LEX_CSTRING *, List<Item> *item_list)
-    override;
-
-  static Create_func_crc32c s_singleton;
-
-protected:
-  Create_func_crc32c() = default;
-  virtual ~Create_func_crc32c() = default;
 };
 
 
@@ -725,6 +693,34 @@ public:
 protected:
   Create_func_degrees() = default;
   ~Create_func_degrees() override = default;
+};
+
+
+class Create_func_des_decrypt : public Create_native_func
+{
+public:
+  Item *create_native(THD *thd, const LEX_CSTRING *name,
+                              List<Item> *item_list) override;
+
+  static Create_func_des_decrypt s_singleton;
+
+protected:
+  Create_func_des_decrypt() = default;
+  ~Create_func_des_decrypt() override = default;
+};
+
+
+class Create_func_des_encrypt : public Create_native_func
+{
+public:
+  Item *create_native(THD *thd, const LEX_CSTRING *name,
+                              List<Item> *item_list) override;
+
+  static Create_func_des_encrypt s_singleton;
+
+protected:
+  Create_func_des_encrypt() = default;
+  ~Create_func_des_encrypt() override = default;
 };
 
 
@@ -835,30 +831,6 @@ protected:
   ~Create_func_floor() override = default;
 };
 
-
-class Create_func_format_pico_time : public Create_func_arg1
-{
-public:
-  virtual Item *create_1_arg(THD *thd, Item *arg1) override;
-
-  static Create_func_format_pico_time s_singleton;
-
-protected:
-  Create_func_format_pico_time() = default;
-  virtual ~Create_func_format_pico_time() = default;
-};
-
-class Create_func_format_bytes : public Create_func_arg1
-{
-public:
-  virtual Item *create_1_arg(THD *thd, Item *arg1) override;
-
-  static Create_func_format_bytes s_singleton;
-
-protected:
-  Create_func_format_bytes() = default;
-  virtual ~Create_func_format_bytes() = default;
-};
 
 class Create_func_format : public Create_native_func
 {
@@ -1029,43 +1001,6 @@ public:
 protected:
   Create_func_isnull() = default;
   ~Create_func_isnull() override = default;
-};
-
-
-class Create_func_json_normalize : public Create_func_arg1
-{
-public:
-  Item *create_1_arg(THD *thd, Item *arg1) override;
-
-  static Create_func_json_normalize s_singleton;
-
-protected:
-  Create_func_json_normalize() = default;
-  virtual ~Create_func_json_normalize() = default;
-};
-
-class Create_func_json_object_to_array : public Create_func_arg1
-{
-public:
-  Item *create_1_arg(THD *thd, Item *arg1) override;
-
-  static Create_func_json_object_to_array s_singleton;
-
-protected:
-  Create_func_json_object_to_array() {}
-  virtual ~Create_func_json_object_to_array() {}
-};
-
-class Create_func_json_equals : public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
-
-  static Create_func_json_equals s_singleton;
-
-protected:
-  Create_func_json_equals() = default;
-  virtual ~Create_func_json_equals() = default;
 };
 
 
@@ -1434,69 +1369,6 @@ public:
 protected:
   Create_func_json_unquote() = default;
   ~Create_func_json_unquote() override = default;
-};
-
-
-class Create_func_json_overlaps: public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
-
-  static Create_func_json_overlaps s_singleton;
-
-protected:
-  Create_func_json_overlaps() {}
-  virtual ~Create_func_json_overlaps() {}
-};
-
-class Create_func_json_schema_valid: public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
-
-  static Create_func_json_schema_valid s_singleton;
-
-protected:
-  Create_func_json_schema_valid() {}
-  virtual ~Create_func_json_schema_valid() {}
-};
-
-class Create_func_json_key_value : public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
-
-  static Create_func_json_key_value s_singleton;
-
-protected:
-  Create_func_json_key_value() = default;
-  virtual ~Create_func_json_key_value() = default;
-};
-
-
-class Create_func_json_array_intersect : public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
-
-  static Create_func_json_array_intersect s_singleton;
-
-protected:
-  Create_func_json_array_intersect() {}
-  virtual ~Create_func_json_array_intersect() {}
-};
-
-
-class Create_func_json_object_filter_keys : public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
-
-  static Create_func_json_object_filter_keys s_singleton;
-
-protected:
-  Create_func_json_object_filter_keys() {}
-  virtual ~Create_func_json_object_filter_keys() {}
 };
 
 
@@ -1889,18 +1761,6 @@ protected:
   ~Create_func_monthname() override = default;
 };
 
-class Create_func_months_between : public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
-
-  static Create_func_months_between s_singleton;
-
-protected:
-  Create_func_months_between() = default;
-  ~Create_func_months_between() override = default;
-};
-
 
 class Create_func_name_const : public Create_func_arg2
 {
@@ -1914,15 +1774,6 @@ protected:
   ~Create_func_name_const() override = default;
 };
 
-class Create_func_natural_sort_key : public Create_func_arg1
-{
-public:
-  Item *create_1_arg(THD *thd, Item *arg1) override;
-  static Create_func_natural_sort_key s_singleton;
-protected:
-  Create_func_natural_sort_key() = default;
-  virtual ~Create_func_natural_sort_key() = default;
-};
 
 class Create_func_nullif : public Create_func_arg2
 {
@@ -2132,19 +1983,6 @@ protected:
 };
 
 
-class Create_func_random_bytes : public Create_func_arg1
-{
-public:
-  Item *create_1_arg(THD *thd, Item *arg1) override;
-
-  static Create_func_random_bytes s_singleton;
-
-protected:
-  Create_func_random_bytes() {}
-  virtual ~Create_func_random_bytes() {}
-};
-
-
 class Create_func_release_all_locks : public Create_func_arg0
 {
 public:
@@ -2290,16 +2128,6 @@ protected:
   ~Create_func_sec_to_time() override = default;
 };
 
-class Create_func_sformat : public Create_native_func
-{
-public:
-  Item *create_native(THD *thd, const LEX_CSTRING *name, List<Item> *item_list)
-    override;
-  static Create_func_sformat s_singleton;
-protected:
-  Create_func_sformat() = default;
-  virtual ~Create_func_sformat() = default;
-};
 
 class Create_func_sha : public Create_func_arg1
 {
@@ -2405,11 +2233,11 @@ protected:
 };
 
 
-class Create_func_str_to_date : public Create_native_func
+class Create_func_str_to_date : public Create_func_arg2
 {
 public:
-  Item *create_native(THD *thd, const LEX_CSTRING *name,
-                      List<Item> *item_list) override;
+  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override;
+
   static Create_func_str_to_date s_singleton;
 
 protected:
@@ -2545,8 +2373,8 @@ public:
   static Create_func_to_char s_singleton;
 
 protected:
-  Create_func_to_char() = default;
-  virtual ~Create_func_to_char() = default;
+  Create_func_to_char() {}
+  virtual ~Create_func_to_char() {}
 };
 
 
@@ -2572,41 +2400,6 @@ public:
 protected:
   Create_func_to_seconds() = default;
   ~Create_func_to_seconds() override = default;
-};
-
-
-class Create_func_trunc : public Create_native_func
-{
-public:
-  Item *create_native(THD *thd, const LEX_CSTRING *name,
-                              List<Item> *item_list) override
-  {
-    Item *a[2];
-    uint arg_count= item_list == nullptr ? 0 : item_list->elements;
-
-    for (uint i=0; i < MY_MIN(array_elements(a), arg_count); i++)
-      a[i]= item_list->pop();
-    switch (arg_count)
-    {
-    case 1:
-      {
-        a[1]= new (thd->mem_root) Item_string_sys(thd, "DD",  2);
-        if (unlikely(a[1] == nullptr))
-          return nullptr;
-      }
-      /*fall through*/
-    case 2:
-      return new (thd->mem_root) Item_func_trunc(thd, a[0], a[1]);
-    }
-    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
-    return NULL;
-  }
-
-  static Create_func_trunc s_singleton;
-
-protected:
-  Create_func_trunc() = default;
-  ~Create_func_trunc() override = default;
 };
 
 
@@ -2675,6 +2468,30 @@ protected:
   ~Create_func_unix_timestamp() override = default;
 };
 
+
+class Create_func_uuid : public Create_func_arg0
+{
+public:
+  Item *create_builder(THD *thd) override;
+
+  static Create_func_uuid s_singleton;
+
+protected:
+  Create_func_uuid() = default;
+  ~Create_func_uuid() override = default;
+};
+
+class Create_func_sys_guid : public Create_func_arg0
+{
+public:
+  Item *create_builder(THD *thd) override;
+
+  static Create_func_sys_guid s_singleton;
+
+protected:
+  Create_func_sys_guid() {}
+  virtual ~Create_func_sys_guid() {}
+};
 
 class Create_func_uuid_short : public Create_func_arg0
 {
@@ -2858,14 +2675,30 @@ Item*
 Create_qfunc::create_func(THD *thd, const LEX_CSTRING *name,
                           List<Item> *item_list)
 {
-  Lex_ident_db_normalized db;
-  if (thd->lex->sphead)
+  LEX_CSTRING db;
+
+  if (unlikely(! thd->db.str && ! thd->lex->sphead))
   {
-    db= thd->lex->copy_db_normalized();
-    if (!db.str)
-      return NULL; /*No db or EOM, error was already sent */
+    /*
+      The proper error message should be in the lines of:
+        Can't resolve <name>() to a function call,
+        because this function:
+        - is not a native function,
+        - is not a user defined function,
+        - can not match a qualified (read: stored) function
+          since no database is selected.
+      Reusing ER_SP_DOES_NOT_EXIST have a message consistent with
+      the case when a default database exist, see Create_sp_func::create().
+    */
+    my_error(ER_SP_DOES_NOT_EXIST, MYF(0),
+             "FUNCTION", name->str);
+    return NULL;
   }
-  return create_with_db(thd, db, Lex_ident_routine(*name), false, item_list);
+
+  if (thd->lex->copy_db_to(&db))
+    return NULL;
+
+  return create_with_db(thd, &db, name, false, item_list);
 }
 
 
@@ -2985,8 +2818,8 @@ Create_sp_func Create_sp_func::s_singleton;
 
 Item*
 Create_sp_func::create_with_db(THD *thd,
-                               const Lex_ident_db_normalized &db,
-                               const Lex_ident_routine &name,
+                               const LEX_CSTRING *db,
+                               const LEX_CSTRING *name,
                                bool use_explicit_name, List<Item> *item_list)
 {
   int arg_count= 0;
@@ -2994,7 +2827,7 @@ Create_sp_func::create_with_db(THD *thd,
   LEX *lex= thd->lex;
   sp_name *qname;
   const Sp_handler *sph= &sp_handler_function;
-  Database_qualified_name pkgname;
+  Database_qualified_name pkgname(&null_clex_str, &null_clex_str);
 
   if (unlikely(has_named_parameters(item_list)))
   {
@@ -3007,7 +2840,7 @@ Create_sp_func::create_with_db(THD *thd,
       because it can refer to a User Defined Function call.
       For a Stored Function however, this has no semantic.
     */
-    my_error(ER_WRONG_PARAMETERS_TO_STORED_FCT, MYF(0), name.str);
+    my_error(ER_WRONG_PARAMETERS_TO_STORED_FCT, MYF(0), name->str);
     return NULL;
   }
 
@@ -3015,19 +2848,12 @@ Create_sp_func::create_with_db(THD *thd,
     arg_count= item_list->elements;
 
   qname= new (thd->mem_root) sp_name(db, name, use_explicit_name);
-  thd->variables.path.resolve(thd, lex->sphead, qname, &sph, &pkgname);
-  if (qname->m_db.str)
-  {
-    /*
-      Only add to used routine if m_db was resolved, we want to defer
-      error handling for ER_SP_DOES_NOT_EXIST until execution for error
-      message consistency
-    */
-    sph->add_used_routine(lex, thd, qname);
-    if (pkgname.m_name.length)
-      sp_handler_package_body.add_used_routine(lex, thd, &pkgname);
-  }
-
+  if (unlikely(sph->sp_resolve_package_routine(thd, thd->lex->sphead,
+                                               qname, &sph, &pkgname)))
+    return NULL;
+  sph->add_used_routine(lex, thd, qname);
+  if (pkgname.m_name.length)
+    sp_handler_package_body.add_used_routine(lex, thd, &pkgname);
   Name_resolution_context *ctx= lex->current_context();
   if (arg_count > 0)
     func= new (thd->mem_root) Item_func_sp(thd, ctx, qname, sph, *item_list);
@@ -3199,86 +3025,18 @@ Create_func_addmonths::create_2_arg(THD *thd, Item *arg1, Item *arg2)
 Create_func_aes_encrypt Create_func_aes_encrypt::s_singleton;
 
 Item*
-Create_func_aes_encrypt::create_native(THD *thd, const LEX_CSTRING *name,
-                                       List<Item> *item_list)
+Create_func_aes_encrypt::create_2_arg(THD *thd, Item *arg1, Item *arg2)
 {
-  Item *a[4];
-  uint arg_count= 0;
-
-  if (item_list != NULL)
-    arg_count= item_list->elements;
-
-  for (uint i=0; i < MY_MIN(array_elements(a), arg_count); i++)
-    a[i]= item_list->pop();
-  switch (arg_count)
-  {
-  case 2:
-    return new (thd->mem_root) Item_func_aes_encrypt(thd, a[0], a[1]);
-  case 3:
-    return new (thd->mem_root) Item_func_aes_encrypt(thd, a[0], a[1], a[2]);
-  case 4:
-    return new (thd->mem_root) Item_func_aes_encrypt(thd, a[0], a[1], a[2], a[3]);
-  }
-  my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
-  return NULL;
+  return new (thd->mem_root) Item_func_aes_encrypt(thd, arg1, arg2);
 }
 
 
 Create_func_aes_decrypt Create_func_aes_decrypt::s_singleton;
 
 Item*
-Create_func_aes_decrypt::create_native(THD *thd, const LEX_CSTRING *name,
-                                       List<Item> *item_list)
+Create_func_aes_decrypt::create_2_arg(THD *thd, Item *arg1, Item *arg2)
 {
-  Item *a[4];
-  uint arg_count= 0;
-
-  if (item_list != NULL)
-    arg_count= item_list->elements;
-
-  for (uint i=0; i < MY_MIN(array_elements(a), arg_count); i++)
-    a[i]= item_list->pop();
-  switch (arg_count)
-  {
-  case 2:
-    return new (thd->mem_root) Item_func_aes_decrypt(thd, a[0], a[1]);
-  case 3:
-    return new (thd->mem_root) Item_func_aes_decrypt(thd, a[0], a[1], a[2]);
-  case 4:
-    return new (thd->mem_root) Item_func_aes_decrypt(thd, a[0], a[1], a[2], a[3]);
-  }
-  my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
-  return NULL;
-}
-
-
-Create_func_kdf Create_func_kdf::s_singleton;
-
-Item*
-Create_func_kdf::create_native(THD *thd, const LEX_CSTRING *name,
-                               List<Item> *item_list)
-{
-  Item *a[5];
-  uint arg_count= 0;
-
-  if (item_list != NULL)
-    arg_count= item_list->elements;
-
-  for (uint i=0; i < MY_MIN(array_elements(a), arg_count); i++)
-    a[i]= item_list->pop();
-  switch (arg_count)
-  {
-  case 2:
-    return new (thd->mem_root) Item_func_kdf(thd, a[0], a[1]);
-  case 3:
-    return new (thd->mem_root) Item_func_kdf(thd, a[0], a[1], a[2]);
-  case 4:
-    return new (thd->mem_root) Item_func_kdf(thd, a[0], a[1], a[2], a[3]);
-  case 5:
-    return new (thd->mem_root) Item_func_kdf(thd, a[0], a[1], a[2], a[3], a[4]);
-  }
-  my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
-  return NULL;
+  return new (thd->mem_root) Item_func_aes_decrypt(thd, arg1, arg2);
 }
 
 
@@ -3634,54 +3392,10 @@ Create_func_cot::create_1_arg(THD *thd, Item *arg1)
 Create_func_crc32 Create_func_crc32::s_singleton;
 
 Item*
-Create_func_crc32::create_native(THD *thd, const LEX_CSTRING *name,
-                                 List<Item> *item_list)
+Create_func_crc32::create_1_arg(THD *thd, Item *arg1)
 {
-  int argc= item_list ? item_list->elements : 0;
-
-  if (unlikely(argc != 1 && argc != 2))
-  {
-    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
-    return nullptr;
-  }
-
-  Item *arg1= item_list->pop(), *arg2= argc < 2 ? nullptr : item_list->pop();
-
-  /* This was checked in Create_native_func::create_func() */
-  DBUG_ASSERT(!arg1->is_explicit_name());
-  DBUG_ASSERT(!arg2 || !arg2->is_explicit_name());
-
-  return arg2
-    ? new (thd->mem_root) Item_func_crc32(thd, false, arg1, arg2)
-    : new (thd->mem_root) Item_func_crc32(thd, false, arg1);
+  return new (thd->mem_root) Item_func_crc32(thd, arg1);
 }
-
-
-Create_func_crc32c Create_func_crc32c::s_singleton;
-
-Item*
-Create_func_crc32c::create_native(THD *thd, const LEX_CSTRING *name,
-                                  List<Item> *item_list)
-{
-  int argc= item_list ? item_list->elements : 0;
-
-  if (unlikely(argc != 1 && argc != 2))
-  {
-    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
-    return nullptr;
-  }
-
-  Item *arg1= item_list->pop(), *arg2= argc < 2 ? nullptr : item_list->pop();
-
-  /* This was checked in Create_native_func::create_func() */
-  DBUG_ASSERT(!arg1->is_explicit_name());
-  DBUG_ASSERT(!arg2 || !arg2->is_explicit_name());
-
-  return arg2
-    ? new (thd->mem_root) Item_func_crc32(thd, true, arg1, arg2)
-    : new (thd->mem_root) Item_func_crc32(thd, true, arg1);
-}
-
 
 Create_func_datediff Create_func_datediff::s_singleton;
 
@@ -3769,6 +3483,80 @@ Create_func_degrees::create_1_arg(THD *thd, Item *arg1)
 {
   return new (thd->mem_root) Item_func_units(thd, (char*) "degrees", arg1,
                                              180/M_PI, 0.0);
+}
+
+
+Create_func_des_decrypt Create_func_des_decrypt::s_singleton;
+
+Item*
+Create_func_des_decrypt::create_native(THD *thd, const LEX_CSTRING *name,
+                                       List<Item> *item_list)
+{
+  Item *func= NULL;
+  int arg_count= 0;
+
+  if (item_list != NULL)
+    arg_count= item_list->elements;
+
+  switch (arg_count) {
+  case 1:
+  {
+    Item *param_1= item_list->pop();
+    func= new (thd->mem_root) Item_func_des_decrypt(thd, param_1);
+    break;
+  }
+  case 2:
+  {
+    Item *param_1= item_list->pop();
+    Item *param_2= item_list->pop();
+    func= new (thd->mem_root) Item_func_des_decrypt(thd, param_1, param_2);
+    break;
+  }
+  default:
+  {
+    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
+    break;
+  }
+  }
+
+  return func;
+}
+
+
+Create_func_des_encrypt Create_func_des_encrypt::s_singleton;
+
+Item*
+Create_func_des_encrypt::create_native(THD *thd, const LEX_CSTRING *name,
+                                       List<Item> *item_list)
+{
+  Item *func= NULL;
+  int arg_count= 0;
+
+  if (item_list != NULL)
+    arg_count= item_list->elements;
+
+  switch (arg_count) {
+  case 1:
+  {
+    Item *param_1= item_list->pop();
+    func= new (thd->mem_root) Item_func_des_encrypt(thd, param_1);
+    break;
+  }
+  case 2:
+  {
+    Item *param_1= item_list->pop();
+    Item *param_2= item_list->pop();
+    func= new (thd->mem_root) Item_func_des_encrypt(thd, param_1, param_2);
+    break;
+  }
+  default:
+  {
+    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
+    break;
+  }
+  }
+
+  return func;
 }
 
 
@@ -3938,24 +3726,6 @@ Item*
 Create_func_floor::create_1_arg(THD *thd, Item *arg1)
 {
   return new (thd->mem_root) Item_func_floor(thd, arg1);
-}
-
-
-Create_func_format_pico_time Create_func_format_pico_time::s_singleton;
-
-Item*
-Create_func_format_pico_time::create_1_arg(THD *thd, Item *arg1)
-{
-  return new (thd->mem_root) Item_func_format_pico_time(thd, arg1);
-}
-
-
-Create_func_format_bytes Create_func_format_bytes::s_singleton;
-
-Item*
-Create_func_format_bytes::create_1_arg(THD *thd, Item *arg1)
-{
-  return new (thd->mem_root) Item_func_format_bytes(thd, arg1);
 }
 
 
@@ -4150,34 +3920,6 @@ Item*
 Create_func_isnull::create_1_arg(THD *thd, Item *arg1)
 {
   return new (thd->mem_root) Item_func_isnull(thd, arg1);
-}
-
-Create_func_json_normalize Create_func_json_normalize::s_singleton;
-
-Item*
-Create_func_json_normalize::create_1_arg(THD *thd, Item *arg1)
-{
-  status_var_increment(thd->status_var.feature_json);
-  return new (thd->mem_root) Item_func_json_normalize(thd, arg1);
-}
-
-Create_func_json_object_to_array Create_func_json_object_to_array::s_singleton;
-
-Item*
-Create_func_json_object_to_array::create_1_arg(THD *thd, Item *arg1)
-{
-  status_var_increment(thd->status_var.feature_json);
-  return new (thd->mem_root) Item_func_json_object_to_array(thd, arg1);
-}
-
-
-Create_func_json_equals Create_func_json_equals::s_singleton;
-
-Item*
-Create_func_json_equals::create_2_arg(THD *thd, Item *arg1, Item *arg2)
-{
-  status_var_increment(thd->status_var.feature_json);
-  return new (thd->mem_root) Item_func_json_equals(thd, arg1, arg2);
 }
 
 
@@ -4556,27 +4298,6 @@ Create_func_json_length::create_native(THD *thd, const LEX_CSTRING *name,
   return func;
 }
 
-Create_func_json_array_intersect Create_func_json_array_intersect::s_singleton;
-Item*
-Create_func_json_array_intersect::create_2_arg(THD *thd, Item *arg1, Item *arg2)
-{
-  if (unlikely( ( !arg1 || !arg2 ) )) // json, json
-  {
-    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0));
-  }
-  status_var_increment(thd->status_var.feature_json);
-  return new (thd->mem_root) Item_func_json_array_intersect(thd, arg1, arg2);
-}
-
-Create_func_json_object_filter_keys Create_func_json_object_filter_keys::s_singleton;
-
-Item*
-Create_func_json_object_filter_keys::create_2_arg(THD *thd, Item *arg1, Item *arg2)
-{
-  status_var_increment(thd->status_var.feature_json);
-  return new (thd->mem_root) Item_func_json_object_filter_keys(thd, arg1, arg2);
-}
-
 
 Create_func_json_merge Create_func_json_merge::s_singleton;
 
@@ -4757,16 +4478,6 @@ Create_func_json_search::create_native(THD *thd, const LEX_CSTRING *name,
 }
 
 
-Create_func_json_overlaps Create_func_json_overlaps::s_singleton;
-
-Item*
-Create_func_json_overlaps::create_2_arg(THD *thd, Item *arg1, Item *arg2)
-{
-  status_var_increment(thd->status_var.feature_json);
-  return new (thd->mem_root) Item_func_json_overlaps(thd, arg1, arg2);
-}
-
-
 Create_func_last_insert_id Create_func_last_insert_id::s_singleton;
 
 Item*
@@ -4801,24 +4512,6 @@ Create_func_last_insert_id::create_native(THD *thd, const LEX_CSTRING *name,
   }
 
   return func;
-}
-
-Create_func_json_schema_valid Create_func_json_schema_valid::s_singleton;
-
-Item*
-Create_func_json_schema_valid::create_2_arg(THD *thd, Item *arg1, Item *arg2)
-{
-  status_var_increment(thd->status_var.feature_json);
-  return new (thd->mem_root) Item_func_json_schema_valid(thd, arg1, arg2);
-}
-
-Create_func_json_key_value Create_func_json_key_value::s_singleton;
-
-Item*
-Create_func_json_key_value::create_2_arg(THD *thd, Item *arg1, Item *arg2)
-{
-  status_var_increment(thd->status_var.feature_json);
-  return new (thd->mem_root) Item_func_json_key_value(thd, arg1, arg2);
 }
 
 
@@ -5244,12 +4937,6 @@ Create_func_md5::create_1_arg(THD *thd, Item *arg1)
   return new (thd->mem_root) Item_func_md5(thd, arg1);
 }
 
-Create_func_natural_sort_key Create_func_natural_sort_key::s_singleton;
-
-Item *Create_func_natural_sort_key::create_1_arg(THD *thd, Item* arg1)
-{
-  return new (thd->mem_root) Item_func_natural_sort_key(thd, arg1);
-}
 
 Create_func_microsecond Create_func_microsecond::s_singleton;
 
@@ -5275,15 +4962,6 @@ Item*
 Create_func_monthname::create_1_arg(THD *thd, Item *arg1)
 {
   return new (thd->mem_root) Item_func_monthname(thd, arg1);
-}
-
-
-Create_func_months_between Create_func_months_between::s_singleton;
-
-Item*
-Create_func_months_between::create_2_arg(THD *thd, Item *arg1, Item *arg2)
-{
-  return new (thd->mem_root) Item_func_months_between(thd, arg1, arg2);
 }
 
 
@@ -5367,8 +5045,7 @@ Create_func_pi Create_func_pi::s_singleton;
 Item*
 Create_func_pi::create_builder(THD *thd)
 {
-  static const Lex_ident_routine name("pi()"_LEX_CSTRING);
-  return new (thd->mem_root) Item_static_float_func(thd, name, M_PI, 6, 8);
+  return new (thd->mem_root) Item_static_float_func(thd, "pi()", M_PI, 6, 8);
 }
 
 
@@ -5447,7 +5124,7 @@ Create_func_rand::create_native(THD *thd, const LEX_CSTRING *name,
     between master and slave, because the order is undefined.  Hence,
     the statement is unsafe to log in statement format.
 
-    For normal INSERT's this is however safe
+    For normal INSERT's this is howevever safe
   */
   if (thd->lex->sql_command != SQLCOM_INSERT)
     thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
@@ -5474,16 +5151,6 @@ Create_func_rand::create_native(THD *thd, const LEX_CSTRING *name,
   }
 
   return func;
-}
-
-
-Create_func_random_bytes Create_func_random_bytes::s_singleton;
-
-Item *Create_func_random_bytes::create_1_arg(THD *thd, Item *arg1)
-{
-  thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
-  thd->lex->uncacheable(UNCACHEABLE_RAND);
-  return new (thd->mem_root) Item_func_random_bytes(thd, arg1);
 }
 
 
@@ -5667,26 +5334,6 @@ Create_func_sec_to_time::create_1_arg(THD *thd, Item *arg1)
   return new (thd->mem_root) Item_func_sec_to_time(thd, arg1);
 }
 
-Create_func_sformat Create_func_sformat::s_singleton;
-
-Item*
-Create_func_sformat::create_native(THD *thd, const LEX_CSTRING *name,
-                                   List<Item> *item_list)
-{
-  int arg_count= 0;
-
-  if (item_list != NULL)
-    arg_count= item_list->elements;
-
-  if (unlikely(arg_count < 1))
-  {
-    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
-    return NULL;
-  }
-
-  return new (thd->mem_root) Item_func_sformat(thd, *item_list);
-}
-
 
 Create_func_sha Create_func_sha::s_singleton;
 
@@ -5765,32 +5412,9 @@ Create_func_sqrt::create_1_arg(THD *thd, Item *arg1)
 Create_func_str_to_date Create_func_str_to_date::s_singleton;
 
 Item*
-Create_func_str_to_date::create_native(THD *thd, const LEX_CSTRING *name,
-                                      List<Item> *item_list)
+Create_func_str_to_date::create_2_arg(THD *thd, Item *arg1, Item *arg2)
 {
-  int arg_count= 0;
-
-  if (item_list != NULL)
-    arg_count= item_list->elements;
-
-  switch (arg_count) {
-  case 2:
-  {
-    Item *param_1= item_list->pop();
-    Item *param_2= item_list->pop();
-    return new (thd->mem_root) Item_func_str_to_date(thd, param_1, param_2);
-  }
-  case 3:
-  {
-    Item *param_1= item_list->pop();
-    Item *param_2= item_list->pop();
-    Item *param_3= item_list->pop();
-    return new (thd->mem_root) Item_func_str_to_date(thd,
-                                 param_1, param_2, param_3);
-  }
-  }
-  my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
-  return NULL;
+  return new (thd->mem_root) Item_func_str_to_date(thd, arg1, arg2);
 }
 
 
@@ -5956,9 +5580,6 @@ Create_func_to_seconds::create_1_arg(THD *thd, Item *arg1)
 }
 
 
-Create_func_trunc Create_func_trunc::s_singleton;
-
-
 Create_func_ucase Create_func_ucase::s_singleton;
 
 Item*
@@ -6031,6 +5652,29 @@ Create_func_unix_timestamp::create_native(THD *thd, const LEX_CSTRING *name,
 }
 
 
+Create_func_uuid Create_func_uuid::s_singleton;
+
+Item*
+Create_func_uuid::create_builder(THD *thd)
+{
+  DBUG_ENTER("Create_func_uuid::create");
+  thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
+  thd->lex->uncacheable(UNCACHEABLE_RAND);  // disallow cache and query merges
+  DBUG_RETURN(new (thd->mem_root) Item_func_uuid(thd, 0));
+}
+
+Create_func_sys_guid Create_func_sys_guid::s_singleton;
+
+Item*
+Create_func_sys_guid::create_builder(THD *thd)
+{
+  DBUG_ENTER("Create_func_sys_guid::create");
+  thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
+  thd->lex->uncacheable(UNCACHEABLE_RAND);  // disallow cache and query merges
+  DBUG_RETURN(new (thd->mem_root) Item_func_uuid(thd, 1));
+}
+
+
 Create_func_uuid_short Create_func_uuid_short::s_singleton;
 
 Item*
@@ -6049,10 +5693,10 @@ Item*
 Create_func_version::create_builder(THD *thd)
 {
   thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
-  static const Lex_ident_routine name("version()"_LEX_CSTRING);
+  static Lex_cstring name(STRING_WITH_LEN("version()"));
   return new (thd->mem_root) Item_static_string_func(thd, name,
                                                      Lex_cstring_strlen(server_version),
-                                                     system_charset_info_for_i_s,
+                                                     system_charset_info,
                                                      DERIVATION_SYSCONST);
 }
 
@@ -6226,89 +5870,6 @@ Create_func_year_week::create_native(THD *thd, const LEX_CSTRING *name,
   return func;
 }
 
-
-class Create_func_vec_distance_euclidean: public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override
-  { return new (thd->mem_root)
-      Item_func_vec_distance(thd, arg1, arg2, Item_func_vec_distance::EUCLIDEAN); }
-
-  static Create_func_vec_distance_euclidean s_singleton;
-
-protected:
-  Create_func_vec_distance_euclidean() = default;
-  virtual ~Create_func_vec_distance_euclidean() = default;
-};
-
-Create_func_vec_distance_euclidean Create_func_vec_distance_euclidean::s_singleton;
-
-
-class Create_func_vec_distance_cosine: public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override
-  { return new (thd->mem_root)
-      Item_func_vec_distance(thd, arg1, arg2, Item_func_vec_distance::COSINE); }
-
-  static Create_func_vec_distance_cosine s_singleton;
-
-protected:
-  Create_func_vec_distance_cosine() = default;
-  virtual ~Create_func_vec_distance_cosine() = default;
-};
-
-Create_func_vec_distance_cosine Create_func_vec_distance_cosine::s_singleton;
-
-class Create_func_vec_distance: public Create_func_arg2
-{
-public:
-  Item *create_2_arg(THD *thd, Item *arg1, Item *arg2) override
-  { return new (thd->mem_root)
-      Item_func_vec_distance(thd, arg1, arg2, Item_func_vec_distance::AUTO); }
-
-  static Create_func_vec_distance s_singleton;
-
-protected:
-  Create_func_vec_distance() = default;
-  virtual ~Create_func_vec_distance() = default;
-};
-
-Create_func_vec_distance Create_func_vec_distance::s_singleton;
-
-class Create_func_vec_totext: public Create_func_arg1
-{
-public:
-  Item *create_1_arg(THD *thd, Item *arg1) override
-  { return new (thd->mem_root) Item_func_vec_totext(thd, arg1); }
-
-  static Create_func_vec_totext s_singleton;
-
-protected:
-  Create_func_vec_totext() = default;
-  virtual ~Create_func_vec_totext() = default;
-};
-
-
-Create_func_vec_totext Create_func_vec_totext::s_singleton;
-
-
-class Create_func_vec_fromtext: public Create_func_arg1
-{
-public:
-  Item *create_1_arg(THD *thd, Item *arg1) override
-  { return new (thd->mem_root) Item_func_vec_fromtext(thd, arg1); }
-
-  static Create_func_vec_fromtext s_singleton;
-
-protected:
-  Create_func_vec_fromtext() = default;
-  virtual ~Create_func_vec_fromtext() = default;
-};
-
-Create_func_vec_fromtext Create_func_vec_fromtext::s_singleton;
-
-
 #define BUILDER(F) & F::s_singleton
 
 /*
@@ -6360,7 +5921,6 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("COS") }, BUILDER(Create_func_cos)},
   { { STRING_WITH_LEN("COT") }, BUILDER(Create_func_cot)},
   { { STRING_WITH_LEN("CRC32") }, BUILDER(Create_func_crc32)},
-  { { STRING_WITH_LEN("CRC32C") }, BUILDER(Create_func_crc32c)},
   { { STRING_WITH_LEN("DATABASE") }, BUILDER(Create_func_database)},
   { { STRING_WITH_LEN("DATEDIFF") }, BUILDER(Create_func_datediff)},
   { { STRING_WITH_LEN("DATE_FORMAT") }, BUILDER(Create_func_date_format)},
@@ -6372,6 +5932,8 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("DEGREES") }, BUILDER(Create_func_degrees)},
   { { STRING_WITH_LEN("DECODE_HISTOGRAM") }, BUILDER(Create_func_decode_histogram)},
   { { STRING_WITH_LEN("DECODE_ORACLE") }, BUILDER(Create_func_decode_oracle)},
+  { { STRING_WITH_LEN("DES_DECRYPT") }, BUILDER(Create_func_des_decrypt)},
+  { { STRING_WITH_LEN("DES_ENCRYPT") }, BUILDER(Create_func_des_encrypt)},
   { { STRING_WITH_LEN("ELT") }, BUILDER(Create_func_elt)},
   { { STRING_WITH_LEN("ENCODE") }, BUILDER(Create_func_encode)},
   { { STRING_WITH_LEN("ENCRYPT") }, BUILDER(Create_func_encrypt)},
@@ -6381,8 +5943,6 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("FIELD") }, BUILDER(Create_func_field)},
   { { STRING_WITH_LEN("FIND_IN_SET") }, BUILDER(Create_func_find_in_set)},
   { { STRING_WITH_LEN("FLOOR") }, BUILDER(Create_func_floor)},
-  { { STRING_WITH_LEN("FORMAT_PICO_TIME") }, BUILDER(Create_func_format_pico_time)},
-  { { STRING_WITH_LEN("FORMAT_BYTES") }, BUILDER(Create_func_format_bytes)},
   { { STRING_WITH_LEN("FORMAT") }, BUILDER(Create_func_format)},
   { { STRING_WITH_LEN("FOUND_ROWS") }, BUILDER(Create_func_found_rows)},
   { { STRING_WITH_LEN("FROM_BASE64") }, BUILDER(Create_func_from_base64)},
@@ -6399,41 +5959,32 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("JSON_ARRAY") }, BUILDER(Create_func_json_array)},
   { { STRING_WITH_LEN("JSON_ARRAY_APPEND") }, BUILDER(Create_func_json_array_append)},
   { { STRING_WITH_LEN("JSON_ARRAY_INSERT") }, BUILDER(Create_func_json_array_insert)},
-  { { STRING_WITH_LEN("JSON_ARRAY_INTERSECT") }, BUILDER(Create_func_json_array_intersect)},
   { { STRING_WITH_LEN("JSON_COMPACT") }, BUILDER(Create_func_json_compact)},
   { { STRING_WITH_LEN("JSON_CONTAINS") }, BUILDER(Create_func_json_contains)},
   { { STRING_WITH_LEN("JSON_CONTAINS_PATH") }, BUILDER(Create_func_json_contains_path)},
   { { STRING_WITH_LEN("JSON_DEPTH") }, BUILDER(Create_func_json_depth)},
   { { STRING_WITH_LEN("JSON_DETAILED") }, BUILDER(Create_func_json_detailed)},
   { { STRING_WITH_LEN("JSON_PRETTY") }, BUILDER(Create_func_json_detailed)},
-  { { STRING_WITH_LEN("JSON_EQUALS") }, BUILDER(Create_func_json_equals)},
   { { STRING_WITH_LEN("JSON_EXISTS") }, BUILDER(Create_func_json_exists)},
   { { STRING_WITH_LEN("JSON_EXTRACT") }, BUILDER(Create_func_json_extract)},
   { { STRING_WITH_LEN("JSON_INSERT") }, BUILDER(Create_func_json_insert)},
-   { { STRING_WITH_LEN("JSON_KEY_VALUE") }, BUILDER(Create_func_json_key_value)},
   { { STRING_WITH_LEN("JSON_KEYS") }, BUILDER(Create_func_json_keys)},
   { { STRING_WITH_LEN("JSON_LENGTH") }, BUILDER(Create_func_json_length)},
   { { STRING_WITH_LEN("JSON_LOOSE") }, BUILDER(Create_func_json_loose)},
   { { STRING_WITH_LEN("JSON_MERGE") }, BUILDER(Create_func_json_merge)},
   { { STRING_WITH_LEN("JSON_MERGE_PATCH") }, BUILDER(Create_func_json_merge_patch)},
   { { STRING_WITH_LEN("JSON_MERGE_PRESERVE") }, BUILDER(Create_func_json_merge)},
-  { { STRING_WITH_LEN("JSON_NORMALIZE") }, BUILDER(Create_func_json_normalize)},
   { { STRING_WITH_LEN("JSON_QUERY") }, BUILDER(Create_func_json_query)},
   { { STRING_WITH_LEN("JSON_QUOTE") }, BUILDER(Create_func_json_quote)},
   { { STRING_WITH_LEN("JSON_OBJECT") }, BUILDER(Create_func_json_object)},
-  { { STRING_WITH_LEN("JSON_OBJECT_FILTER_KEYS") }, BUILDER(Create_func_json_object_filter_keys)},
-  { { STRING_WITH_LEN("JSON_OBJECT_TO_ARRAY") }, BUILDER(Create_func_json_object_to_array)},
-  { { STRING_WITH_LEN("JSON_OVERLAPS") }, BUILDER(Create_func_json_overlaps)},
   { { STRING_WITH_LEN("JSON_REMOVE") }, BUILDER(Create_func_json_remove)},
   { { STRING_WITH_LEN("JSON_REPLACE") }, BUILDER(Create_func_json_replace)},
-  { { STRING_WITH_LEN("JSON_SCHEMA_VALID") }, BUILDER(Create_func_json_schema_valid)},
   { { STRING_WITH_LEN("JSON_SET") }, BUILDER(Create_func_json_set)},
   { { STRING_WITH_LEN("JSON_SEARCH") }, BUILDER(Create_func_json_search)},
   { { STRING_WITH_LEN("JSON_TYPE") }, BUILDER(Create_func_json_type)},
   { { STRING_WITH_LEN("JSON_UNQUOTE") }, BUILDER(Create_func_json_unquote)},
   { { STRING_WITH_LEN("JSON_VALID") }, BUILDER(Create_func_json_valid)},
   { { STRING_WITH_LEN("JSON_VALUE") }, BUILDER(Create_func_json_value)},
-  { { STRING_WITH_LEN("KDF") }, BUILDER(Create_func_kdf)},
   { { STRING_WITH_LEN("LAST_DAY") }, BUILDER(Create_func_last_day)},
   { { STRING_WITH_LEN("LAST_INSERT_ID") }, BUILDER(Create_func_last_insert_id)},
   { { STRING_WITH_LEN("LCASE") }, BUILDER(Create_func_lcase)},
@@ -6464,9 +6015,7 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("MICROSECOND") }, BUILDER(Create_func_microsecond)},
   { { STRING_WITH_LEN("MOD") }, BUILDER(Create_func_mod)},
   { { STRING_WITH_LEN("MONTHNAME") }, BUILDER(Create_func_monthname)},
-  { { STRING_WITH_LEN("MONTHS_BETWEEN") }, BUILDER(Create_func_months_between)},
   { { STRING_WITH_LEN("NAME_CONST") }, BUILDER(Create_func_name_const)},
-  {  {STRING_WITH_LEN("NATURAL_SORT_KEY")}, BUILDER(Create_func_natural_sort_key)},
   { { STRING_WITH_LEN("NVL") }, BUILDER(Create_func_ifnull)},
   { { STRING_WITH_LEN("NVL2") }, BUILDER(Create_func_nvl2)},
   { { STRING_WITH_LEN("NULLIF") }, BUILDER(Create_func_nullif)},
@@ -6482,7 +6031,6 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("POWER") }, BUILDER(Create_func_pow)},
   { { STRING_WITH_LEN("QUARTER") }, BUILDER(Create_func_quarter)},
   { { STRING_WITH_LEN("QUOTE") }, BUILDER(Create_func_quote)},
-  { { STRING_WITH_LEN("RANDOM_BYTES")}, BUILDER(Create_func_random_bytes)},
   { { STRING_WITH_LEN("REGEXP_INSTR") }, BUILDER(Create_func_regexp_instr)},
   { { STRING_WITH_LEN("REGEXP_REPLACE") }, BUILDER(Create_func_regexp_replace)},
   { { STRING_WITH_LEN("REGEXP_SUBSTR") }, BUILDER(Create_func_regexp_substr)},
@@ -6501,7 +6049,6 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("RTRIM") }, BUILDER(Create_func_rtrim)},
   { { STRING_WITH_LEN("RTRIM_ORACLE") }, BUILDER(Create_func_rtrim_oracle)},
   { { STRING_WITH_LEN("SEC_TO_TIME") }, BUILDER(Create_func_sec_to_time)},
-  { { STRING_WITH_LEN("SFORMAT") }, BUILDER(Create_func_sformat)},
   { { STRING_WITH_LEN("SCHEMA") }, BUILDER(Create_func_database)},
   { { STRING_WITH_LEN("SCHEMAS") }, BUILDER(Create_func_database)},
   { { STRING_WITH_LEN("SHA") }, BUILDER(Create_func_sha)},
@@ -6519,16 +6066,15 @@ const Native_func_registry func_array[] =
       BUILDER(Create_func_substr_oracle)},
   { { STRING_WITH_LEN("SUBSTRING_INDEX") }, BUILDER(Create_func_substr_index)},
   { { STRING_WITH_LEN("SUBTIME") }, BUILDER(Create_func_subtime)},
+  { { STRING_WITH_LEN("SYS_GUID") }, BUILDER(Create_func_sys_guid)},
   { { STRING_WITH_LEN("TAN") }, BUILDER(Create_func_tan)},
   { { STRING_WITH_LEN("TIMEDIFF") }, BUILDER(Create_func_timediff)},
   { { STRING_WITH_LEN("TIME_FORMAT") }, BUILDER(Create_func_time_format)},
   { { STRING_WITH_LEN("TIME_TO_SEC") }, BUILDER(Create_func_time_to_sec)},
   { { STRING_WITH_LEN("TO_BASE64") }, BUILDER(Create_func_to_base64)},
   { { STRING_WITH_LEN("TO_CHAR") }, BUILDER(Create_func_to_char)},
-  { { STRING_WITH_LEN("TO_NUMBER") }, &create_func_to_number},
   { { STRING_WITH_LEN("TO_DAYS") }, BUILDER(Create_func_to_days)},
   { { STRING_WITH_LEN("TO_SECONDS") }, BUILDER(Create_func_to_seconds)},
-  { { STRING_WITH_LEN("TRUNC") }, BUILDER(Create_func_trunc)},
   { { STRING_WITH_LEN("UCASE") }, BUILDER(Create_func_ucase)},
   { { STRING_WITH_LEN("UNCOMPRESS") }, BUILDER(Create_func_uncompress)},
   { { STRING_WITH_LEN("UNCOMPRESSED_LENGTH") }, BUILDER(Create_func_uncompressed_length)},
@@ -6536,12 +6082,8 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("UNIX_TIMESTAMP") }, BUILDER(Create_func_unix_timestamp)},
   { { STRING_WITH_LEN("UPDATEXML") }, BUILDER(Create_func_xml_update)},
   { { STRING_WITH_LEN("UPPER") }, BUILDER(Create_func_ucase)},
+  { { STRING_WITH_LEN("UUID") }, BUILDER(Create_func_uuid)},
   { { STRING_WITH_LEN("UUID_SHORT") }, BUILDER(Create_func_uuid_short)},
-  { { STRING_WITH_LEN("VEC_DISTANCE_EUCLIDEAN") }, BUILDER(Create_func_vec_distance_euclidean)},
-  { { STRING_WITH_LEN("VEC_DISTANCE_COSINE") }, BUILDER(Create_func_vec_distance_cosine)},
-  { { STRING_WITH_LEN("VEC_DISTANCE") }, BUILDER(Create_func_vec_distance)},
-  { { STRING_WITH_LEN("VEC_FROMTEXT") }, BUILDER(Create_func_vec_fromtext)},
-  { { STRING_WITH_LEN("VEC_TOTEXT") }, BUILDER(Create_func_vec_totext)},
   { { STRING_WITH_LEN("VERSION") }, BUILDER(Create_func_version)},
   { { STRING_WITH_LEN("WEEK") }, BUILDER(Create_func_week)},
   { { STRING_WITH_LEN("WEEKDAY") }, BUILDER(Create_func_weekday)},
@@ -6588,8 +6130,7 @@ bool Native_functions_hash::init(size_t count)
 {
   DBUG_ENTER("Native_functions_hash::init");
 
-  if (my_hash_init(key_memory_native_functions, this,
-                   Lex_ident_routine::charset_info(),
+  if (my_hash_init(key_memory_native_functions, this, system_charset_info,
                    (ulong) count, 0, 0, get_native_fct_hash_key, NULL, MYF(0)))
     DBUG_RETURN(true);
 
@@ -6691,16 +6232,20 @@ Native_functions_hash::find(THD *thd, const LEX_CSTRING &name) const
 int item_create_init()
 {
   size_t count= native_func_registry_array.count();
+#ifdef HAVE_SPATIAL
   count+= native_func_registry_array_geom.count();
+#endif
 
   if (native_functions_hash.init(count) ||
       native_functions_hash.append(native_func_registry_array.elements(),
                                    native_func_registry_array.count()))
     return true;
 
+#ifdef HAVE_SPATIAL
   if (native_functions_hash.append(native_func_registry_array_geom.elements(),
                                    native_func_registry_array_geom.count()))
     return true;
+#endif
 
   count+= oracle_func_registry_array.count();
 
@@ -6709,9 +6254,11 @@ int item_create_init()
                                           native_func_registry_array.count()))
     return true;
 
+#ifdef HAVE_SPATIAL
   if (native_functions_hash_oracle.append(native_func_registry_array_geom.elements(),
                                           native_func_registry_array_geom.count()))
     return true;
+#endif
 
   return 
     native_functions_hash_oracle.replace(oracle_func_registry_array.elements(),
@@ -6813,22 +6360,13 @@ Item *create_func_dyncol_delete(THD *thd, Item *str, List<Item> &nums)
 
 Item *create_func_dyncol_get(THD *thd,  Item *str, Item *num,
                              const Type_handler *handler,
-                             const Lex_length_and_dec_st &length_dec,
+                             const char *c_len, const char *c_dec,
                              CHARSET_INFO *cs)
 {
   Item *res;
 
   if (likely(!(res= new (thd->mem_root) Item_dyncol_get(thd, str, num))))
     return res;                                 // Return NULL
-  if (likely((res= handler->create_typecast_item(thd, res,
-                                     Type_cast_attributes(length_dec, cs)))))
-   return res;
-  // Type cast to handler's data type does not exist
-  const Name name= handler->name();
-  char buf[128];
-  size_t length= my_snprintf(buf, sizeof(buf), "CAST(expr AS %.*s)",
-                             (int) name.length(), name.ptr());
-  my_error(ER_UNKNOWN_OPERATOR, MYF(0),
-           ErrConvString(buf, length, system_charset_info).ptr());
-  return nullptr;
+  return handler->create_typecast_item(thd, res,
+                                       Type_cast_attributes(c_len, c_dec, cs));
 }

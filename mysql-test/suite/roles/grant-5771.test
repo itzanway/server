@@ -25,7 +25,6 @@ show tables in mysqltest2;
 show grants;
 
 connection default;
-disconnect foo;
 drop user foo@localhost;
 drop role r1;
 drop role r2;

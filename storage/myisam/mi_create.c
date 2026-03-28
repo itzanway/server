@@ -259,11 +259,12 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
     share.state.key_root[i]= HA_OFFSET_ERROR;
     min_key_length_skip=length=real_length_diff=0;
     key_length=pointer;
-    if (keydef->key_alg == HA_KEY_ALG_RTREE)
+    if (keydef->flag & HA_SPATIAL)
     {
+#ifdef HAVE_SPATIAL
       /* BAR TODO to support 3D and more dimensions in the future */
       uint sp_segs=SPDIMS*2;
-      keydef->flag=HA_SPATIAL_legacy;
+      keydef->flag=HA_SPATIAL;
 
       if (flags & HA_DONT_TOUCH_DATA)
       {
@@ -293,10 +294,14 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
       key_length+=SPLEN*sp_segs;
       length++;                              /* At least one length byte */
       min_key_length_skip+=SPLEN*2*SPDIMS;
+#else
+      my_errno= HA_ERR_UNSUPPORTED;
+      goto err_no_lock;
+#endif /*HAVE_SPATIAL*/
     }
-    else if (keydef->key_alg == HA_KEY_ALG_FULLTEXT)
+    else if (keydef->flag & HA_FULLTEXT)
     {
-      keydef->flag=HA_FULLTEXT_legacy | HA_PACK_KEY | HA_VAR_LENGTH_KEY;
+      keydef->flag=HA_FULLTEXT | HA_PACK_KEY | HA_VAR_LENGTH_KEY;
       options|=HA_OPTION_PACK_KEYS;             /* Using packed keys */
 
       for (j=0, keyseg=keydef->seg ; (int) j < keydef->keysegs ;
@@ -528,7 +533,7 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
   share.state.sortkey=  (ushort) ~0;
   share.state.auto_increment=ci->auto_increment;
   share.options=options;
-  share.base.rec_reflength= ci->rec_reflength= pointer;
+  share.base.rec_reflength=pointer;
   /* Get estimate for index file length (this may be wrong for FT keys) */
   tmp= (tot_length + max_key_block_length * keys *
 	MI_INDEX_BLOCK_MARGIN) / MI_MIN_KEY_BLOCK_LENGTH;
@@ -716,13 +721,14 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
   DBUG_PRINT("info", ("write key and keyseg definitions"));
   for (i=0 ; i < share.base.keys - uniques; i++)
   {
-    uint sp_segs=keydefs[i].key_alg == HA_KEY_ALG_RTREE ? 2*SPDIMS : 0;
+    uint sp_segs=(keydefs[i].flag & HA_SPATIAL) ? 2*SPDIMS : 0;
 
     if (mi_keydef_write(file, &keydefs[i]))
       goto err;
     for (j=0 ; j < keydefs[i].keysegs-sp_segs ; j++)
       if (mi_keyseg_write(file, &keydefs[i].seg[j]))
        goto err;
+#ifdef HAVE_SPATIAL
     for (j=0 ; j < sp_segs ; j++)
     {
       HA_KEYSEG sseg;
@@ -739,6 +745,7 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
       if (mi_keyseg_write(file, &sseg))
         goto err;
     }
+#endif
   }
   /* Create extra keys for unique definitions */
   offset= real_reclength - uniques * MI_UNIQUE_HASH_LENGTH;
@@ -807,14 +814,14 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
 
 	/* Enlarge files */
   DBUG_PRINT("info", ("enlarge to keystart: %lu", (ulong) share.base.keystart));
-  if (mysql_file_chsize(file, (ulong) share.base.keystart, 0, MYF(0)) > 0)
+  if (mysql_file_chsize(file, (ulong) share.base.keystart, 0, MYF(0)))
     goto err;
 
   if (! (flags & HA_DONT_TOUCH_DATA))
   {
 #ifdef USE_RELOC
     if (mysql_file_chsize(dfile, share.base.min_pack_length*ci->reloc_rows,
-                          0, MYF(0)) > 0)
+                          0, MYF(0)))
       goto err;
 #endif
     errpos=2;

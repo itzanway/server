@@ -31,6 +31,7 @@
 #include "rpl_mi.h"      // Master_info::data_lock
 #include "sql_show.h"
 #include "debug_sync.h"
+#include "des_key_file.h"
 #include "transaction.h"
 #ifdef WITH_WSREP
 #include "wsrep_mysqld.h"
@@ -79,20 +80,16 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
 
   DBUG_ASSERT(!thd || !thd->in_sub_stmt);
 
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
   if (options & REFRESH_GRANT)
   {
-#ifndef NO_EMBEDDED_ACCESS_CHECKS
     THD *tmp_thd= 0;
     /*
       If reload_acl_and_cache() is called from SIGHUP handler we have to
       allocate temporary THD for execution of acl_reload()/grant_reload().
     */
     if (unlikely(!thd) && (thd= (tmp_thd= new THD(0))))
-    {
       thd->store_globals();
-      thd->set_query_inner((char*) STRING_WITH_LEN("intern:reload_acl"),
-                           default_charset_info);
-    }
 
     if (likely(thd))
     {
@@ -127,11 +124,8 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
       thd= 0;
     }
     reset_mqh((LEX_USER *)NULL, TRUE);
-#else
-    if ((result= thd && servers_reload(thd)))
-      my_error(ER_UNKNOWN_ERROR, MYF(0));
-#endif
   }
+#endif
   if (options & REFRESH_LOG)
   {
     /*
@@ -173,37 +167,18 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
     tmp_write_to_binlog= 0;
     if (mysql_bin_log.is_open())
     {
-      MDL_request mdl_request;
-      MDL_REQUEST_INIT(&mdl_request, MDL_key::BACKUP, "", "", MDL_BACKUP_START,
-                       MDL_EXPLICIT);
-      if (thd &&
-          thd->mdl_context.acquire_lock(&mdl_request,
-                                        thd->variables.lock_wait_timeout))
-        result= 1;
-      else
+      DYNAMIC_ARRAY *drop_gtid_domain=
+        (thd && (thd->lex->delete_gtid_domain.elements > 0)) ?
+        &thd->lex->delete_gtid_domain : NULL;
+      if (mysql_bin_log.rotate_and_purge(true, drop_gtid_domain))
+        *write_to_binlog= -1;
+
+      /* Note that WSREP(thd) might not be true here e.g. during
+      SST. */
+      if (WSREP_ON)
       {
-        if (thd)
-          thd->backup_commit_lock= &mdl_request;
-
-        DYNAMIC_ARRAY *drop_gtid_domain=
-          (thd && (thd->lex->delete_gtid_domain.elements > 0)) ?
-          &thd->lex->delete_gtid_domain : NULL;
-        if (mysql_bin_log.flush_binlog(drop_gtid_domain))
-          *write_to_binlog= -1;
-
-        /* Note that WSREP(thd) might not be true here e.g. during
-        SST. */
-        if (WSREP_ON)
-        {
-          /* Wait for last binlog checkpoint event to be logged. */
-          mysql_bin_log.wait_for_last_checkpoint_event();
-        }
-        if (thd)
-        {
-          if (mdl_request.ticket)
-            thd->mdl_context.release_lock(mdl_request.ticket);
-          thd->backup_commit_lock= 0;
-        }
+        /* Wait for last binlog checkpoint event to be logged. */
+        mysql_bin_log.wait_for_last_checkpoint_event();
       }
     }
   }
@@ -245,6 +220,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
     }
 #endif
   }
+#ifdef HAVE_QUERY_CACHE
   if (options & REFRESH_QUERY_CACHE_FREE)
   {
     query_cache.pack(thd);              // FLUSH QUERY CACHE
@@ -254,6 +230,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
   {
     query_cache.flush();			// RESET QUERY CACHE
   }
+#endif /*HAVE_QUERY_CACHE*/
 
   DBUG_ASSERT(!thd || thd->locked_tables_mode ||
               !thd->mdl_context.has_locks() ||
@@ -398,11 +375,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
   if (options & REFRESH_HOSTS)
     hostname_cache_refresh();
   if (thd && (options & REFRESH_STATUS))
-    refresh_status_legacy(thd);
-  if (thd && (options & REFRESH_SESSION_STATUS))
-    refresh_session_status(thd);
-  if ((options & REFRESH_GLOBAL_STATUS))
-    refresh_global_status();
+    refresh_status(thd);
   if (options & REFRESH_THREADS)
     thread_cache.flush();
 #ifdef HAVE_REPLICATION
@@ -416,6 +389,16 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
       result= 1;
     }
   }
+#endif
+#ifdef HAVE_des
+   if (options & REFRESH_DES_KEY_FILE)
+   {
+     if (des_key_file && load_des_key_file(des_key_file))
+     {
+       /* NOTE: my_error() has been already called by load_des_key_file(). */
+       result= 1;
+     }
+   }
 #endif
 #ifdef HAVE_REPLICATION
  if (options & REFRESH_SLAVE)
@@ -443,7 +426,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
        /* If not default connection and 'all' is used */
        mi->release();
        mysql_mutex_lock(&LOCK_active_mi);
-       if (master_info_index->remove_master_info(mi, 0))
+       if (master_info_index->remove_master_info(mi))
          result= 1;
        mysql_mutex_unlock(&LOCK_active_mi);
      }
@@ -652,9 +635,6 @@ bool flush_tables_with_read_lock(THD *thd, TABLE_LIST *all_tables)
           table_list->table &&
           table_list->table->file->extra(HA_EXTRA_FLUSH))
         goto error_reset_bits;
-      if (table_list->table &&
-          table_list->table->open_hlindexes_for_write())
-        goto error_reset_bits;
     }
   }
 
@@ -691,6 +671,6 @@ static void disable_checkpoints(THD *thd)
   {
     thd->global_disable_checkpoint= 1;
     if (!global_disable_checkpoint++)
-      ha_disable_internal_writes(1);                   // Disable checkpoints
+      ha_checkpoint_state(1);                   // Disable checkpoints
   }
 }

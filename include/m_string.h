@@ -74,11 +74,16 @@ extern "C" {
 #endif
 
 /* Declared in int2str() */
-extern const char _dig_vec_base62[];
 extern const char _dig_vec_upper[];
 extern const char _dig_vec_lower[];
 
 extern char *strmov_overlapp(char *dest, const char *src);
+
+#if defined(_lint) || defined(FORCE_INIT_OF_VARS)
+#define LINT_INIT_STRUCT(var) bzero(&var, sizeof(var)) /* No uninitialize-warning */
+#else
+#define LINT_INIT_STRUCT(var)
+#endif
 
 /* Prototypes for string functions */
 
@@ -196,7 +201,7 @@ extern ulonglong strtoull(const char *str, char **ptr, int base);
 
 #ifdef __cplusplus
 #include <type_traits>
-template<typename T> inline constexpr const char *_swl_check(T s)
+template<typename T> inline const char *_swl_check(T s)
 {
   static_assert(std::is_same<T, const char (&)[sizeof(T)]>::value
              || std::is_same<T, const char [sizeof(T)]>::value,
@@ -214,15 +219,6 @@ template<typename T> inline constexpr const char *_swl_check(T s)
 
 typedef struct st_mysql_const_lex_string LEX_CSTRING;
 
-#ifdef  __cplusplus
-static inline constexpr
-LEX_CSTRING operator""_LEX_CSTRING(const char *str, size_t length)
-{
-  return LEX_CSTRING{str, length};
-}
-#endif /* __cplusplus */
-
-
 /* A variant with const and unsigned */
 struct st_mysql_const_unsigned_lex_string
 {
@@ -235,6 +231,12 @@ static inline void lex_string_set(LEX_CSTRING *lex_str, const char *c_str)
 {
   lex_str->str= c_str;
   lex_str->length= strlen(c_str);
+}
+static inline void lex_string_set3(LEX_CSTRING *lex_str, const char *c_str,
+                                   size_t len)
+{
+  lex_str->str= c_str;
+  lex_str->length= len;
 }
 
 /**
@@ -319,9 +321,6 @@ static inline int safe_strcat(char *dst, size_t dst_size, const char *src)
 #ifdef __cplusplus
 static inline char *safe_str(char *str)
 { return str ? str : const_cast<char*>(""); }
-
-static inline const char *safe_str(const LEX_CSTRING *lcs)
-{ return lcs && lcs->str ? lcs->str : ""; }
 #endif
 
 static inline const char *safe_str(const char *str)

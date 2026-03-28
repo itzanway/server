@@ -111,7 +111,6 @@ int initialize_encryption_plugin(void *plugin_)
 int finalize_encryption_plugin(void *plugin_)
 {
   st_plugin_int *plugin= static_cast<st_plugin_int *>(plugin_);
-  int deinit_status= 0;
   bool used= plugin_ref_to_int(encryption_manager) == plugin;
 
   if (used)
@@ -121,15 +120,18 @@ int finalize_encryption_plugin(void *plugin_)
     encryption_handler.encryption_ctx_size_func= zero_size;
   }
 
-  if (plugin && plugin->plugin->deinit)
-    deinit_status= plugin->plugin->deinit(NULL);
+  if (plugin && plugin->plugin->deinit && plugin->plugin->deinit(NULL))
+  {
+    DBUG_PRINT("warning", ("Plugin '%s' deinit function returned error.",
+                           plugin->name.str));
+  }
 
   if (used)
   {
     plugin_unlock(NULL, encryption_manager);
     encryption_manager= 0;
   }
-  return deinit_status;
+  return 0;
 }
 
 /******************************************************************
@@ -189,10 +191,6 @@ ret:
   return rc;
 }
 
-/** Run encryption or decryption on a block.
- * `i32_1`, `i32_2`, and `i64` are used to create the initialization vector
- * @invariant `src` and `dst` invariants are the same as in `encryption_crypt`
- */
 int do_crypt(const unsigned char* src, unsigned int slen,
              unsigned char* dst, unsigned int* dlen,
              struct st_encryption_scheme *scheme,
@@ -230,10 +228,6 @@ int do_crypt(const unsigned char* src, unsigned int slen,
                           iv, sizeof(iv), flag, scheme->key_id, key_version);
 }
 
-/** Encrypt a block.
- * `i32_1`, `i32_2`, and `i64` are used to create the initialization vector
- * @invariant `src` and `dst` invariants are the same as in `encryption_crypt`
- */
 int encryption_scheme_encrypt(const unsigned char* src, unsigned int slen,
                               unsigned char* dst, unsigned int* dlen,
                               struct st_encryption_scheme *scheme,
@@ -244,10 +238,7 @@ int encryption_scheme_encrypt(const unsigned char* src, unsigned int slen,
                   i32_2, i64, ENCRYPTION_FLAG_NOPAD | ENCRYPTION_FLAG_ENCRYPT);
 }
 
-/** Decrypt a block.
- * `i32_1`, `i32_2`, and `i64` are used to create the initialization vector
- * @invariant `src` and `dst` invariants are the same as in `encryption_crypt`
- */
+
 int encryption_scheme_decrypt(const unsigned char* src, unsigned int slen,
                               unsigned char* dst, unsigned int* dlen,
                               struct st_encryption_scheme *scheme,

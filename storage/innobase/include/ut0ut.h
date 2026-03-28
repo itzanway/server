@@ -53,6 +53,49 @@ Created 1/20/1994 Heikki Tuuri
 #define ut_max	std::max
 #define ut_min	std::min
 
+/** Calculate the minimum of two pairs.
+@param[out]	min_hi	MSB of the minimum pair
+@param[out]	min_lo	LSB of the minimum pair
+@param[in]	a_hi	MSB of the first pair
+@param[in]	a_lo	LSB of the first pair
+@param[in]	b_hi	MSB of the second pair
+@param[in]	b_lo	LSB of the second pair */
+UNIV_INLINE
+void
+ut_pair_min(
+	ulint*	min_hi,
+	ulint*	min_lo,
+	ulint	a_hi,
+	ulint	a_lo,
+	ulint	b_hi,
+	ulint	b_lo);
+/******************************************************//**
+Compares two ulints.
+@return 1 if a > b, 0 if a == b, -1 if a < b */
+UNIV_INLINE
+int
+ut_ulint_cmp(
+/*=========*/
+	ulint	a,	/*!< in: ulint */
+	ulint	b);	/*!< in: ulint */
+/** Compare two pairs of integers.
+@param[in]	a_h	more significant part of first pair
+@param[in]	a_l	less significant part of first pair
+@param[in]	b_h	more significant part of second pair
+@param[in]	b_l	less significant part of second pair
+@return comparison result of (a_h,a_l) and (b_h,b_l)
+@retval -1 if (a_h,a_l) is less than (b_h,b_l)
+@retval 0 if (a_h,a_l) is equal to (b_h,b_l)
+@retval 1 if (a_h,a_l) is greater than (b_h,b_l) */
+UNIV_INLINE
+int
+ut_pair_cmp(
+	ulint	a_h,
+	ulint	a_l,
+	ulint	b_h,
+	ulint	b_l)
+	MY_ATTRIBUTE((warn_unused_result));
+
 /*************************************************************//**
 Calculates fast the remainder of n/m when m is a power of two.
 @param n in: numerator
@@ -75,6 +118,24 @@ when m is a power of two.  In other words, rounds n up to m * k.
 #define UT_CALC_ALIGN(n, m) ((n + m - 1) & ~(m - 1))
 template <typename T> inline T ut_calc_align(T n, T m)
 { return static_cast<T>(UT_CALC_ALIGN(n, m)); }
+
+/*************************************************************//**
+Calculates fast the 2-logarithm of a number, rounded upward to an
+integer.
+@return logarithm in the base 2, rounded upward */
+UNIV_INLINE
+ulint
+ut_2_log(
+/*=====*/
+	ulint	n);	/*!< in: number */
+/*************************************************************//**
+Calculates 2 to power n.
+@return 2 to power n */
+UNIV_INLINE
+ulint
+ut_2_exp(
+/*=====*/
+	ulint	n);	/*!< in: number */
 
 /**********************************************************//**
 Returns the number of milliseconds since some epoch.  The
@@ -124,8 +185,7 @@ Sprintfs a timestamp to a buffer, 13..14 chars plus terminating NUL. */
 void
 ut_sprintf_timestamp(
 /*=================*/
-	char*	buf, /*!< in: buffer where to sprintf */
-	size_t size); /*!< in: size of buf, in bytes */
+	char*	buf); /*!< in: buffer where to sprintf */
 
 /*************************************************************//**
 Prints the contents of a memory buffer in hex and ascii. */
@@ -230,16 +290,6 @@ operator<<(
 	lhs.setf(ff);
 	return(lhs);
 }
-
-/** This is a wrapper class, used to print any number in IEC style */
-struct bytes_iec {
-  explicit bytes_iec(unsigned long long t): m_val(t) {}
-  double get_double() const { return static_cast<double>(m_val); }
-  const unsigned long long m_val;
-};
-
-/** Like hex operator above, except for bytes_iec */
-std::ostream &operator<<(std::ostream &lhs, const bytes_iec &rhs);
 
 /** The class logger is the base class of all the error log related classes.
 It contains a std::ostringstream object.  The main purpose of this class is
@@ -363,6 +413,8 @@ private:
 };
 
 } // namespace ib
+
+#include "ut0ut.inl"
 
 #endif
 

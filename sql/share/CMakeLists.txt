@@ -24,7 +24,6 @@ english
 estonian
 french
 german
-georgian
 greek
 hindi
 hungarian
@@ -40,9 +39,12 @@ russian
 serbian
 slovak
 spanish
-swahili
 swedish
 ukrainian
+)
+
+SET(files 
+ errmsg-utf8.txt
 )
 
 INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/charsets DESTINATION ${INSTALL_MYSQLSHAREDIR}
@@ -54,4 +56,5 @@ IF (NOT WITHOUT_SERVER)
    INSTALL(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${dir}
     DESTINATION  ${INSTALL_MYSQLSHAREDIR} COMPONENT Server)
   ENDFOREACH()
+  INSTALL(FILES ${files} DESTINATION ${INSTALL_MYSQLSHAREDIR} COMPONENT Server)
 ENDIF()

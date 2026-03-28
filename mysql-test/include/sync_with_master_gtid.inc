@@ -42,7 +42,6 @@ if ($_result == -1)
 {
   --let $_current_gtid_pos= `SELECT @@GLOBAL.gtid_slave_pos`
   --echo Timeout in master_gtid_wait('$master_pos', $_slave_timeout), current slave GTID position is: $_current_gtid_pos.
-  --source include/show_rpl_debug_info.inc
   --die Failed to sync with master
 }
 

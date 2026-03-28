@@ -25,7 +25,7 @@ call mtr.add_suppression("Slave SQL.*Column [0-9] of table .test.t[0-9]*. cannot
 
 sync_slave_with_master;
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 
 SET @saved_slave_type_conversions = @@slave_type_conversions;
 SET GLOBAL SLAVE_TYPE_CONVERSIONS = 'ALL_NON_LOSSY';
@@ -40,7 +40,6 @@ connection master;
 eval CREATE TABLE t1 (a INT PRIMARY KEY, b INT, c CHAR(10)
                        ) ENGINE=$engine_type;
 
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -72,7 +71,7 @@ sync_slave_with_master;
 ## BUG22086
 --echo *** Create t2 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t2 (a INT, b INT PRIMARY KEY, c CHAR(5),
                       d FLOAT DEFAULT '2.00',
                       e CHAR(5) DEFAULT 'TEST2')
@@ -82,7 +81,6 @@ eval CREATE TABLE t2 (a INT, b INT PRIMARY KEY, c CHAR(5),
 connection master;
 eval CREATE TABLE t2 (a INT PRIMARY KEY, b INT, c CHAR(10)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Master Data Insert ***
@@ -98,11 +96,10 @@ START SLAVE;
 --let $show_slave_sql_error= 1
 --source include/wait_for_slave_sql_error.inc
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 SELECT * FROM t2 ORDER BY a;
 
 connection master;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 connection slave;
@@ -119,7 +116,7 @@ sync_slave_with_master;
 ####################################
 --echo *** Create t3 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t3 (a INT, b INT PRIMARY KEY, c CHAR(20),
                       d FLOAT DEFAULT '2.00',
                       e CHAR(5) DEFAULT 'TEST2')
@@ -129,7 +126,6 @@ eval CREATE TABLE t3 (a INT, b INT PRIMARY KEY, c CHAR(20),
 connection master;
 eval CREATE TABLE t3 (a BLOB, b INT PRIMARY KEY, c CHAR(20)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -165,7 +161,7 @@ sync_slave_with_master;
 
 --echo *** Create t4 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t4 (a INT, b INT PRIMARY KEY, c CHAR(20),
                       d FLOAT DEFAULT '2.00',
                       e CHAR(5) DEFAULT 'TEST2')
@@ -175,7 +171,6 @@ eval CREATE TABLE t4 (a INT, b INT PRIMARY KEY, c CHAR(20),
 connection master;
 eval CREATE TABLE t4 (a DECIMAL(8,2), b INT PRIMARY KEY, c CHAR(20)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -209,7 +204,7 @@ sync_slave_with_master;
 
 --echo *** Create t5 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t5 (a INT PRIMARY KEY, b CHAR(5),
                       c FLOAT, d INT, e DOUBLE,
                       f DECIMAL(8,2))ENGINE=$engine_type;
@@ -219,7 +214,6 @@ connection master;
 eval CREATE TABLE t5 (a INT PRIMARY KEY, b VARCHAR(6),
                       c DECIMAL(8,2), d BIT, e BLOB,
                       f FLOAT) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -255,7 +249,7 @@ sync_slave_with_master;
 
 --echo *** Create t6 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t6 (a INT PRIMARY KEY, b CHAR(5),
                       c FLOAT, d INT)ENGINE=$engine_type;
 
@@ -264,7 +258,6 @@ connection master;
 eval CREATE TABLE t6 (a INT PRIMARY KEY, b VARCHAR(6),
                       c DECIMAL(8,2), d BIT 
                       ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -314,7 +307,7 @@ DROP TABLE t6;
 
 --echo *** Create t7 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t7 (a INT KEY, b BLOB, c CHAR(5),
                       d TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00',
                       e CHAR(20) DEFAULT 'Extra Column Testing')
@@ -324,7 +317,6 @@ eval CREATE TABLE t7 (a INT KEY, b BLOB, c CHAR(5),
 connection master;
 eval CREATE TABLE t7 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -357,7 +349,7 @@ sync_slave_with_master;
 ###########################################
 --echo *** Create t8 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t8 (a INT KEY, b BLOB, c CHAR(5),
                       d TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00',
                       e INT)ENGINE=$engine_type;
@@ -366,7 +358,6 @@ eval CREATE TABLE t8 (a INT KEY, b BLOB, c CHAR(5),
 connection master;
 eval CREATE TABLE t8 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -404,9 +395,10 @@ sync_slave_with_master;
 # Error reaction is up to sql_mode of the slave sql (bug#38173)
 #--echo *** Create t9 on slave  ***
   STOP SLAVE;
-  --source include/reset_slave.inc
+  RESET SLAVE;
   eval CREATE TABLE t9 (a INT KEY, b BLOB, c CHAR(5),
-                        d TIMESTAMP NOT NULL DEFAULT 0,
+                        d TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP 
+                          ON UPDATE CURRENT_TIMESTAMP,
                         e INT NOT NULL,
                         f text not null,
                         g text,
@@ -417,7 +409,6 @@ sync_slave_with_master;
   connection master;
   eval CREATE TABLE t9 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
                        ) ENGINE=$engine_type;
-  --source include/kill_binlog_dump_threads.inc
   RESET MASTER;
 
   --echo *** Start Slave ***
@@ -458,7 +449,7 @@ sync_slave_with_master;
 ############################################
 --echo  *** Create t10 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t10 (a INT KEY, b BLOB, f DOUBLE DEFAULT '233', 
                       c CHAR(5), e INT DEFAULT '1')ENGINE=$engine_type;
 
@@ -466,7 +457,6 @@ eval CREATE TABLE t10 (a INT KEY, b BLOB, f DOUBLE DEFAULT '233',
 connection master;
 eval CREATE TABLE t10 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -501,7 +491,7 @@ sync_slave_with_master;
 ############################################
 --echo  *** Create t11 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t11 (a INT KEY, b BLOB, f INT,
                       c CHAR(5) DEFAULT 'test', e INT DEFAULT '1')ENGINE=$engine_type;
 
@@ -509,7 +499,6 @@ eval CREATE TABLE t11 (a INT KEY, b BLOB, f INT,
 connection master;
 eval CREATE TABLE t11 (a INT PRIMARY KEY, b BLOB, c VARCHAR(254)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -544,7 +533,7 @@ sync_slave_with_master;
 ############################################
 --echo  *** Create t12 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t12 (a INT KEY, b BLOB, f TEXT,
                       c CHAR(5) DEFAULT 'test', e INT DEFAULT '1')ENGINE=$engine_type;
 
@@ -552,7 +541,6 @@ eval CREATE TABLE t12 (a INT KEY, b BLOB, f TEXT,
 connection master;
 eval CREATE TABLE t12 (a INT PRIMARY KEY, b BLOB, c BLOB
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -579,12 +567,12 @@ sync_slave_with_master;
 
 ###############################
 # BUG#22177 CURRENT_TIMESTAMP #
-# Should work with ^          #
+# Sould work with ^           #
 ###############################
 --echo *** BUG 22177 Start ***
 --echo *** Create t13 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t13 (a INT KEY, b BLOB, c CHAR(5),
                       d INT DEFAULT '1',
                       e TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
@@ -594,7 +582,6 @@ eval CREATE TABLE t13 (a INT KEY, b BLOB, c CHAR(5),
 connection master;
 eval CREATE TABLE t13 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -633,7 +620,7 @@ sync_slave_with_master;
 
 --echo *** Create t14 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t14 (c1 INT KEY, c4 BLOB, c5 CHAR(5),
                       c6 INT DEFAULT '1',
                       c7 TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
@@ -643,8 +630,6 @@ eval CREATE TABLE t14 (c1 INT KEY, c4 BLOB, c5 CHAR(5),
 connection master;
 eval CREATE TABLE t14 (c1 INT PRIMARY KEY, c4 BLOB, c5 CHAR(5)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -675,7 +660,7 @@ SELECT * FROM t14 ORDER BY c1;
 
 --echo *** Create t14a on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t14a (c1 INT KEY, c4 BLOB, c5 CHAR(5),
                       c6 INT DEFAULT '1',
                       c7 TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
@@ -685,7 +670,6 @@ eval CREATE TABLE t14a (c1 INT KEY, c4 BLOB, c5 CHAR(5),
 connection master;
 eval CREATE TABLE t14a (c1 INT PRIMARY KEY, c4 BLOB, c5 CHAR(5)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -706,12 +690,11 @@ sync_slave_with_master;
 --replace_column 5 CURRENT_TIMESTAMP
 SELECT * FROM t14a ORDER BY c1;
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 
 --echo *** Master Drop c5 ***
 connection master;
 ALTER TABLE t14a DROP COLUMN c5;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -766,7 +749,7 @@ sync_slave_with_master;
 
 --echo *** Create t15 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t15 (c1 INT KEY, c2 DECIMAL(8,2), c3 TEXT,
                       c4 BLOB, c5 CHAR(5),
                       c6 INT DEFAULT '1',
@@ -777,7 +760,6 @@ eval CREATE TABLE t15 (c1 INT KEY, c2 DECIMAL(8,2), c3 TEXT,
 connection master;
 eval CREATE TABLE t15 (c1 INT PRIMARY KEY, c2 DECIMAL(8,2), c3 TEXT,
                       c4 BLOB, c5 CHAR(5)) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -840,7 +822,7 @@ sync_slave_with_master;
 
 --echo *** Create t16 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t16 (c1 INT KEY, c2 DECIMAL(8,2), c3 TEXT,
                       c4 BLOB, c5 CHAR(5),
                       c6 INT DEFAULT '1',
@@ -851,7 +833,6 @@ eval CREATE TABLE t16 (c1 INT KEY, c2 DECIMAL(8,2), c3 TEXT,
 connection master;
 eval CREATE TABLE t16 (c1 INT PRIMARY KEY, c2 DECIMAL(8,2), c3 TEXT,
                       c4 BLOB, c5 CHAR(5))ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***
@@ -896,7 +877,7 @@ sync_slave_with_master;
 
 --echo *** Create t17 on slave  ***
 STOP SLAVE;
---source include/reset_slave.inc
+RESET SLAVE;
 eval CREATE TABLE t17 (a SMALLINT, b INT PRIMARY KEY, c CHAR(5),
                       d FLOAT DEFAULT '2.00',
                       e CHAR(5) DEFAULT 'TEST2')
@@ -906,7 +887,6 @@ eval CREATE TABLE t17 (a SMALLINT, b INT PRIMARY KEY, c CHAR(5),
 connection master;
 eval CREATE TABLE t17 (a BIGINT PRIMARY KEY, b INT, c CHAR(10)
                        ) ENGINE=$engine_type;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 
 --echo *** Start Slave ***

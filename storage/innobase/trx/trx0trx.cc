@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2015, 2023, MariaDB Corporation.
+Copyright (c) 2015, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -24,9 +24,7 @@ The transaction
 Created 3/26/1996 Heikki Tuuri
 *******************************************************/
 
-#define MYSQL_SERVER
 #include "trx0trx.h"
-#include "sql_class.h" // THD
 
 #ifdef WITH_WSREP
 #include <mysql/service_wsrep.h>
@@ -49,7 +47,6 @@ Created 3/26/1996 Heikki Tuuri
 #include "trx0xa.h"
 #include "ut0pool.h"
 #include "ut0vec.h"
-#include "innodb_binlog.h"
 #include "log.h"
 
 #include <set>
@@ -60,17 +57,11 @@ const byte trx_id_max_bytes[8] = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 };
 
-#if SIZEOF_VOIDP == 4
-/* Max timestamp before 11.3 */
+/** The bit pattern corresponding to max timestamp */
 const byte timestamp_max_bytes[7] = {
 	0x7f, 0xff, 0xff, 0xff, 0x0f, 0x42, 0x3f
 };
-#else
-/** The bit pattern corresponding to max timestamp */
-const byte timestamp_max_bytes[7] = {
-	0xff, 0xff, 0xff, 0xff, 0x0f, 0x42, 0x3f
-};
-#endif /* SIZEOF_VOIDP */
+
 
 static const ulint MAX_DETAILED_ERROR_LEN = 512;
 
@@ -115,8 +106,6 @@ trx_init(
 
 	trx->active_commit_ordered = false;
 
-	trx->active_prepare = false;
-
 	trx->isolation_level = TRX_ISO_REPEATABLE_READ;
 
 	trx->check_foreigns = true;
@@ -144,6 +133,8 @@ trx_init(
 	trx->auto_commit = false;
 
 	trx->will_lock = false;
+
+	trx->bulk_insert = false;
 
 	trx->apply_online_log = false;
 
@@ -366,7 +357,7 @@ trx_t *trx_create()
 }
 
 /** Free the memory to trx_pools */
-void trx_t::free() noexcept
+void trx_t::free()
 {
   autoinc_locks.fake_defined();
 #ifdef HAVE_MEM_CHECK
@@ -378,13 +369,6 @@ void trx_t::free() noexcept
 #endif
   MEM_CHECK_DEFINED(this, sizeof *this);
   autoinc_locks.make_undefined();
-  ut_ad(!active_handler_stats);
-
-  if (size_t n_page_gets= pages_accessed)
-  {
-    pages_accessed= 0;
-    buf_pool.stat.n_page_gets+= n_page_gets;
-  }
 
   ut_ad(!n_mysql_tables_in_use);
   ut_ad(!mysql_log_file_name);
@@ -394,10 +378,8 @@ void trx_t::free() noexcept
   ut_ad(magic_n == TRX_MAGIC_N);
   ut_ad(!read_only);
   ut_ad(!lock.wait_lock);
-  ut_ad(!commit_lsn);
 
   dict_operation= false;
-  commit_lsn= 0;
   trx_sys.deregister_trx(this);
   check_unique_secondary= true;
   check_foreigns= true;
@@ -425,7 +407,6 @@ void trx_t::free() noexcept
                                    bulk_insert */);
   MEM_NOACCESS(&is_registered, sizeof is_registered);
   MEM_NOACCESS(&active_commit_ordered, sizeof active_commit_ordered);
-  MEM_NOACCESS(&active_prepare, sizeof active_prepare);
   MEM_NOACCESS(&flush_log_later, sizeof flush_log_later);
   MEM_NOACCESS(&duplicates, sizeof duplicates);
   MEM_NOACCESS(&dict_operation, sizeof dict_operation);
@@ -536,7 +517,6 @@ TRANSACTIONAL_TARGET void trx_free_at_shutdown(trx_t *trx)
 	ut_a(trx->magic_n == TRX_MAGIC_N);
 
 	ut_d(trx->apply_online_log = false);
-	trx->bulk_insert = 0;
 	trx->commit_state();
 	trx->release_locks();
 	trx->mod_tables.clear();
@@ -582,7 +562,7 @@ static dberr_t trx_resurrect_table_locks(trx_t *trx, const trx_undo_t &undo)
   if (undo.empty())
     return DB_SUCCESS;
 
-  mtr_t mtr{trx};
+  mtr_t mtr;
   std::map<table_id_t, bool> tables;
   mtr.start();
 
@@ -738,12 +718,6 @@ corrupted:
 		return err;
 	}
 
-	if (trx_sys.is_undo_empty()) {
-func_exit:
-		purge_sys.clone_oldest_view<true>();
-		return DB_SUCCESS;
-	}
-
 	/* Look from the rollback segments if there exist undo logs for
 	transactions. */
 	const time_t	start_time	= time(NULL);
@@ -805,7 +779,8 @@ func_exit:
 		ib::info() << "Trx id counter is " << trx_sys.get_max_trx_id();
 	}
 
-	goto func_exit;
+	purge_sys.clone_oldest_view<true>();
+	return DB_SUCCESS;
 }
 
 /** Assign a persistent rollback segment in a round-robin fashion,
@@ -827,7 +802,6 @@ static void trx_assign_rseg_low(trx_t *trx)
 	undo tablespaces that are scheduled for truncation. */
 	static Atomic_counter<unsigned>	rseg_slot;
 	unsigned slot = rseg_slot++ % TRX_SYS_N_RSEGS;
-	DBUG_EXECUTE_IF("assign_same_rseg", slot= 0;);
 	ut_d(const auto start_scan_slot = slot);
 	ut_d(bool look_for_rollover = false);
 	trx_rseg_t*	rseg;
@@ -840,8 +814,6 @@ static void trx_assign_rseg_low(trx_t *trx)
 			ut_ad(!look_for_rollover || start_scan_slot != slot);
 			ut_d(look_for_rollover = true);
 			slot = (slot + 1) % TRX_SYS_N_RSEGS;
-			DBUG_EXECUTE_IF("assign_same_rseg",
-				slot= (slot - 1) % TRX_SYS_N_RSEGS;);
 
 			if (!rseg->space) {
 				continue;
@@ -850,7 +822,8 @@ static void trx_assign_rseg_low(trx_t *trx)
 			ut_ad(rseg->is_persistent());
 
 			if (rseg->space != fil_system.sys_space) {
-				if (rseg->skip_allocation()) {
+				if (rseg->skip_allocation()
+				    || !srv_undo_tablespaces) {
 					continue;
 				}
 			} else if (const fil_space_t *space =
@@ -921,21 +894,16 @@ trx_start_low(
 	ut_ad(UT_LIST_GET_LEN(trx->lock.trx_locks) == 0);
 
 	/* Check whether it is an AUTOCOMMIT SELECT */
-        if (const THD* thd = trx->mysql_thd) {
-		trx->auto_commit = !(thd->variables.option_bits
-                                     & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-			&& thd->lex->sql_command == SQLCOM_SELECT;
-		trx->read_only = (!trx->dict_operation && thd->tx_read_only)
-			|| srv_read_only_mode;
-		if (!trx->auto_commit) {
-			trx->will_lock = true;
-		} else if (!trx->will_lock) {
-			trx->read_only = true;
-		}
-	} else {
-		trx->auto_commit = false;
-		trx->read_only = false;
+	trx->auto_commit = thd_trx_is_auto_commit(trx->mysql_thd);
+
+	trx->read_only = srv_read_only_mode
+		|| (!trx->dict_operation
+		    && thd_trx_is_read_only(trx->mysql_thd));
+
+	if (!trx->auto_commit) {
 		trx->will_lock = true;
+	} else if (!trx->will_lock) {
+		trx->read_only = true;
 	}
 
 #ifdef WITH_WSREP
@@ -1142,7 +1110,6 @@ inline void trx_t::write_serialisation_history(mtr_t *mtr)
   ut_ad(!read_only);
   trx_rseg_t *rseg= rsegs.m_redo.rseg;
   trx_undo_t *&undo= rsegs.m_redo.undo;
-  binlog_oob_context *binlog_ctx= nullptr;
   if (UNIV_LIKELY(undo != nullptr))
   {
     MONITOR_INC(MONITOR_TRX_COMMIT_UNDO);
@@ -1182,11 +1149,6 @@ inline void trx_t::write_serialisation_history(mtr_t *mtr)
     }
     else
       trx_sys.assign_new_trx_no(this);
-
-    /* Include binlog data in the commit record, if any. */
-    if (active_commit_ordered)
-      binlog_ctx= innodb_binlog_trx(this, mtr);
-
     UT_LIST_REMOVE(rseg->undo_list, undo);
     /* Change the undo log segment state from TRX_UNDO_ACTIVE, to
     define the transaction as committed in the file based domain,
@@ -1199,8 +1161,6 @@ inline void trx_t::write_serialisation_history(mtr_t *mtr)
   else
     rseg->release();
   mtr->commit();
-  commit_lsn= undo_no || !xid.is_null() ? mtr->commit_lsn() : 0;
-  innodb_binlog_post_commit(mtr, binlog_ctx);
 }
 
 /********************************************************************
@@ -1279,26 +1239,25 @@ static void trx_flush_log_if_needed(lsn_t lsn, trx_t *trx)
   ut_ad(srv_flush_log_at_trx_commit);
   ut_ad(trx->state != TRX_STATE_PREPARED);
 
-  if (log_sys.get_flushed_lsn(std::memory_order_relaxed) >= lsn)
+  if (log_sys.get_flushed_lsn() > lsn)
     return;
 
-  ut_ad(!trx->mysql_thd || !trx->mysql_thd->tx_read_only);
+  const bool flush=
+    (srv_file_flush_method != SRV_NOSYNC &&
+     (srv_flush_log_at_trx_commit & 1));
 
-  const bool flush= srv_flush_log_at_trx_commit & 1;
-  if (!log_sys.is_mmap())
+  completion_callback cb;
+  if ((cb.m_param= thd_increment_pending_ops(trx->mysql_thd)))
   {
-    completion_callback cb;
-
-    if ((cb.m_param= thd_increment_pending_ops(trx->mysql_thd)))
-    {
-      cb.m_callback= thd_decrement_pending_ops;
-      log_write_up_to(lsn, flush, &cb);
-      return;
-    }
+    cb.m_callback = thd_decrement_pending_ops;
+    log_write_up_to(lsn, flush, false, &cb);
   }
-  trx->op_info= "flushing log";
-  log_write_up_to(lsn, flush);
-  trx->op_info= "";
+  else
+  {
+    trx->op_info= "flushing log";
+    log_write_up_to(lsn, flush);
+    trx->op_info= "";
+  }
 }
 
 /** Process tables that were modified by the committing transaction. */
@@ -1356,10 +1315,8 @@ void trx_t::evict_table(table_id_t table_id, bool reset_only)
 }
 
 /** Free temporary undo log after commit or rollback.
-@param mtr   mini-transaction
 @param undo  temporary undo log */
-ATTRIBUTE_NOINLINE static void trx_commit_cleanup(mtr_t *mtr,
-                                                  trx_undo_t *&undo)
+ATTRIBUTE_NOINLINE static void trx_commit_cleanup(trx_undo_t *&undo)
 {
   trx_rseg_t *const rseg= undo->rseg;
   ut_ad(rseg->space == fil_system.temp_space);
@@ -1369,22 +1326,23 @@ ATTRIBUTE_NOINLINE static void trx_commit_cleanup(mtr_t *mtr,
   ut_ad(undo->id < TRX_RSEG_N_SLOTS);
   /* Delete first the undo log segment in the file */
   bool finished;
+  mtr_t mtr;
   do
   {
-    mtr->start();
-    mtr->set_log_mode(MTR_LOG_NO_REDO);
+    mtr.start();
+    mtr.set_log_mode(MTR_LOG_NO_REDO);
 
     finished= true;
 
     if (buf_block_t *block=
         buf_page_get(page_id_t(SRV_TMP_SPACE_ID, undo->hdr_page_no), 0,
-                     RW_X_LATCH, mtr))
+                     RW_X_LATCH, &mtr))
     {
       finished= fseg_free_step(block, TRX_UNDO_SEG_HDR + TRX_UNDO_FSEG_HEADER,
-                               mtr);
+                               &mtr);
 
       if (!finished);
-      else if (buf_block_t *rseg_header= rseg->get(mtr, nullptr))
+      else if (buf_block_t *rseg_header= rseg->get(&mtr, nullptr))
       {
         static_assert(FIL_NULL == 0xffffffff, "compatibility");
         memset(rseg_header->page.frame + TRX_RSEG + TRX_RSEG_UNDO_SLOTS +
@@ -1392,7 +1350,7 @@ ATTRIBUTE_NOINLINE static void trx_commit_cleanup(mtr_t *mtr,
       }
     }
 
-    mtr->commit();
+    mtr.commit();
   }
   while (!finished);
 
@@ -1403,7 +1361,7 @@ ATTRIBUTE_NOINLINE static void trx_commit_cleanup(mtr_t *mtr,
   undo= nullptr;
 }
 
-TRANSACTIONAL_INLINE inline void trx_t::commit_in_memory(mtr_t *mtr)
+TRANSACTIONAL_INLINE inline void trx_t::commit_in_memory(const mtr_t *mtr)
 {
   /* We already detached from rseg in write_serialisation_history() */
   ut_ad(!rsegs.m_redo.undo);
@@ -1473,8 +1431,20 @@ TRANSACTIONAL_INLINE inline void trx_t::commit_in_memory(mtr_t *mtr)
       release_locks();
   }
 
-  if (commit_lsn)
+  if (trx_undo_t *&undo= rsegs.m_noredo.undo)
   {
+    ut_ad(undo->rseg == rsegs.m_noredo.rseg);
+    trx_commit_cleanup(undo);
+  }
+
+  if (mtr)
+  {
+    /* NOTE that we could possibly make a group commit more efficient
+    here: call std::this_thread::yield() here to allow also other trxs to come
+    to commit! */
+
+    /*-------------------------------------*/
+
     /* Depending on the my.cnf options, we may now write the log
     buffer to the log files, making the transaction durable if the OS
     does not crash. We may also flush the log files to disk, making
@@ -1496,28 +1466,19 @@ TRANSACTIONAL_INLINE inline void trx_t::commit_in_memory(mtr_t *mtr)
     serialize all commits and prevent a group of transactions from
     gathering. */
 
-    if (!flush_log_later && srv_flush_log_at_trx_commit)
+    commit_lsn= undo_no || !xid.is_null() ? mtr->commit_lsn() : 0;
+    if (commit_lsn && !flush_log_later && srv_flush_log_at_trx_commit)
     {
       trx_flush_log_if_needed(commit_lsn, this);
       commit_lsn= 0;
     }
   }
 
-  if (trx_undo_t *&undo= rsegs.m_noredo.undo)
-  {
-    ut_ad(undo->rseg == rsegs.m_noredo.rseg);
-    trx_commit_cleanup(mtr, undo);
-  }
-
   if (fts_trx)
     trx_finalize_for_fts(this, undo_no != 0);
 
 #ifdef WITH_WSREP
-  /* Assert that any transaction which is started as a wsrep
-     transaction, also commits or rolls back as a wsrep
-     transaction. Wsrep applier may turn wsrep off temporarily for
-     rollback when the applying of wsrep transactions is retried. */
-  ut_ad(is_wsrep() == wsrep_on(mysql_thd) || wsrep_thd_in_rollback(mysql_thd));
+  ut_ad(is_wsrep() == wsrep_on(mysql_thd));
 
   /* Serialization history has been written and the transaction is
   committed in memory, which makes this commit ordered. Release commit
@@ -1536,21 +1497,11 @@ bool trx_t::commit_cleanup() noexcept
   ut_ad(!dict_operation);
   ut_ad(!was_dict_operation);
 
-  if (is_bulk_insert())
-    for (auto &t : mod_tables)
-      delete t.second.bulk_store;
-
-  if (size_t n_page_gets= pages_accessed)
-  {
-    pages_accessed= 0;
-    buf_pool.stat.n_page_gets+= n_page_gets;
-  }
   mutex.wr_lock();
   state= TRX_STATE_NOT_STARTED;
   *detailed_error= '\0';
   mod_tables.clear();
 
-  bulk_insert= TRX_NO_BULK;
   check_foreigns= true;
   check_unique_secondary= true;
   assert_freed();
@@ -1561,11 +1512,14 @@ bool trx_t::commit_cleanup() noexcept
   return false;
 }
 
-/** Commit the transaction in the file system. */
-TRANSACTIONAL_TARGET void trx_t::commit_persist() noexcept
+/** Commit the transaction in a mini-transaction.
+@param mtr  mini-transaction (if there are any persistent modifications) */
+TRANSACTIONAL_TARGET void trx_t::commit_low(mtr_t *mtr)
 {
-  mtr_t mtr{this};
-  mtr.start();
+  ut_ad(!mtr || mtr->is_active());
+  ut_d(bool aborted= in_rollback && error_state == DB_DEADLOCK);
+  ut_ad(!mtr == (aborted || !has_logged_persistent()));
+  ut_ad(!mtr || !aborted);
 
   if (fts_trx && undo_no)
   {
@@ -1585,9 +1539,8 @@ TRANSACTIONAL_TARGET void trx_t::commit_persist() noexcept
 #ifdef ENABLED_DEBUG_SYNC
   const bool debug_sync= mysql_thd && has_logged_persistent();
 #endif
-  commit_lsn =0;
 
-  if (has_logged_persistent())
+  if (mtr)
   {
     if (UNIV_UNLIKELY(apply_online_log))
       apply_log();
@@ -1603,7 +1556,7 @@ TRANSACTIONAL_TARGET void trx_t::commit_persist() noexcept
     different rollback segments. However, if a transaction T2 is
     able to see modifications made by a transaction T1, T2 will always
     get a bigger transaction number and a bigger commit lsn than T1. */
-    write_serialisation_history(&mtr);
+    write_serialisation_history(mtr);
   }
   else if (trx_rseg_t *rseg= rsegs.m_redo.rseg)
   {
@@ -1617,22 +1570,33 @@ TRANSACTIONAL_TARGET void trx_t::commit_persist() noexcept
     DEBUG_SYNC_C("before_trx_state_committed_in_memory");
 #endif
 
-  commit_in_memory(&mtr);
+  commit_in_memory(mtr);
 }
 
 
-bool trx_t::commit() noexcept
+void trx_t::commit_persist() noexcept
+{
+  mtr_t *mtr= nullptr;
+  mtr_t local_mtr;
+
+  if (has_logged_persistent())
+  {
+    mtr= &local_mtr;
+    local_mtr.start();
+  }
+  commit_low(mtr);
+}
+
+
+void trx_t::commit() noexcept
 {
   ut_ad(!was_dict_operation);
   ut_d(was_dict_operation= dict_operation);
   dict_operation= false;
   commit_persist();
-#ifdef UNIV_DEBUG
-  if (!was_dict_operation)
-    for (const auto &p : mod_tables) ut_ad(!p.second.is_dropped());
-#endif /* UNIV_DEBUG */
   ut_d(was_dict_operation= false);
-  return commit_cleanup();
+  ut_d(for (const auto &p : mod_tables) ut_ad(!p.second.is_dropped()));
+  commit_cleanup();
 }
 
 
@@ -1759,14 +1723,12 @@ void trx_commit_complete_for_mysql(trx_t *trx)
     return;
   switch (srv_flush_log_at_trx_commit) {
   case 0:
-    goto func_exit;
+    return;
   case 1:
-    if (trx->active_commit_ordered && trx->active_prepare)
+    if (trx->active_commit_ordered)
       return;
   }
   trx_flush_log_if_needed(lsn, trx);
- func_exit:
-  trx->commit_lsn= 0;
 }
 
 /**********************************************************************//**
@@ -1917,14 +1879,14 @@ static lsn_t trx_prepare_low(trx_t *trx)
 {
 	ut_ad(!trx->is_recovered);
 
-	mtr_t mtr{trx};
+	mtr_t	mtr;
 
 	if (trx_undo_t* undo = trx->rsegs.m_noredo.undo) {
 		ut_ad(undo->rseg == trx->rsegs.m_noredo.rseg);
 
 		mtr.start();
 		mtr.set_log_mode(MTR_LOG_NO_REDO);
-		trx_undo_set_state_at_prepare(undo, false, &mtr);
+		trx_undo_set_state_at_prepare(trx, undo, false, &mtr);
 		mtr.commit();
 	}
 
@@ -1943,7 +1905,7 @@ static lsn_t trx_prepare_low(trx_t *trx)
 	TRX_UNDO_PREPARED: these modifications to the file data
 	structure define the transaction as prepared in the file-based
 	world, at the serialization point of lsn. */
-	trx_undo_set_state_at_prepare(undo, false, &mtr);
+	trx_undo_set_state_at_prepare(trx, undo, false, &mtr);
 
 	/* Make the XA PREPARE durable. */
 	mtr.commit();
@@ -1965,6 +1927,8 @@ trx_prepare(
 	ut_a(!trx->is_recovered);
 
 	lsn_t	lsn = trx_prepare_low(trx);
+
+	DBUG_EXECUTE_IF("ib_trx_crash_during_xa_prepare_step", DBUG_SUICIDE(););
 
 	ut_a(trx->state == TRX_STATE_ACTIVE);
 	{
@@ -1989,7 +1953,8 @@ trx_prepare(
 
 		We must not be holding any mutexes or latches here. */
 		if (auto f = srv_flush_log_at_trx_commit) {
-			log_write_up_to(lsn, f & 1);
+			log_write_up_to(lsn, (f & 1) && srv_file_flush_method
+					!= SRV_NOSYNC);
 		}
 
 		if (!UT_LIST_GET_LEN(trx->lock.trx_locks)
@@ -1997,7 +1962,7 @@ trx_prepare(
 			/* Do not release any locks at the
 			SERIALIZABLE isolation level. */
 		} else if (!trx->mysql_thd
-			   || trx->mysql_thd->lex->sql_command
+			   || thd_sql_command(trx->mysql_thd)
 			   != SQLCOM_XA_PREPARE) {
 			/* Do not release locks for XA COMMIT ONE PHASE
 			or for internal distributed transactions

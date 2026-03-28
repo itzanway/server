@@ -24,6 +24,10 @@
   @{
 */
 
+#ifdef USE_PRAGMA_IMPLEMENTATION
+#pragma implementation				// gcc: Class implementation
+#endif
+
 #include "mariadb.h"
 #include "my_bit.h"
 #include "sql_select.h"
@@ -130,11 +134,6 @@
    - Nodes representing unique keys. Unique key has
       = incoming edges from key component value modules
       = outgoing edge to key's table module
-   - Nodes representing unique pseudo-keys for derived tables.
-     Unique pseudo-keys are composed as a result of GROUP BY expressions.
-     Like normal unique keys, they have:
-      = incoming edges from key component value modules
-      = outgoing edge to key's table module
    - Inner side of outer join module. Outer join module has
       = incoming edges from table value modules
       = No outgoing edges. Once we reach it, we know we can eliminate the 
@@ -144,7 +143,7 @@
 
   The algorithm starts with equality nodes that don't have any incoming edges
   (their expressions are either constant or depend only on tables that are
-  outside of the outer join in question) and performs a breadth-first
+  outside of the outer join in question) and performns a breadth-first
   traversal. If we reach the outer join nest node, it means outer join is
   functionally dependent and can be eliminated. Otherwise it cannot be
   eliminated.
@@ -206,7 +205,6 @@ class Dep_module;
   class Dep_module_expr;
   class Dep_module_goal;
   class Dep_module_key;
-  class Dep_module_pseudo_key;
 
 class Dep_analysis_context;
 
@@ -280,8 +278,6 @@ private:
     Dep_module_key *key_dep;
     /* Otherwise, this and advance */
     uint equality_no;
-    /* Or this one and advance */
-    Dep_module_pseudo_key *pseudo_key_dep;
   };
   friend class Dep_analysis_context;
   friend class Field_dependency_recorder; 
@@ -306,20 +302,12 @@ class Dep_value_table : public Dep_value
 {
 public:
   Dep_value_table(TABLE *table_arg) : 
-    table(table_arg), fields(NULL), keys(NULL), pseudo_key(NULL)
+    table(table_arg), fields(NULL), keys(NULL)
   {}
   TABLE *table;  /* Table this object is representing */
   /* Ordered list of fields that belong to this table */
   Dep_value_field *fields;
-
-  /* Ordered list of Unique keys in this table */
-  Dep_module_key *keys;
-
-  /*
-    Possible unique pseudo-key applicable for this table
-    (only none or a single one is possible)
-  */
-  Dep_module_pseudo_key *pseudo_key;
+  Dep_module_key *keys; /* Ordered list of Unique keys in this table */
 
   /* Iteration over unbound modules that are our dependencies */
   Iterator init_unbound_modules_iter(char *buf) override;
@@ -332,7 +320,7 @@ private:
   public:
     /* Space for field iterator */
     char buf[Dep_value_field::iterator_size];
-    /* !NULL <=> iterating over dependent modules of this field */
+    /* !NULL <=> iterating over depdenent modules of this field */
     Dep_value_field *field_dep; 
     bool returned_goal;
   };
@@ -383,7 +371,7 @@ protected:
   uint unbound_args;
   
   Dep_module() : unbound_args(0) {}
-  /* to bump unbound_args when constructing dependencies */
+  /* to bump unbound_args when constructing depedendencies */
   friend class Field_dependency_recorder; 
   friend class Dep_analysis_context;
 };
@@ -455,63 +443,9 @@ private:
 const size_t Dep_module_key::iterator_size= 
   ALIGN_SIZE(sizeof(Dep_module_key::Value_iter));
 
-
-/*
-  A unique pseudo-key module for a derived table.
-  For example, a derived table
-  "SELECT a, count(*) from t1 GROUP BY a"
-  has unique values in its first field "a" due to GROUP BY expression
-  so this can be considered as a unique key for this derived table
-*/
-
-class Dep_module_pseudo_key : public Dep_module
-{
-public:
-  Dep_module_pseudo_key(Dep_value_table *table_arg,
-                        MY_BITMAP *exposed_fields,
-                        uint exposed_fields_num)
-      : table(table_arg), exposed_fields_map(exposed_fields)
-  {
-    unbound_args= exposed_fields_num;
-  }
-
-  Dep_value_table *table;
-
-  Iterator init_unbound_values_iter(char *buf) override;
-
-  Dep_value *get_next_unbound_value(Dep_analysis_context *dac,
-                                    Iterator iter) override;
-
-  bool covers_field(int field_index);
-
-  static const size_t iterator_size;
-
-private:
-  /*
-    Bitmap of field numbers in the derived table's SELECT list
-    which are included in the GROUP BY expression.
-    For example, unique pseudo-key for SQL
-    "SELECT count(*), b, a FROM t1 GROUP BY a, b"
-    will include two elements: {2} and {1}, since "a" and "b" are on the
-    GROUP BY list and also are present on the SELECT list with numbers 2 and 1
-    (numeration starts from 0).
-  */
-  MY_BITMAP *exposed_fields_map;
-
-  class Value_iter
-  {
-  public:
-    Dep_value_table *table;
-  };
-};
-
-const size_t Dep_module_pseudo_key::iterator_size=
-  ALIGN_SIZE(sizeof(Dep_module_pseudo_key::Value_iter));
-
 const size_t Dep_module::iterator_size=
-  MY_MAX(Dep_module_expr::iterator_size,
-         MY_MAX(Dep_module_key::iterator_size,
-                Dep_module_pseudo_key::iterator_size));
+  MY_MAX(Dep_module_expr::iterator_size, Dep_module_key::iterator_size);
+
 
 /*
   A module that represents outer join that we're trying to eliminate. If we 
@@ -573,18 +507,13 @@ public:
     to see if expression equality_mods[expr_no] depends on the given field.
   */
   MY_BITMAP expr_deps;
-
-  Dep_value_table *create_table_value(TABLE_LIST *table_list);
+  
+  Dep_value_table *create_table_value(TABLE *table);
   Dep_value_field *get_field_value(Field *field);
 
 #ifndef DBUG_OFF
   void dbug_print_deps();
 #endif 
-
-private:
-  void create_unique_pseudo_key_if_needed(TABLE_LIST *table_list,
-                                          Dep_value_table *tbl_dep);
-  int find_field_in_list(List<Item> &fields_list, Item *field);
 };
 
 
@@ -877,7 +806,7 @@ eliminate_tables_for_list(JOIN *join, List<TABLE_LIST> *join_list,
 
   SYNOPSIS
     check_func_dependency()
-      join         Join we're processing
+      join         Join we're procesing
       dep_tables   Tables that we check to be functionally dependent (on
                    everything else)
       it           Iterator that enumerates these tables, or NULL if we're 
@@ -922,7 +851,7 @@ bool check_func_dependency(JOIN *join,
   /* Create Dep_value_table objects for all tables we're trying to eliminate */
   if (oj_tbl)
   {
-    if (!dac.create_table_value(oj_tbl))
+    if (!dac.create_table_value(oj_tbl->table))
       return FALSE; /* purecov: inspected */
   }
   else
@@ -932,7 +861,7 @@ bool check_func_dependency(JOIN *join,
     {
       if (tbl->table && (tbl->table->map & dep_tables))
       {
-        if (!dac.create_table_value(tbl))
+        if (!dac.create_table_value(tbl->table))
           return FALSE; /* purecov: inspected */
       }
     }
@@ -940,7 +869,7 @@ bool check_func_dependency(JOIN *join,
   dac.usable_tables= dep_tables;
 
   /*
-    Analyze the ON expression and create Dep_module_expr objects and
+    Analyze the the ON expression and create Dep_module_expr objects and
       Dep_value_field objects for the used fields.
   */
   uint and_level=0;
@@ -1141,7 +1070,7 @@ bool Dep_analysis_context::setup_equality_modules_deps(List<Dep_module>
  
   void *buf;
   if (!(buf= thd->alloc(bitmap_buffer_size(offset))) ||
-      my_bitmap_init(&expr_deps, (my_bitmap_map*)buf, offset))
+      my_bitmap_init(&expr_deps, (my_bitmap_map*)buf, offset, FALSE))
   {
     DBUG_RETURN(TRUE); /* purecov: inspected */
   }
@@ -1165,8 +1094,8 @@ bool Dep_analysis_context::setup_equality_modules_deps(List<Dep_module>
     if (eq_mod->field)
     {
       /* Regular tbl.col=expr(tblX1.col1, tblY1.col2, ...) */
-      eq_mod->expr->walk(&Item::enumerate_field_refs_processor,
-                               &deps_recorder, 0);
+      eq_mod->expr->walk(&Item::enumerate_field_refs_processor, FALSE, 
+                               &deps_recorder);
     }
     else 
     {
@@ -1334,8 +1263,8 @@ void build_eq_mods_for_cond(THD *thd, Dep_analysis_context *ctx,
       multiple-equality. Do two things:
        - Collect List<Dep_value_field> of tblX.colY where tblX is one of the
          tables we're trying to eliminate.
-       - remember if there was a bound value, either const_expr or tblY.colZ
-         where tblY is not a table that we're trying to eliminate.
+       - rembember if there was a bound value, either const_expr or tblY.colZ
+         swher tblY is not a table that we're trying to eliminate.
       Store all collected information in a Dep_module_expr object.
     */
     Item_equal *item_equal= (Item_equal*)cond;
@@ -1400,14 +1329,14 @@ void build_eq_mods_for_cond(THD *thd, Dep_analysis_context *ctx,
   
     $LEFT_PART OR $RIGHT_PART
   
-  condition. This is achieved as follows: First, we apply distributive law:
+  condition. This is achieved as follows: First, we apply distrubutive law:
   
     (fdep_A_1 AND fdep_A_2 AND ...)  OR  (fdep_B_1 AND fdep_B_2 AND ...) =
 
      = AND_ij (fdep_A_[i] OR fdep_B_[j])
   
   Then we walk over the obtained "fdep_A_[i] OR fdep_B_[j]" pairs, and 
-   - Discard those that have left and right part referring to different
+   - Discard those that that have left and right part referring to different
      columns. We can't infer anything useful from "col1=expr1 OR col2=expr2".
    - When left and right parts refer to the same column,  we check if they are 
      essentially the same. 
@@ -1592,13 +1521,6 @@ void check_equality(Dep_analysis_context *ctx, Dep_module_expr **eq_mod,
     if (field->can_optimize_outer_join_table_elimination(cond, right) !=
         Data_type_compatibility::OK)
       return;
-    /*
-      UNIQUE indexes over nullable columns may have duplicate NULL values.
-      This means, a condition like "field IS NULL" or "field <=> right_expr"
-      may match multiple rows. Dis-qualify such conditions.
-    */
-    if (field->real_maybe_null() && right->maybe_null())
-      return;
     Dep_value_field *field_val;
     if ((field_val= ctx->get_field_value(field)))
       add_module_expr(ctx, eq_mod, and_level, field_val, right, NULL);
@@ -1656,156 +1578,33 @@ void add_module_expr(Dep_analysis_context *ctx, Dep_module_expr **eq_mod,
   DESCRIPTION
     Create a Dep_value_table object for the given table. Also create
     Dep_module_key objects for all unique keys in the table.
-    Create a unique pseudo-key if this table is derived and has
-    a GROUP BY expression.
 
   RETURN
     Created table value object
     NULL if out of memory
 */
 
-Dep_value_table *
-Dep_analysis_context::create_table_value(TABLE_LIST *table_list)
+Dep_value_table *Dep_analysis_context::create_table_value(TABLE *table)
 {
   Dep_value_table *tbl_dep;
-  if (!(tbl_dep= new Dep_value_table(table_list->table)))
+  if (!(tbl_dep= new Dep_value_table(table)))
     return NULL; /* purecov: inspected */
 
   Dep_module_key **key_list= &(tbl_dep->keys);
   /* Add dependencies for unique keys */
-  for (uint i= 0; i < table_list->table->s->keys; i++)
+  for (uint i=0; i < table->s->keys; i++)
   {
-    KEY *key= table_list->table->key_info + i;
+    KEY *key= table->key_info + i; 
     if (key->flags & HA_NOSAME)
     {
       Dep_module_key *key_dep;
-      if (!(key_dep= new Dep_module_key(tbl_dep, i,
-                                        key->user_defined_key_parts)))
+      if (!(key_dep= new Dep_module_key(tbl_dep, i, key->user_defined_key_parts)))
         return NULL;
       *key_list= key_dep;
       key_list= &(key_dep->next_table_key);
     }
   }
-
-  create_unique_pseudo_key_if_needed(table_list, tbl_dep);
-  return table_deps[table_list->table->tablenr]= tbl_dep;
-}
-
-
-/*
-  @brief
-    Check if we can create a unique pseudo-key for the passed table.
-    If we can, create a dependency for it
-
-  @detail
-    Currently, pseudo-key is created for the list of GROUP BY columns.
-
-    TODO: also it can be created if the query uses
-     - SELECT DISTINCT
-     - UNION DISTINCT (not UNION ALL)
-*/
-
-void Dep_analysis_context::create_unique_pseudo_key_if_needed(
-    TABLE_LIST *table_list, Dep_value_table *tbl_dep)
-{
-  auto select_unit= table_list->get_unit();
-  SELECT_LEX *first_select= nullptr;
-  if (select_unit)
-  {
-    first_select= select_unit->first_select();
-
-    /*
-      Exclude UNION (ALL) queries from consideration by checking
-      next_select() == nullptr
-    */
-    if (unlikely(select_unit->first_select()->next_select()))
-      first_select= nullptr;
-  }
-
-  /*
-    GROUP BY expression is considered as a unique pseudo-key
-    for the derived table. Add this pseudo key as a dependency.
-
-    first_select->join is NULL for degenerate derived tables
-    which are known to have just one row and so were already materialized
-    by the optimizer, check this here
-  */
-  if (first_select && first_select->join &&
-      first_select->group_list.elements > 0)
-  {
-    auto max_possible_elements= first_select->join->fields_list.elements;
-    void *buf;
-    MY_BITMAP *exposed_fields= (MY_BITMAP*)
-        current_thd->alloc<MY_BITMAP>(1);
-    if (!(buf= current_thd->alloc(bitmap_buffer_size(max_possible_elements))) ||
-        my_bitmap_init(exposed_fields, (my_bitmap_map*)buf,
-                       max_possible_elements))
-      // Memory allocation failed
-      return;
-    bitmap_clear_all(exposed_fields);
-    uint exposed_fields_count= 0;
-
-    bool valid= true;
-    for (auto cur_group= first_select->group_list.first;
-         cur_group;
-         cur_group= cur_group->next)
-    {
-      auto elem= *(cur_group->item);
-      /*
-        Make sure GROUP BY elements contain only fields
-        and no functions or other expressions
-      */
-      if (elem->type() != Item::FIELD_ITEM)
-      {
-        valid= false;
-        break;
-      }
-      auto field_no= find_field_in_list(first_select->join->fields_list, elem);
-      if (field_no == -1)
-      {
-        /*
-          This GROUP BY element is not present in the select list. This is a
-          case like this:
-             (SELECT a FROM t1 GROUP by a,b) as TBL
-          Here, the combination of (a,b) is unique, but the select doesn't
-          include "b". "a" alone is not unique, so TBL doesn't have a unique
-          pseudo-key.
-        */
-        valid= false;
-        break;
-      }
-      bitmap_set_bit(exposed_fields, field_no);
-      exposed_fields_count++;
-    }
-    if (valid)
-    {
-      Dep_module_pseudo_key *pseudo_key;
-      pseudo_key= new Dep_module_pseudo_key(tbl_dep, exposed_fields,
-                                            exposed_fields_count);
-      tbl_dep->pseudo_key= pseudo_key;
-    }
-  }
-}
-
-
-/*
-  Iterate the list of fields and look for the given field.
-  Returns the index of the field if it is found on the list
-  and -1 otherwise
-*/
-
-int Dep_analysis_context::find_field_in_list(List<Item> &fields_list,
-                                             Item *field)
-{
-  List_iterator<Item> it(fields_list);
-  int field_idx= 0;
-  while (auto next_field= it++)
-  {
-    if (next_field->eq(field, false))
-      return field_idx;
-    field_idx++;
-  }
-  return -1; /*not found*/
+  return table_deps[table->tablenr]= tbl_dep;
 }
 
 
@@ -1853,7 +1652,7 @@ Dep_value_field *Dep_analysis_context::get_field_value(Field *field)
 /* 
   Iteration over unbound modules that are our dependencies.
   for those we have:
-    - dependencies of our fields
+    - dependendencies of our fields
     - outer join we're in 
 */
 char *Dep_value_table::init_unbound_modules_iter(char *buf)
@@ -1948,39 +1747,11 @@ Dep_value* Dep_module_key::get_next_unbound_value(Dep_analysis_context *dac,
 }
 
 
-char *Dep_module_pseudo_key::init_unbound_values_iter(char *buf)
-{
-  Value_iter *iter= ALIGN_PTR(my_ptrdiff_t(buf), Value_iter);
-  iter->table= table;
-  return (char *) iter;
-}
-
-Dep_value *
-Dep_module_pseudo_key::get_next_unbound_value(Dep_analysis_context *dac,
-                                                  Dep_module::Iterator iter)
-{
-  Dep_value *res= ((Value_iter *) iter)->table;
-  ((Value_iter *) iter)->table= NULL;
-  return res;
-}
-
-
-/*
-  Check if column number field_no is covered by the pseudo-key.
-*/
-
-bool Dep_module_pseudo_key::covers_field(int field_no)
-{
-  return bitmap_is_set(exposed_fields_map, field_no) > 0;
-}
-
-
 Dep_value::Iterator Dep_value_field::init_unbound_modules_iter(char *buf)
 {
   Module_iter *iter= ALIGN_PTR(my_ptrdiff_t(buf), Module_iter);
   iter->key_dep= table->keys;
   iter->equality_no= 0;
-  iter->pseudo_key_dep= table->pseudo_key;
   return (char*)iter;
 }
 
@@ -1988,8 +1759,7 @@ Dep_value::Iterator Dep_value_field::init_unbound_modules_iter(char *buf)
 void 
 Dep_value_field::make_unbound_modules_iter_skip_keys(Dep_value::Iterator iter)
 {
-  ((Module_iter*) iter)->key_dep= NULL;
-  ((Module_iter*) iter)->pseudo_key_dep= NULL;
+  ((Module_iter*)iter)->key_dep= NULL;
 }
 
 
@@ -2017,16 +1787,6 @@ Dep_module* Dep_value_field::get_next_unbound_module(Dep_analysis_context *dac,
   }
   else 
     di->key_dep= NULL;
-
-  Dep_module_pseudo_key *pseudo_key_dep= di->pseudo_key_dep;
-  if (pseudo_key_dep && !pseudo_key_dep->is_applicable() &&
-      pseudo_key_dep->covers_field(field->field_index))
-  {
-    di->pseudo_key_dep= NULL;
-    return pseudo_key_dep;
-  }
-  else
-    di->pseudo_key_dep= NULL;
   
   /*
     Then walk through [multi]equalities and find those that
@@ -2060,7 +1820,7 @@ static void mark_as_eliminated(JOIN *join, TABLE_LIST *tbl,
   TABLE *table;
   /*
     NOTE: there are TABLE_LIST object that have
-    tbl->table!= NULL && tbl->nested_join!=NULL and
+    tbl->table!= NULL && tbl->nested_join!=NULL and 
     tbl->table == tbl->nested_join->join_list->element(..)->table
   */
   if (tbl->nested_join)
@@ -2086,8 +1846,9 @@ static void mark_as_eliminated(JOIN *join, TABLE_LIST *tbl,
   }
 
   if (tbl->on_expr)
-    tbl->on_expr->walk(&Item::mark_as_eliminated_processor, 0, 0);
+    tbl->on_expr->walk(&Item::mark_as_eliminated_processor, FALSE, NULL);
 }
+
 
 #ifndef DBUG_OFF
 /* purecov: begin inspected */

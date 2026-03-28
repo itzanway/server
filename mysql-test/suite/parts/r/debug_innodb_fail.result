@@ -19,7 +19,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_1: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -30,7 +30,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -47,7 +47,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_1: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -58,7 +58,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -73,13 +73,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_1: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -90,7 +91,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -108,7 +109,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_1: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -119,7 +120,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -143,7 +144,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_2: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -154,7 +155,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -171,7 +172,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_2: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -182,7 +183,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -197,13 +198,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_2: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -214,7 +216,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -232,7 +234,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_2: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -243,7 +245,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -267,7 +269,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_3: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -278,7 +280,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -295,7 +297,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_3: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -306,7 +308,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -321,13 +323,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_3: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -338,7 +341,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -356,7 +359,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_3: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -367,7 +370,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -391,7 +394,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_4: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -402,7 +405,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -419,7 +422,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_4: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -430,7 +433,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -445,13 +448,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_4: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -462,7 +466,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -480,7 +484,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_4: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -491,7 +495,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -515,7 +519,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_5: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -526,7 +530,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -543,7 +547,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_5: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -554,7 +558,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -569,13 +573,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_5: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -586,7 +591,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -604,7 +609,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_5: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -615,7 +620,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -639,7 +644,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_6: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -650,7 +655,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -667,7 +672,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_6: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -678,7 +683,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -693,13 +698,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_6: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -710,7 +716,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -728,7 +734,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_6: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -739,7 +745,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -763,7 +769,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_7: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -774,7 +780,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -791,7 +797,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_7: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -802,7 +808,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -817,13 +823,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_7: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -834,7 +841,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -852,7 +859,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_7: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -863,7 +870,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -887,7 +894,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_8: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -898,7 +905,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -915,7 +922,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_8: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -927,7 +934,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -943,13 +950,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_8: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -960,7 +968,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -978,7 +986,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_8: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -990,7 +998,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -1015,7 +1023,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_9: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1026,7 +1034,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1043,7 +1051,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_9: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1055,7 +1063,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -1071,13 +1079,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_9: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1088,7 +1097,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1106,7 +1115,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_9: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1118,7 +1127,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -1143,7 +1152,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_10: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1154,7 +1163,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1171,7 +1180,7 @@ a	b
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_10: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1183,7 +1192,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -1199,13 +1208,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_add_partition_10: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1216,7 +1226,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1234,7 +1244,7 @@ LOCK TABLE t1 WRITE;
 ALTER TABLE t1 ADD PARTITION
 (PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_add_partition_10: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1246,7 +1256,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -1273,7 +1283,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_1: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1284,7 +1294,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1300,7 +1310,7 @@ a	b
 4	Original from partition p0
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_1: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1311,7 +1321,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1326,13 +1336,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_1: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1343,7 +1354,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1360,7 +1371,7 @@ a	b
 LOCK TABLE t1 WRITE;
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_1: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1371,7 +1382,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1395,7 +1406,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_2: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1406,7 +1417,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1422,7 +1433,7 @@ a	b
 4	Original from partition p0
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_2: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1433,7 +1444,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1448,13 +1459,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_2: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1465,7 +1477,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1482,7 +1494,7 @@ a	b
 LOCK TABLE t1 WRITE;
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_2: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1493,7 +1505,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1517,7 +1529,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_3: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1528,7 +1540,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1544,7 +1556,7 @@ a	b
 4	Original from partition p0
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_3: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1555,7 +1567,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1570,13 +1582,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_3: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1587,7 +1600,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1604,7 +1617,7 @@ a	b
 LOCK TABLE t1 WRITE;
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_3: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1615,7 +1628,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1639,7 +1652,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_4: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1650,7 +1663,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1666,7 +1679,7 @@ a	b
 4	Original from partition p0
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_4: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -1676,7 +1689,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -1686,13 +1699,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_4: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1703,7 +1717,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1720,7 +1734,7 @@ a	b
 LOCK TABLE t1 WRITE;
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_4: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -1730,7 +1744,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -1749,7 +1763,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_5: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1760,7 +1774,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1776,7 +1790,7 @@ a	b
 4	Original from partition p0
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_5: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -1786,7 +1800,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -1796,13 +1810,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_5: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1813,7 +1828,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1830,7 +1845,7 @@ a	b
 LOCK TABLE t1 WRITE;
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_5: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -1840,7 +1855,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -1859,7 +1874,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_6: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1870,7 +1885,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1886,7 +1901,7 @@ a	b
 4	Original from partition p0
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_6: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -1896,7 +1911,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -1906,13 +1921,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_6: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1923,7 +1939,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1940,7 +1956,7 @@ a	b
 LOCK TABLE t1 WRITE;
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_6: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -1950,7 +1966,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -1969,7 +1985,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_7: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -1980,7 +1996,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -1996,7 +2012,7 @@ a	b
 4	Original from partition p0
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_7: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -2006,7 +2022,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -2016,13 +2032,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_7: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2033,7 +2050,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2050,7 +2067,7 @@ a	b
 LOCK TABLE t1 WRITE;
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_7: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -2060,7 +2077,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -2079,7 +2096,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_8: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2090,7 +2107,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2106,7 +2123,7 @@ a	b
 4	Original from partition p0
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_8: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -2116,7 +2133,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -2126,13 +2143,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_8: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2143,7 +2161,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2160,7 +2178,7 @@ a	b
 LOCK TABLE t1 WRITE;
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_8: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -2170,7 +2188,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -2189,7 +2207,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_9: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2200,7 +2218,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2216,7 +2234,7 @@ a	b
 4	Original from partition p0
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_9: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -2226,7 +2244,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -2236,13 +2254,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_drop_partition_9: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2253,7 +2272,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2270,7 +2289,7 @@ a	b
 LOCK TABLE t1 WRITE;
 ALTER TABLE t1 DROP PARTITION p10;
 ERROR HY000: Unknown error
-# d,fail_drop_partition_9: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1.frm
@@ -2280,7 +2299,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB)
 SELECT * FROM t1;
@@ -2302,7 +2321,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_1: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2313,7 +2332,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2331,7 +2350,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_1: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2342,7 +2361,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2357,13 +2376,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_1: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2374,7 +2394,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2393,7 +2413,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_1: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2404,7 +2424,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2428,7 +2448,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_2: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2439,7 +2459,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2457,7 +2477,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_2: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2468,7 +2488,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2483,13 +2503,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_2: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2500,7 +2521,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2519,7 +2540,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_2: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2530,7 +2551,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2554,7 +2575,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_3: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2565,7 +2586,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2583,7 +2604,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_3: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2594,7 +2615,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2609,13 +2630,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_3: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2626,7 +2648,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2645,7 +2667,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_3: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2656,7 +2678,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2680,7 +2702,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_4: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2691,7 +2713,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2709,7 +2731,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_4: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2720,7 +2742,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2735,13 +2757,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_4: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2752,7 +2775,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2771,7 +2794,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_4: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2782,7 +2805,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2806,7 +2829,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_5: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2817,7 +2840,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2835,7 +2858,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_5: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2846,7 +2869,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2861,13 +2884,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_5: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2878,7 +2902,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2897,7 +2921,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_5: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2908,7 +2932,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2932,7 +2956,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_6: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2943,7 +2967,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2961,7 +2985,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_6: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -2972,7 +2996,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -2987,13 +3011,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_6: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3004,7 +3029,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3023,7 +3048,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_6: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3034,7 +3059,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3058,7 +3083,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_7: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3069,7 +3094,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3087,7 +3112,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_7: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3099,7 +3124,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3115,13 +3140,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_7: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3132,7 +3158,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3151,7 +3177,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_7: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3163,7 +3189,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3188,7 +3214,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_8: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3199,7 +3225,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3217,7 +3243,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_8: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3229,7 +3255,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3245,13 +3271,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_8: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3262,7 +3289,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3281,7 +3308,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_8: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3293,7 +3320,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3318,7 +3345,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_9: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3329,7 +3356,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3347,7 +3374,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_9: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3359,7 +3386,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3375,13 +3402,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_9: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3392,7 +3420,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3411,7 +3439,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_9: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3423,7 +3451,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3448,7 +3476,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_10: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3459,7 +3487,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3477,7 +3505,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_10: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3489,7 +3517,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3505,13 +3533,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_10: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3522,7 +3551,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3541,7 +3570,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_10: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3553,7 +3582,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3578,7 +3607,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_11: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3589,7 +3618,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3607,7 +3636,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_11: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3619,7 +3648,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3635,13 +3664,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_11: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3652,7 +3682,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3671,7 +3701,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_11: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3683,7 +3713,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3708,7 +3738,7 @@ PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_12: BEFORE failure
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3719,7 +3749,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3737,7 +3767,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_12: AFTER failure
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3749,7 +3779,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,
@@ -3765,13 +3795,14 @@ a	b
 3	Original from partition p0
 4	Original from partition p0
 DROP TABLE t1;
+# Same test under LOCK TABLE
 CREATE TABLE t1 (a INT, b VARCHAR(64))
 ENGINE = 'InnoDB'
 PARTITION BY LIST (a)
 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9),
 PARTITION p10 VALUES IN (11,12,13,14,15,16,17,18,19));
 INSERT INTO t1 VALUES (1, "Original from partition p0"), (2, "Original from partition p0"), (3, "Original from partition p0"), (4, "Original from partition p0"), (11, "Original from partition p1"), (12, "Original from partition p1"), (13, "Original from partition p1"), (14, "Original from partition p1");
-# d,fail_change_partition_12: BEFORE failure (under LOCK TABLE)
+# State before failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3782,7 +3813,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (11,12,13,14,15,16,17,18,19) ENGINE = InnoDB)
@@ -3801,7 +3832,7 @@ ALTER TABLE t1 REORGANIZE PARTITION p10 INTO
 (PARTITION p10 VALUES IN (10,11,12,13,14,15,16,17,18,19),
 PARTITION p20 VALUES IN (20,21,22,23,24,25,26,27,28,29));
 ERROR HY000: Unknown error
-# d,fail_change_partition_12: AFTER failure (under LOCK TABLE)
+# State after failure
 db.opt
 t1#P#p0.ibd
 t1#P#p10.ibd
@@ -3813,7 +3844,7 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL,
   `b` varchar(64) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
  PARTITION BY LIST (`a`)
 (PARTITION `p0` VALUES IN (0,1,2,3,4,5,6,7,8,9) ENGINE = InnoDB,
  PARTITION `p10` VALUES IN (10,11,12,13,14,15,16,17,18,19) ENGINE = InnoDB,

@@ -20,7 +20,6 @@ let $message= Testcase: 3.5:;
 	create User test_general@localhost;
 	set password for test_general@localhost = password('PWD');
 	revoke ALL PRIVILEGES, GRANT OPTION FROM test_general@localhost;
-        grant SELECT,UPDATE,DELETE,INSERT on test.* to test_general@localhost;
 
 	create User test_super@localhost;
 	set password for test_super@localhost = password('PWD');
@@ -559,8 +558,6 @@ let $message= Testcase 3.5.8.7;
 
 # Cleanup section 3.5
 	connection default;
-        disconnect con2_general;
-        disconnect con2_super;
 	drop user test_general@localhost;
 	drop user test_general;
 	drop user test_super@localhost;

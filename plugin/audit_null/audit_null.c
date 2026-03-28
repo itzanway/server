@@ -30,7 +30,6 @@
 static volatile int ncalls; /* for SHOW STATUS, see below */
 static volatile int ncalls_general_log;
 static volatile int ncalls_general_error;
-static volatile int ncalls_general_warning;
 static volatile int ncalls_general_result;
 
 FILE *f;
@@ -54,7 +53,6 @@ static int audit_null_plugin_init(void *arg __attribute__((unused)))
   ncalls= 0;
   ncalls_general_log= 0;
   ncalls_general_error= 0;
-  ncalls_general_warning= 0;
   ncalls_general_result= 0;
 
   f = fopen("audit_null_tables.log", "w");
@@ -114,9 +112,6 @@ static void audit_null_notify(MYSQL_THD thd __attribute__((unused)),
       break;
     case MYSQL_AUDIT_GENERAL_ERROR:
       ncalls_general_error++;
-      break;
-    case MYSQL_AUDIT_GENERAL_WARNING:
-      ncalls_general_warning++;
       break;
     case MYSQL_AUDIT_GENERAL_RESULT:
       ncalls_general_result++;
@@ -184,7 +179,6 @@ static struct st_mysql_show_var simple_status[]=
   { "general_error", (char *) &ncalls_general_error, SHOW_INT },
   { "general_log", (char *) &ncalls_general_log, SHOW_INT },
   { "general_result", (char *) &ncalls_general_result, SHOW_INT },
-  { "general_warning", (char *) &ncalls_general_error, SHOW_INT },
   { 0, 0, 0}
 };
 

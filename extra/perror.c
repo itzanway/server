@@ -16,7 +16,7 @@
 
 /* Return error-text for system error messages and handler messages */
 
-#define VER "2.11"
+#define PERROR_VERSION "2.11"
 
 #include <my_global.h>
 #include <my_sys.h>
@@ -74,6 +74,13 @@ static HA_ERRORS ha_errlist[]=
   { -30988, "DB_VERIFY_BAD: Verify failed; bad format"},
   { 0,NullS },
 };
+
+
+static void print_version(void)
+{
+  printf("%s Ver %s, for %s (%s)\n",my_progname,PERROR_VERSION,
+	 SYSTEM_TYPE,MACHINE_TYPE);
+}
 
 
 static void usage(void)
@@ -315,7 +322,7 @@ int main(int argc,char *argv[])
       code=atoi(*argv);
       msg = strerror(code);
 
-      // On AIX, unknown error returns " Error <CODE> occurred."
+      // On AIX, unknow error return " Error <CODE> occurred."
       snprintf(unknow_aix, sizeof(unknow_aix), " Error %3d occurred.", code);
 
       /*
@@ -354,8 +361,7 @@ int main(int argc,char *argv[])
         found= 1;
         if (verbose)
           printf("MariaDB error code %3d (%s): %s\n"
-                 "Learn more: https://err.mariadb.com/%3d\n",
-                 code, name, msg, code);
+                 "Learn more: https://mariadb.com/kb/en/e%3d/\n", code, name, msg, code);
         else
           puts(msg);
       }

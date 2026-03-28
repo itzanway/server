@@ -2,7 +2,7 @@
 # Change Author: JBM
 # Change Date: 2006-01-12
 # Change: Added back have stm binlog
-# and added requirements comments
+# and added requirments comments
 ################################
 # test case to make slave thread get ahead by 22 bytes
 ################################

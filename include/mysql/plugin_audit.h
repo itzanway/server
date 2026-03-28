@@ -29,7 +29,7 @@ extern "C" {
 
 #define MYSQL_AUDIT_CLASS_MASK_SIZE 1
 
-#define MYSQL_AUDIT_INTERFACE_VERSION 0x0303
+#define MYSQL_AUDIT_INTERFACE_VERSION 0x0302
 
 
 /*************************************************************************
@@ -48,7 +48,6 @@ extern "C" {
 #define MYSQL_AUDIT_GENERAL_ERROR 1
 #define MYSQL_AUDIT_GENERAL_RESULT 2
 #define MYSQL_AUDIT_GENERAL_STATUS 3
-#define MYSQL_AUDIT_GENERAL_WARNING 4
 
 struct mysql_event_general
 {
@@ -66,8 +65,6 @@ struct mysql_event_general
   unsigned long long general_rows;
   /* Added in version 0x302 */
   unsigned long long query_id;
-  /* Added in version 0x303 */
-  unsigned int port;
   MYSQL_CONST_LEX_STRING database;
 };
 
@@ -103,11 +100,7 @@ struct mysql_event_connection
   unsigned int host_length;
   const char *ip;
   unsigned int ip_length;
-  unsigned int port;
   MYSQL_CONST_LEX_STRING database;
-  /* Added in version 0x303 */
-  const char *tls_version;
-  unsigned int tls_version_length;
 };
 
 /*
@@ -142,7 +135,6 @@ struct mysql_event_table
   const char *proxy_user;
   const char *host;
   const char *ip;
-  unsigned int port;
   MYSQL_CONST_LEX_STRING database;
   MYSQL_CONST_LEX_STRING table;
   /* for MYSQL_AUDIT_TABLE_RENAME */

@@ -29,38 +29,37 @@ Window_spec::check_window_names(List_iterator_fast<Window_spec> &it)
 {
   if (window_names_are_checked)
     return false;
-  const Lex_ident_window name= this->name();
-  const Lex_ident_window ref_name= window_reference();
+  const char *name= this->name();
+  const char *ref_name= window_reference();
   it.rewind();
   Window_spec *win_spec;
   while((win_spec= it++) && win_spec != this)
   {
-    const Lex_ident_window win_spec_name= win_spec->name();
-    if (!win_spec_name.str)
+    const char *win_spec_name= win_spec->name();
+    if (!win_spec_name)
       break;
-    if (name.str && name.streq(win_spec_name))
+    if (name && my_strcasecmp(system_charset_info, name, win_spec_name) == 0)
     {
-      my_error(ER_DUP_WINDOW_NAME, MYF(0), name.str);
+      my_error(ER_DUP_WINDOW_NAME, MYF(0), name);
       return true;
     }
-    if (ref_name.str && win_spec_name.streq(ref_name))
+    if (ref_name &&
+        my_strcasecmp(system_charset_info, ref_name, win_spec_name) == 0)
     {
       if (partition_list->elements)
       {
         my_error(ER_PARTITION_LIST_IN_REFERENCING_WINDOW_SPEC, MYF(0),
-                 ref_name.str);
+                 ref_name);
         return true;
       }
       if (win_spec->order_list->elements && order_list->elements)
       {
-        my_error(ER_ORDER_LIST_IN_REFERENCING_WINDOW_SPEC, MYF(0),
-                 ref_name.str);
+        my_error(ER_ORDER_LIST_IN_REFERENCING_WINDOW_SPEC, MYF(0), ref_name);
         return true;
       } 
       if (win_spec->window_frame)
       {
-        my_error(ER_WINDOW_FRAME_IN_REFERENCED_WINDOW_SPEC, MYF(0),
-                 ref_name.str);
+        my_error(ER_WINDOW_FRAME_IN_REFERENCED_WINDOW_SPEC, MYF(0), ref_name);
         return true;
       }
       referenced_win_spec= win_spec;
@@ -70,9 +69,9 @@ Window_spec::check_window_names(List_iterator_fast<Window_spec> &it)
         order_list= win_spec->order_list;
     }
   }
-  if (ref_name.str && !referenced_win_spec)
+  if (ref_name && !referenced_win_spec)
   {
-    my_error(ER_WRONG_WINDOW_SPEC_NAME, MYF(0), ref_name.str);
+    my_error(ER_WRONG_WINDOW_SPEC_NAME, MYF(0), ref_name);
     return true;
   }
   window_names_are_checked= true;
@@ -222,7 +221,7 @@ setup_windows(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
     uint elems= win_specs.elements;
     while ((win_spec= it++) && i++ < elems)
     {
-      if (win_spec->name().str == NULL)
+      if (win_spec->name() == NULL)
       {
         it.remove();
         win_specs.push_back(win_spec);
@@ -261,7 +260,7 @@ setup_windows(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
     }
     /*
        For  "win_func() OVER (ORDER BY order_list RANGE BETWEEN ...)",
-       - ORDER BY order_list must not be omitted
+       - ORDER BY order_list must not be ommitted
        - the list must have a single element.
        But it really only matters if the frame is bounded.
     */
@@ -432,16 +431,6 @@ ORDER *st_select_lex::find_common_window_func_partition_fields(THD *thd)
 #define CMP_EQ         0    // Equal to
 #define CMP_GT_C       1    // Greater than and compatible
 #define CMP_GT         2    // Greater then
-
-
-/*
-  This function is used for sorting ORDER/PARTITION BY clauses of window
-  functions and so must implement an order relation on ORDER BY clauses"
-
-  It is called by a sorting function.
-  The function return's CMP_EQ (=0) if the values are identical.
-  If not equal, it returns a stable value < or > than 0.
-*/
 
 static
 int compare_order_elements(ORDER *ord1, int weight1,
@@ -651,7 +640,7 @@ int compare_window_funcs_by_window_specs(Item_window_func *win_func1,
       Partition lists contain the same elements. 
       Let's use only one of the lists.
     */
-    if (!win_spec1->name().str && win_spec2->name().str)
+    if (!win_spec1->name() && win_spec2->name())
     {
       win_spec1->save_partition_list= win_spec1->partition_list;
       win_spec1->partition_list= win_spec2->partition_list;
@@ -674,14 +663,14 @@ int compare_window_funcs_by_window_specs(Item_window_func *win_func1,
        Order lists contain the same elements.
        Let's use only one of the lists.
     */
-    if (!win_spec1->name().str && win_spec2->name().str)
+    if (!win_spec1->name() && win_spec2->name())
     {
-      win_spec1->save_order_list= win_spec1->order_list;
+      win_spec1->save_order_list= win_spec2->order_list;
       win_spec1->order_list= win_spec2->order_list;
     }
     else
     {
-      win_spec2->save_order_list= win_spec2->order_list;
+      win_spec1->save_order_list= win_spec2->order_list;
       win_spec2->order_list= win_spec1->order_list;
     }
 
@@ -692,7 +681,7 @@ int compare_window_funcs_by_window_specs(Item_window_func *win_func1,
       return cmp;
 
     /* Window frames are equal. Let's use only one of them. */
-    if (!win_spec1->name().str && win_spec2->name().str)
+    if (!win_spec1->name() && win_spec2->name())
       win_spec1->window_frame= win_spec2->window_frame;
     else
       win_spec2->window_frame= win_spec1->window_frame;
@@ -985,7 +974,7 @@ public:
   }
 
 private:
-  /* The table that is accessed by this cursor. */
+  /* The table that is acccesed by this cursor. */
   TABLE *table;
   /* Buffer where to store the table's record data. */
   uchar *record;
@@ -2501,25 +2490,13 @@ Frame_cursor *get_frame_cursor(THD *thd, Window_spec *spec, bool is_top_bound)
     }
     else
     {
-      /*
-        compare_window_funcs_by_window_specs() will try to get the 
-        Window Specs to reuse the ORDER BY lists.
-        RANGE-type window frame expects a single ORDER BY element,
-        and if the list from a different window spec having more than 1 
-        ORDER BY element is used, then an ASSERT is raised.
-        
-        So, use the original ORDER BY list when constructing 
-        RANGE-type frames.
-      */
-      SQL_I_List<ORDER> *order_list=
-          spec->save_order_list ? spec->save_order_list : spec->order_list;
       if (is_top_bound)
         return new Frame_range_n_top(
-            thd, spec->partition_list, order_list,
+            thd, spec->partition_list, spec->order_list,
             is_preceding, bound->offset);
 
       return new Frame_range_n_bottom(thd,
-          spec->partition_list, order_list,
+          spec->partition_list, spec->order_list,
           is_preceding, bound->offset);
     }
   }
@@ -2882,7 +2859,6 @@ bool compute_window_func(THD *thd,
 {
   List_iterator_fast<Item_window_func> iter_win_funcs(window_functions);
   List_iterator_fast<Cursor_manager> iter_cursor_managers(cursor_managers);
-  bool ret= false;
   uint err;
 
   READ_RECORD info;
@@ -2945,27 +2921,18 @@ bool compute_window_func(THD *thd,
       /* Check if we found any error in the window function while adding values
          through cursors. */
       if (unlikely(thd->is_error() || thd->is_killed()))
-      {
-        ret= true;
         break;
-      }
+
 
       /* Return to current row after notifying cursors for each window
          function. */
-      if (tbl->file->ha_rnd_pos(tbl->record[0], rowid_buf))
-      {
-        ret= true;
-        break;
-      }
+      tbl->file->ha_rnd_pos(tbl->record[0], rowid_buf);
     }
 
     /* We now have computed values for each window function. They can now
        be saved in the current row. */
-    if (save_window_function_values(window_functions, tbl, rowid_buf))
-    {
-      ret= true;
-      break;
-    }
+    save_window_function_values(window_functions, tbl, rowid_buf);
+
     rownum++;
   }
 
@@ -2973,7 +2940,7 @@ bool compute_window_func(THD *thd,
   partition_trackers.delete_elements();
   end_read_record(&info);
 
-  return ret;
+  return false;
 }
 
 /* Make a list that is a concation of two lists of ORDER elements */
@@ -3170,10 +3137,8 @@ bool Window_funcs_sort::setup(THD *thd, SQL_SELECT *sel,
      */
     ORDER *order= (ORDER *)alloc_root(thd->mem_root, sizeof(ORDER));
     memset(order, 0, sizeof(*order));
-    Item_field *item=
-        new (thd->mem_root) Item_field(thd, join_tab->table->field[0]);
-    if (item)
-      item->set_refers_to_temp_table();
+    Item *item= new (thd->mem_root) Item_temptable_field(thd,
+                                                    join_tab->table->field[0]);
     order->item= (Item **)alloc_root(thd->mem_root, 2 * sizeof(Item *));
     order->item[1]= NULL;
     order->item[0]= item;
@@ -3347,7 +3312,7 @@ bool st_select_lex::add_window_func(Item_window_func *win_func)
       // over (partition by a, order by x) && over (order by x).
       //
       // The first function requires an ordering by a first and then by x,
-      // while the second function requires an ordering by x first.
+      // while the seond function requires an ordering by x first.
       // The same restriction is not required for the order by clause.
       if (largest_partition.elements && !spec->partition_list.elements)
       {

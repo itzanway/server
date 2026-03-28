@@ -1,4 +1,4 @@
-/* Copyright (c) 2006, 2010, Oracle and/or its affiliates
+/* Copyright (c) 2006, 2010, Oracle and/or its affiliates 
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -125,8 +125,8 @@ void plan(int count);
                use ok1() in this case.
 */
 
-ATTRIBUTE_FORMAT(printf, 2, 3)
-void ok(int pass, char const *fmt, ...);
+void ok(int pass, char const *fmt, ...)
+  __attribute__((format(printf,2,3)));
 
 
 /**
@@ -168,8 +168,8 @@ void ok1(int const pass);
    @param reason     A reason for skipping the tests
  */
 
-ATTRIBUTE_FORMAT(printf, 2, 3)
-void skip(int how_many, char const *const reason, ...);
+void skip(int how_many, char const *const reason, ...)
+    __attribute__((format(printf,2,3)));
 
 
 /**
@@ -217,8 +217,8 @@ void skip(int how_many, char const *const reason, ...);
    @param fmt  Diagnostics message in printf() format.
  */
 
-ATTRIBUTE_FORMAT(printf, 1, 2)
-void diag(char const *fmt, ...);
+void diag(char const *fmt, ...)
+  __attribute__((format(printf,1,2)));
 
 
 /**
@@ -239,8 +239,8 @@ void diag(char const *fmt, ...);
    @param fmt Bail out message in printf() format.
 */
 
-ATTRIBUTE_NORETURN ATTRIBUTE_FORMAT(printf, 1, 2)
-void BAIL_OUT(char const *fmt, ...);
+void BAIL_OUT(char const *fmt, ...)
+  __attribute__((noreturn, format(printf,1,2)));
 
 
 /**
@@ -270,8 +270,8 @@ int exit_status(void);
    around it.
  */
 
-ATTRIBUTE_NORETURN ATTRIBUTE_FORMAT(printf, 1, 2)
-void skip_all(char const *reason, ...);
+void skip_all(char const *reason, ...)
+  __attribute__((noreturn, format(printf, 1, 2)));
 
 
 /**
@@ -295,8 +295,8 @@ void skip_all(char const *reason, ...);
    @param message Message that will be printed before the todo tests.
 */
 
-ATTRIBUTE_FORMAT(printf, 1, 2)
-void todo_start(char const *message, ...);
+void todo_start(char const *message, ...)
+  __attribute__((format(printf, 1, 2)));
 
 
 /**

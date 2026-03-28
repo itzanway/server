@@ -69,6 +69,7 @@ row_vers_non_virtual_fields_equal(
 
 /** Determine if an active transaction has inserted or modified a secondary
 index record.
+@param[in,out]	caller_trx	trx of current thread
 @param[in]	clust_rec	clustered index record
 @param[in]	clust_index	clustered index
 @param[in]	rec		secondary index record
@@ -81,6 +82,7 @@ acquiring trx->mutex, and trx->release_reference() must be invoked
 UNIV_INLINE
 trx_t*
 row_vers_impl_x_locked_low(
+	trx_t*		caller_trx,
 	const rec_t*	clust_rec,
 	dict_index_t*	clust_index,
 	const rec_t*	rec,
@@ -122,7 +124,7 @@ row_vers_impl_x_locked_low(
 
 	trx_t* trx = nullptr;
 	trx_id = row_get_rec_trx_id(clust_rec, clust_index, clust_offsets);
-	if (trx_id <= mtr->trx->max_inactive_id) {
+	if (trx_id == 0) {
 		/* The transaction history was already purged. */
 	done:
 		mem_heap_free(heap);
@@ -131,12 +133,12 @@ row_vers_impl_x_locked_low(
 
 	ut_ad(!clust_index->table->is_temporary());
 
-	if (trx_id == mtr->trx->id) {
-		trx = mtr->trx;
+	if (trx_id == caller_trx->id) {
+		trx = caller_trx;
 		trx->reference();
 		goto done;
 	} else {
-		trx = trx_sys.find(mtr->trx, trx_id);
+		trx = trx_sys.find(caller_trx, trx_id);
 		if (trx == 0) {
 			/* The transaction that modified or inserted
 			clust_rec is no longer active, or it is
@@ -329,7 +331,7 @@ not_locked:
 
 		/* We check if entry and rec are identified in the alphabetical
 		ordering */
-		if (0 == cmp_dtuple_rec(entry, rec, index, offsets)) {
+		if (0 == cmp_dtuple_rec(entry, rec, offsets)) {
 			/* The delete marks of rec and prev_version should be
 			equal for rec to be in the state required by
 			prev_version */
@@ -347,7 +349,7 @@ not_locked:
 			dtuple_set_types_binary(
 				entry, dtuple_get_n_fields(entry));
 
-			if (cmp_dtuple_rec(entry, rec, index, offsets)) {
+			if (0 != cmp_dtuple_rec(entry, rec, offsets)) {
 
 				break;
 			}
@@ -396,13 +398,13 @@ row_vers_impl_x_locked(
 	dict_index_t*	index,
 	const rec_offs*	offsets)
 {
-	mtr_t		mtr{caller_trx};
+	mtr_t		mtr;
 	trx_t*		trx;
 	const rec_t*	clust_rec;
 	dict_index_t*	clust_index;
 
-	/* The function must not be invoked under lock_sys latch to prevent
-	latching order violation, i.e. page latch must be acquired before
+	/* The function must not be invoked under lock_sys latch to prevert
+	latching orded violation, i.e. page latch must be acquired before
 	lock_sys latch */
 	lock_sys.assert_unlocked();
 	/* The current function can be called from lock_rec_unlock_unmodified()
@@ -436,7 +438,7 @@ row_vers_impl_x_locked(
 		trx = 0;
 	} else {
 		trx = row_vers_impl_x_locked_low(
-				clust_rec, clust_index, rec, index,
+				caller_trx, clust_rec, clust_index, rec, index,
 				offsets, &mtr);
 
 		ut_ad(trx == 0 || trx->is_referenced());
@@ -521,7 +523,7 @@ row_vers_build_cur_vrow_low(
 	const rec_t*	version;
 	rec_t*		prev_version;
 	mem_heap_t*	heap = NULL;
-	const auto	num_v = dict_table_get_n_v_cols(index->table);
+	ulint		num_v = dict_table_get_n_v_cols(index->table);
 	const dfield_t* field;
 	ulint		i;
 	bool		all_filled = false;
@@ -821,6 +823,7 @@ which should be seen by a semi-consistent read. */
 void
 row_vers_build_for_semi_consistent_read(
 /*====================================*/
+	trx_t*		caller_trx,/*!<in/out: trx of current thread */
 	const rec_t*	rec,	/*!< in: record in a clustered index; the
 				caller must have a latch on the page; this
 				latch locks the top of the stack of versions
@@ -865,7 +868,7 @@ row_vers_build_for_semi_consistent_read(
 			rec_trx_id = version_trx_id;
 		}
 
-		if (!trx_sys.is_registered(mtr->trx, version_trx_id)) {
+		if (!trx_sys.is_registered(caller_trx, version_trx_id)) {
 committed_version_trx:
 			/* We found a version that belongs to a
 			committed transaction: return it. */

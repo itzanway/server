@@ -27,22 +27,14 @@ USE auto_test_remote2;
 --connection child2_1
 --disable_query_log
 echo CHILD2_1_CREATE_TABLES;
-CREATE TABLE tbl_a (
-id bigint NOT NULL,
-node text,
-PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+eval $CHILD2_1_CREATE_TABLES;
 --enable_query_log
 TRUNCATE TABLE mysql.general_log;
 
 --connection child2_2
 --disable_query_log
 echo CHILD2_2_CREATE_TABLES;
-CREATE TABLE tbl_a (
-id bigint NOT NULL,
-node text,
-PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+eval $CHILD2_2_CREATE_TABLES;
 --enable_query_log
 TRUNCATE TABLE mysql.general_log;
 
@@ -53,19 +45,13 @@ echo CREATE TABLE tbl_a (
     node text,
     PRIMARY KEY (id)
 ) MASTER_1_ENGINE MASTER_1_CHARSET MASTER_1_COMMENT_2_1;
-CREATE TABLE tbl_a (
+eval CREATE TABLE tbl_a (
     id bigint NOT NULL,
     node text,
     PRIMARY KEY (id)
-) ENGINE=Spider DEFAULT CHARSET=utf8 COMMENT='table "tbl_a"'
-  PARTITION BY HASH(id) (
-PARTITION pt1 COMMENT='srv "s_2_1"',
-PARTITION pt2 COMMENT='srv "s_2_2"'
-  );
+) $MASTER_1_ENGINE $MASTER_1_CHARSET $MASTER_1_COMMENT_2_1;
 --enable_query_log
---disable_ps_protocol
 INSERT INTO tbl_a (id,node) VALUES (1,'DB-G0'),(2,'DB-G1');
---enable_ps_protocol
 
 --echo
 --echo select test 1
@@ -78,14 +64,13 @@ TRUNCATE TABLE mysql.general_log;
 
 --connection master_1
 SELECT * FROM tbl_a;
---sorted_result
 SELECT * FROM tbl_a WHERE id <0 || id >0;
 
 --connection child2_1
-SELECT * FROM tbl_a ORDER BY id;
+eval $CHILD2_1_SELECT_TABLES;
 
 --connection child2_2
-SELECT * FROM tbl_a ORDER BY id;
+eval $CHILD2_2_SELECT_TABLES;
 
 --echo
 --echo deinit

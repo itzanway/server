@@ -21,27 +21,6 @@
 
 unsigned int wsrep_check_ip (const char* const addr, bool *is_ipv6);
 size_t wsrep_guess_ip (char* buf, size_t buf_len);
-namespace wsp {
-class node_status
-{
-public:
-  node_status() : status(wsrep::server_state::s_disconnected) {}
-  void set(enum wsrep::server_state::state new_status,
-           const wsrep::view* view= 0)
-  {
-    if (status != new_status || 0 != view)
-    {
-      wsrep_notify_status(new_status, view);
-      status= new_status;
-    }
-  }
-  enum wsrep::server_state::state get() const { return status; }
-private:
-  enum wsrep::server_state::state status;
-};
-} /* namespace wsp */
-
-extern wsp::node_status local_status;
 
 /* returns the length of the host part of the address string */
 size_t wsrep_host_len(const char* addr, size_t addr_len);
@@ -275,30 +254,19 @@ class process
 {
 private:
     const char* const str_;
-    FILE*       io_[2];
+    FILE*       io_;
     int         err_;
     pid_t       pid_;
 
-    enum io_direction { READ, WRITE };
-
-    void setup_parent_pipe_end(io_direction      direction,
-                               int               pipe_fds[],
-                               int const         pipe_end,
-                               const char* const mode);
-
-    void close_io(io_direction direction, bool warn = false);
-
 public:
-/*! @arg type is a pointer to a null-terminated string which must be
-         either "r", "w" or "rw"
+/*! @arg type is a pointer to a null-terminated string which  must  contain
+         either  the  letter  'r'  for  reading  or the letter 'w' for writing.
     @arg env optional null-terminated vector of environment variables
  */
     process  (const char* cmd, const char* type, char** env);
     ~process ();
 
-    FILE* from () { return io_[READ];  }
-    FILE* to   () { return io_[WRITE]; }
-    void  close_to() { close_io(WRITE,  false); }
+    FILE* pipe () { return io_;  }
     int   error() { return err_; }
     int   wait ();
     const char* cmd() { return str_; }
@@ -306,19 +274,11 @@ public:
 
 class thd
 {
- /* Helper class to init/deinit current thread for use with THD */
-  class my_init
+  class thd_init
   {
   public:
-    my_bool const init_;
-    int  const err_;
-    my_init(my_bool const init) :
-      init_(init),
-      err_(init_ ? my_thread_init() : 0)
-    {}
-    ~my_init() {
-      if (init_ && !err_) my_thread_end();
-    }
+    thd_init()  { my_thread_init(); }
+    ~thd_init() { my_thread_end();  }
   }
   init;
 
@@ -326,40 +286,10 @@ class thd
   thd& operator= (const thd&);
 
 public:
-  /*
-   @param[in] init  Should be set to true if called in a freshly forked
-                    thread to initialize MySQL-specific thread context
-                    and likewise deinitialize on object destruction.
-                    Should be set to false if the thread already has
-                    initialized the context, but original THD* is not
-                    available.
-   */
-  explicit thd(my_bool init=true, bool system_thread=false);
-  ~thd();
-  int err() const { return init.err_; }
-  THD* const ptr;
-};
 
-/* local server connection */
-class mysql
-{
-  MYSQL* mysql_;
-public:
-  mysql();
-  ~mysql();
-  int execute(const std::string& query) {
-    if (mysql_real_query(mysql_, query.c_str(), query.length())) {
-       return mysql_errno(mysql_);
-    }
-    return 0;
-  }
-  int errnum() {
-    return (mysql_errno(mysql_));
-  }
-  const char* errstr() {
-    return mysql_error(mysql_);
-  }
-  int disable_replication();
+  thd(my_bool wsrep_on, bool system_thread=false);
+  ~thd();
+  THD* const ptr;
 };
 
 class string

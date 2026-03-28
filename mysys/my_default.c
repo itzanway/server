@@ -39,8 +39,6 @@
 #include <m_string.h>
 #include <m_ctype.h>
 #include <my_dir.h>
-#include <errno.h>
-#include <mysys_err.h>
 #ifdef _WIN32
 #include <winbase.h>
 #endif
@@ -320,9 +318,6 @@ int get_defaults_options(char **argv)
   }
 
   if (! my_defaults_group_suffix)
-    my_defaults_group_suffix= getenv("MARIADB_GROUP_SUFFIX");
-
-  if (! my_defaults_group_suffix)
     my_defaults_group_suffix= getenv("MYSQL_GROUP_SUFFIX");
 
   if (my_defaults_extra_file && my_defaults_extra_file != extra_file_buffer)
@@ -471,7 +466,7 @@ int my_load_defaults(const char *conf_file, const char **groups, int *argc,
   if (*argc)
     memcpy(res + args.elements, *argv, *argc * sizeof(char*));
 
-  (*argc)+= (int)args.elements;
+  (*argc)+= args.elements;
   *argv= res;
   (*argv)[*argc]= 0;
   *(MEM_ROOT*) ptr= alloc;			/* Save alloc root for free */
@@ -531,7 +526,7 @@ static int search_default_file(struct handle_option_ctx *ctx, const char *dir,
    get_argument()
    keyword		Include directive keyword
    kwlen		Length of keyword
-   ptr			Pointer to the keyword in the line under process
+   ptr			Pointer to the keword in the line under process
    line			line number
 
   RETURN
@@ -607,7 +602,7 @@ static int search_default_file_with_ext(struct handle_option_ctx *ctx,
   MYSQL_FILE *fp;
   uint line=0;
   enum { NONE, PARSE, SKIP } found_group= NONE;
-  size_t i;
+  uint i;
   MY_DIR *search_dir;
   FILEINFO *search_file;
 
@@ -678,9 +673,8 @@ static int search_default_file_with_ext(struct handle_option_ctx *ctx,
       continue;
 
     /* Configuration File Directives */
-    if (*ptr == '!' || *ptr == '?')
+    if (*ptr == '!')
     {
-      my_bool ignore_permissions= *ptr == '?';
       if (recursion_level >= max_recursion_level)
       {
         for (end= ptr + strlen(ptr) - 1; 
@@ -708,18 +702,10 @@ static int search_default_file_with_ext(struct handle_option_ctx *ctx,
                                 ptr, name, line)))
 	  goto err;
 
-        if (!(search_dir= my_dir(ptr, MYF(ignore_permissions ? MY_WANT_SORT :
-                                          MY_WME | MY_WANT_SORT))))
-        {
-          if (ignore_permissions)
-          {
-            if (my_errno == EACCES)
-            continue;                           /* Ignore error */
-            my_error(EE_DIR, MYF(ME_BELL), ptr);
-          }
+        if (!(search_dir= my_dir(ptr, MYF(MY_WME | MY_WANT_SORT))))
           goto err;
-        }
-        for (i= 0; i < search_dir->number_of_files; i++)
+
+        for (i= 0; i < (uint) search_dir->number_of_files; i++)
         {
           search_file= search_dir->dir_entry + i;
           ext= fn_ext2(search_file->name);
@@ -871,7 +857,7 @@ static int search_default_file_with_ext(struct handle_option_ctx *ctx,
 static char *remove_end_comment(char *ptr)
 {
   char quote= 0;	/* we are inside quote marks */
-  char escape= 0;	/* symbol is protected by escape character */
+  char escape= 0;	/* symbol is protected by escape chagacter */
 
   for (; *ptr; ptr++)
   {

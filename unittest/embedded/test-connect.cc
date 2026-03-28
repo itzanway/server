@@ -31,8 +31,6 @@ int main(int argc, char *argv[])
   char *passwd;
   char *porta;
   unsigned int port;
-  int ret;
-  my_bool my_false= 0;
 
   if (get_evar(&host, &porta, &user, &passwd))
   {
@@ -62,19 +60,19 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &my_false);
-
   if (mysql_options(mysql, MYSQL_SET_CHARSET_NAME, "utf8mb4") != 0) {
     printf("mysql_options MYSQL_SET_CHARSET_NAME utf8mb4 failed: %s\n", mysql_error(mysql));
     return 1;
   }
 
-  if ((ret= !mysql_real_connect(mysql, host, user, passwd, NULL, port, NULL,
-        CLIENT_FOUND_ROWS | CLIENT_MULTI_RESULTS | CLIENT_REMEMBER_OPTIONS)))
+  if (!mysql_real_connect(mysql, host, user, passwd, NULL, port, NULL, CLIENT_FOUND_ROWS | CLIENT_MULTI_RESULTS | CLIENT_REMEMBER_OPTIONS)) {
     printf("mysql_real_connect failed: %s\n", mysql_error(mysql));
+    return 1;
+  }
   mysql_close(mysql);
   mysql_thread_end();
   mysql_library_end();
 
-  return ret;
+  return 0;
+
 }

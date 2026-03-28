@@ -407,9 +407,10 @@ bool JAVAConn::Open(PGLOBAL g)
 			jpop->Append(ClassPath);
 		}	// endif ClassPath
 
+		// All wrappers are pre-compiled in JavaWrappers.jar in the share dir
 		jpop->Append(sep);
 		jpop->Append(GetMessageDir());
-		jpop->Append("JdbcInterface.jar");
+		jpop->Append("JavaWrappers.jar");
 
 #if defined(MONGO_SUPPORT)
 		jpop->Append(sep);

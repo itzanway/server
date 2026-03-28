@@ -43,7 +43,7 @@ my_bool open_cached_file(IO_CACHE *cache, const char* dir, const char *prefix,
   cache->file_name=0;
   cache->buffer=0;				/* Mark that not open */
   if (!init_io_cache(cache, -1, cache_size, WRITE_CACHE, 0L, 0,
-		     MYF(cache_myflags | MY_NABP | MY_TRACK)))
+		     MYF(cache_myflags | MY_NABP)))
   {
     DBUG_RETURN(0);
   }
@@ -73,7 +73,9 @@ void close_cached_file(IO_CACHE *cache)
   DBUG_ENTER("close_cached_file");
   if (my_b_inited(cache))
   {
-    File file= cache->file;
+    File file=cache->file;
+    cache->file= -1;				/* Don't flush data */
+    (void) end_io_cache(cache);
     if (file >= 0)
     {
       (void) my_close(file,MYF(0));
@@ -85,8 +87,6 @@ void close_cached_file(IO_CACHE *cache)
       }
 #endif
     }
-    cache->file= -1;				/* Don't flush data */
-    (void) end_io_cache(cache);
   }
   DBUG_VOID_RETURN;
 }

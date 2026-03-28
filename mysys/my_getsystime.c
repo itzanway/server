@@ -101,7 +101,7 @@ my_hrtime_t my_hrtime()
   Has lower latency than my_hrtime(). Used in situations, where microsecond
   precision is not needed, e.g in Windows pthread_cond_timedwait, where POSIX 
   interface needs nanoseconds, yet the underlying Windows function only
-  accepts milliseconds.
+  accepts millisecons.
 */
 my_hrtime_t my_hrtime_coarse()
 {

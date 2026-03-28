@@ -17,6 +17,8 @@
 #include "ma_blockrec.h"                        /* For ROW_FLAG_TRANSID */
 #include "trnman.h"
 
+#ifdef HAVE_SPATIAL
+
 #include "ma_sp_defs.h"
 
 static int sp_add_point_to_mbr(uchar *(*wkb), uchar *end, uint n_dims,
@@ -33,7 +35,7 @@ static int sp_mbr_from_wkb(uchar (*wkb), uint size, uint n_dims, double *mbr);
 
 
 /**
-   Create spatial key
+   Create spactial key
 */
 
 MARIA_KEY *_ma_sp_make_key(MARIA_HA *info, MARIA_KEY *ret_key, uint keynr,
@@ -296,3 +298,5 @@ static int sp_get_geometry_mbr(uchar *(*wkb), uchar *end, uint n_dims,
   }
   return res;
 }
+
+#endif /*HAVE_SPATIAL*/

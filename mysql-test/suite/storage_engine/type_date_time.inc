@@ -2,7 +2,10 @@
 # Date and time column types
 # (DATE, DATETIME, TIMESTAMP, TIME, YEAR)
 #
-set old_mode=2_digit_year;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
 
 let $create_definition =
   d DATE $col_opts,

@@ -17,7 +17,6 @@
 #ifndef RPL_RLI_H
 #define RPL_RLI_H
 
-#include "rpl_relay_log_info_file.h"
 #include "rpl_tblmap.h"
 #include "rpl_reporting.h"
 #include "rpl_utility.h"
@@ -60,8 +59,7 @@ class Rpl_filter;
 struct rpl_group_info;
 struct inuse_relaylog;
 
-class Relay_log_info:
-  public Relay_log_info_file, public Slave_reporting_capability
+class Relay_log_info : public Slave_reporting_capability
 {
 public:
   /**
@@ -140,7 +138,7 @@ public:
   /* The following variables are safe to read any time */
 
   /* IO_CACHE of the info file - set only during init or end */
-  IO_CACHE &info_file= Info_file::file;
+  IO_CACHE info_file;
 
   /*
     List of temporary tables used by this connection.
@@ -211,8 +209,8 @@ public:
     !belongs_to_client(); client thread executing BINLOG statement if
     belongs_to_client()).
   */
-  char (&group_relay_log_name)[FN_REFLEN]= relay_log_file.buf;
-  my_off_t &group_relay_log_pos= relay_log_pos.value;
+  char group_relay_log_name[FN_REFLEN];
+  ulonglong group_relay_log_pos;
   char event_relay_log_name[FN_REFLEN];
   ulonglong event_relay_log_pos;
   ulonglong future_event_relay_log_pos;
@@ -233,8 +231,8 @@ public:
     !belongs_to_client(); client thread executing BINLOG statement if
     belongs_to_client()).
   */
-  char (&group_master_log_name)[FN_REFLEN]= read_master_log_file.buf;
-  my_off_t &group_master_log_pos= read_master_log_pos.value;
+  char group_master_log_name[FN_REFLEN];
+  volatile my_off_t group_master_log_pos;
 
   /*
     Handling of the relay_log_space_limit optional constraint.
@@ -253,49 +251,14 @@ public:
    */
   bool sql_force_rotate_relay;
 
+  time_t last_master_timestamp;
   /*
     The SQL driver thread sets this true while it is waiting at the end of the
     relay log for more events to arrive. SHOW SLAVE STATUS uses this to report
     Seconds_Behind_Master as zero while the SQL thread is so waiting.
   */
   bool sql_thread_caught_up;
-  /**
-    Simple setter for @ref worker_threads_caught_up;
-    sets it `false` to indicate new user events in queue
-    @pre @ref data_lock held to prevent race with is_threads_caught_up()
-  */
-  inline void unset_worker_threads_caught_up()
-  {
-    mysql_mutex_assert_owner(&data_lock);
-    worker_threads_caught_up= false;
-  }
-  /**
-    @return
-      `true` if both @ref sql_thread_caught_up and (refresh according to
-      @ref last_inuse_relaylog as needed) @ref worker_threads_caught_up
-    @pre Only meaningful if `mi->using_parallel()`
-    @pre @ref data_lock held to prevent race condition
-    @note
-      Parallel replication requires the idleness of the main SQL thread as well,
-      because after the thread sets its state to "busy" with `data_lock` held,
-      it enqueues events *without this lock*. Not to mention any event the main
-      thread processes itself without distribution, e.g., ignored ones.
-  */
-  bool are_sql_threads_caught_up();
 
-  /* Last executed timestamp */
-  my_time_t last_master_timestamp;
-  /*
-    Latest when + exec_time read from the master (by io_thread).
-    0 if there has been no new update events since the slave started.
-  */
-  time_t newest_master_timestamp;
-  /*
-    When + exec_time of the last committed event on the slave.
-    In case of delayed slave and slave_timestamp is not set
-    then set to when + exec_time -1 of the first seen event.
-  */
-  time_t slave_timestamp;
   void clear_until_condition();
   /**
     Reset the delay.
@@ -375,8 +338,6 @@ public:
   /* Condition for UNTIL master_gtid_pos. */
   slave_connection_state until_gtid_pos;
 
-  bool is_until_before_gtids;
-
   /*
     retried_trans is a cumulative counter: how many times the slave
     has retried a transaction (any) since slave started.
@@ -403,7 +364,7 @@ public:
   slave_connection_state ign_gtids;
 
   /* 
-    Identifies where the SQL Thread should create temporary files for the
+    Indentifies where the SQL Thread should create temporary files for the
     LOAD DATA INFILE. This is used for security reasons.
    */ 
   char slave_patternload_file[FN_REFLEN]; 
@@ -421,7 +382,7 @@ public:
   /*
     The restart_gtid_state is used when the SQL thread restarts on a relay log
     in GTID mode. In multi-domain parallel replication, each domain may have a
-    separate position, so some events in more progressed domains may need to be
+    separat position, so some events in more progressed domains may need to be
     skipped. This keeps track of the domains that have not yet reached their
     starting event.
   */
@@ -432,7 +393,7 @@ public:
 
   /*
     Invalidate cached until_log_name and group_relay_log_name comparison
-    result. Should be called after any update of group_relay_log_name if
+    result. Should be called after any update of group_realy_log_name if
     there chances that sql_thread is running.
   */
   inline void notify_group_relay_log_name_update()
@@ -589,7 +550,7 @@ private:
     slave SQL thread is running, since the SQL thread reads it without
     a lock when executing Relay_log_info::flush().
   */
-  uint32_t &sql_delay= Relay_log_info_file::sql_delay.value;
+  int sql_delay;
 
   /**
     During a delay, specifies the point in time when the delay ends.
@@ -627,22 +588,6 @@ private:
     relay log.
   */
   uint32 m_flags;
-
-  /**
-    When `true`, this worker threads' copy of @ref sql_thread_caught_up
-    represents that __every__ worker thread is waiting for new events.
-    * The SQL driver thread sets this to `false` through
-      unset_worker_threads_caught_up() as it prepares an event
-      (either to enqueue a worker or, e.g., ignored events, process itself)
-    * For the main driver or any worker thread to refresh this state immediately
-      when it finishes, the procedure would have to be a critical section.
-      To avoid depending on a mutex, this state instead only returns to `true`
-      as part of its reader, are_worker_threads_caught_up().
-      `Seconds_Behind_Master` of SHOW SLAVE STATUS uses this method (which also
-      reads `sql_thread_caught_up`) to know when all SQL threads are waiting.
-    @pre Only meaningful if `mi->using_parallel()`
-  */
-  bool worker_threads_caught_up= true;
 };
 
 
@@ -695,49 +640,6 @@ struct inuse_relaylog {
   }
 };
 
-enum start_alter_state
-{
-  INVALID= 0,
-  REGISTERED,           // Start Alter exist, Default state
-  COMMIT_ALTER,         // COMMIT the alter
-  ROLLBACK_ALTER,       // Rollback the alter
-  COMPLETED             // COMMIT/ROLLBACK Alter written in binlog
-};
-
-struct start_alter_info
-{
-  /*
-    ALTER id is defined as a pair of GTID's seq_no and domain_id.
-  */
-  decltype(rpl_gtid::seq_no) sa_seq_no; // key for searching (SA's id)
-  uint32 domain_id;
-  bool   direct_commit_alter; // when true CA thread executes the whole query
-  /*
-    0 prepared and not error from commit and rollback
-    >0 error expected in commit/rollback
-    Rollback can be logged with 0 error if master is killed
-  */
-  uint error;
-  enum start_alter_state state;
-  /* We are not using mysql_cond_t because we do not need PSI */
-  mysql_cond_t start_alter_cond;
-};
-
-struct Rpl_table_data
-{
-  const table_def *tabledef;
-  TABLE *conv_table;
-  const Copy_field *copy_fields;
-  const Copy_field *copy_fields_end;
-  Rpl_table_data(const RPL_TABLE_LIST &rpl_table_list)
-  {
-    tabledef= &rpl_table_list.m_tabledef;
-    conv_table= rpl_table_list.m_conv_table;
-    copy_fields= rpl_table_list.m_online_alter_copy_fields;
-    copy_fields_end= rpl_table_list.m_online_alter_copy_fields_end;
-  }
-  bool is_online_alter() const { return copy_fields != NULL; }
-};
 
 /*
   This is data for various state needed to be kept for the processing of
@@ -765,8 +667,6 @@ struct rpl_group_info
   */
   uint64 gtid_sub_id;
   rpl_gtid current_gtid;
-  /* Currently applied event or NULL */
-  Log_event *current_event;
   uint64 commit_id;
   /*
     This is used to keep transaction commit order.
@@ -859,9 +759,6 @@ struct rpl_group_info
   bool did_mark_start_commit;
   /* Copy of flags2 from GTID event. */
   uchar gtid_ev_flags2;
-  /* Copy of flags3 from GTID event. */
-  uint16 gtid_ev_flags_extra;
-  uint64 gtid_ev_sa_seq_no;
   enum {
     GTID_DUPLICATE_NULL=0,
     GTID_DUPLICATE_IGNORE=1,
@@ -884,21 +781,14 @@ struct rpl_group_info
   longlong row_stmt_start_timestamp;
   bool long_find_row_note_printed;
   /* Needs room for "Gtid D-S-N\x00". */
-  mutable char gtid_info_buf[5+10+1+10+1+20+1];
+  char gtid_info_buf[5+10+1+10+1+20+1];
 
   /*
     The timestamp, from the master, of the commit event.
     Used to do delayed update of rli->last_master_timestamp, for getting
     reasonable values out of Seconds_Behind_Master in SHOW SLAVE STATUS.
   */
-  my_time_t last_master_timestamp;
-
-  /*
-    The exec_time of the transaction from the master's binlog. It is used with
-    log_slave_updates to preserve execution time value from the master when
-    re-binlogging on the slave.
-  */
-  my_time_t orig_exec_time;
+  time_t last_master_timestamp;
 
   /*
     Information to be able to re-try an event group in case of a deadlock or
@@ -943,32 +833,13 @@ struct rpl_group_info
     RETRY_KILL_KILLED
   };
   uchar killed_for_retry;
-  bool reserved_start_alter_thread;
-  bool finish_event_group_called;
-  /*
-    Used for two phase alter table
-  */
-  rpl_parallel_thread *rpt;
-  Query_log_event *start_alter_ev;
-  bool direct_commit_alter;
-  start_alter_info *sa_info;
-  bool is_new_trans;                 // marker of start_new_trans context
-
-  /*
-    Use the scope of an RGI to re-assemble partial row log events into the
-    original rows log event. That is, the re-assembly and execution of a row
-    event happens happens in Partial_rows_log_event::do_apply_event(), so then
-    regardless of if the slave is running on parallel or serial mode, the
-    logic remains the same.
-  */
-  Rows_log_event_assembler *assembler;
 
   rpl_group_info(Relay_log_info *rli_);
   ~rpl_group_info();
   void reinit(Relay_log_info *rli);
 
   /* 
-     Returns true if the argument event resides in the container;
+     Returns true if the argument event resides in the containter;
      more specifically, the checking is done against the last added event.
   */
   bool is_deferred_event(Log_event * ev)
@@ -1028,13 +899,21 @@ struct rpl_group_info
     }
   }
 
-  RPL_TABLE_LIST *get_table_data(TABLE *table_arg)
+  bool get_table_data(TABLE *table_arg, table_def **tabledef_var, TABLE **conv_table_var) const
   {
-    for (RPL_TABLE_LIST *ptr= tables_to_lock ; ptr ;
-         ptr= (RPL_TABLE_LIST*) ptr->next_global)
+    DBUG_ASSERT(tabledef_var && conv_table_var);
+    for (TABLE_LIST *ptr= tables_to_lock ; ptr != NULL ; ptr= ptr->next_global)
       if (ptr->table == table_arg)
-        return ptr;
-    return (RPL_TABLE_LIST*) 0;
+      {
+        *tabledef_var= &static_cast<RPL_TABLE_LIST*>(ptr)->m_tabledef;
+        *conv_table_var= static_cast<RPL_TABLE_LIST*>(ptr)->m_conv_table;
+        DBUG_PRINT("debug", ("Fetching table data for table %s.%s:"
+                             " tabledef: %p, conv_table: %p",
+                             table_arg->s->db.str, table_arg->s->table_name.str,
+                             *tabledef_var, *conv_table_var));
+        return true;
+      }
+    return false;
   }
 
   void clear_tables_to_lock();
@@ -1042,7 +921,7 @@ struct rpl_group_info
   void slave_close_thread_tables(THD *);
   void mark_start_commit_no_lock();
   void mark_start_commit();
-  char *gtid_info() const;
+  char *gtid_info();
   void unmark_start_commit();
 
   longlong get_row_stmt_start_timestamp()
@@ -1081,44 +960,7 @@ struct rpl_group_info
     if (!is_parallel_exec)
       rli->event_relay_log_pos= future_event_relay_log_pos;
   }
-
-  void finish_start_alter_event_group();
-
-  bool get_finish_event_group_called()
-  {
-    return finish_event_group_called;
-  }
-
-  void set_finish_event_group_called(bool value)
-  {
-    finish_event_group_called= value;
-  }
-
 };
-
-/**
-  The function
-  @return true    when the slave applier context is normal
-          false   when either no slave applier around or
-                  the applier is executing start_new_trans
- */
-inline bool not_new_trans(rpl_group_info* rgi)
-{
-  return rgi && !rgi->is_new_trans;
-}
-/**
-  The following functions for start_new_trans' ctor and dtor.
-*/
-inline void mark_in_new_trans(rpl_group_info* rgi)
-{
-  if (rgi)
-    rgi->is_new_trans= true;
-}
-inline void unmark_in_new_trans(rpl_group_info* rgi)
-{
-  if (rgi)
-    rgi->is_new_trans= false;
-}
 
 
 /*

@@ -14,6 +14,9 @@ call mtr.add_suppression("@003f.frm' \\(errno: 22\\)");
 let collation=utf8mb3_unicode_ci;
 --source include/have_collation.inc
 
+# Save the initial number of concurrent sessions
+--source include/count_sessions.inc
+
 # There are tables in 'mysql' database of type innodb
 --source include/have_innodb.inc
 
@@ -962,8 +965,8 @@ DROP TABLE t1, t2;
 [mysqltest1]
 port=1234
 EOF
---exec $MYSQL_MY_PRINT_DEFAULTS --defaults-file=$MYSQLTEST_VARDIR/tmp/tmp.cnf mysqltest1
---exec $MYSQL_MY_PRINT_DEFAULTS --defaults-extra-file=$MYSQLTEST_VARDIR/tmp/tmp.cnf mysqltest1 mysqltest1
+--exec $MYSQL_MY_PRINT_DEFAULTS -c $MYSQLTEST_VARDIR/tmp/tmp.cnf mysqltest1
+--exec $MYSQL_MY_PRINT_DEFAULTS -e $MYSQLTEST_VARDIR/tmp/tmp.cnf mysqltest1 mysqltest1
 --remove_file $MYSQLTEST_VARDIR/tmp/tmp.cnf
 
 --echo #
@@ -1378,7 +1381,6 @@ use test;
 
 # Create user without sufficient privs to perform the requested operation
 create user mysqltest_1@localhost;
-grant all on test.* to  mysqltest_1@localhost;
 create table t1(a int, b varchar(34));
 
 # To get consistent output, reset the master, starts over from first log
@@ -1599,8 +1601,6 @@ create database mysqldump_test_db;
 
 grant all privileges on mysqldump_test_db.*  to user1;
 grant all privileges on mysqldump_test_db.*  to user2;
-revoke SHOW CREATE ROUTINE on  mysqldump_test_db.* from user1;
-revoke SHOW CREATE ROUTINE on  mysqldump_test_db.* from user2;
 
 connect (user27293,localhost,user1,,mysqldump_test_db,$MASTER_MYPORT,$MASTER_MYSOCK);
 connection user27293;
@@ -1617,10 +1617,8 @@ drop procedure sp1;
 
 connection default;
 disconnect user27293;
---disable_warnings
 drop user user1;
 drop user user2;
---enable_warnings
 
 drop database mysqldump_test_db;
 
@@ -2335,7 +2333,6 @@ CREATE VIEW v2 AS SELECT * FROM t2;
 --echo
 
 GRANT ALL PRIVILEGES ON BUG52792.* TO user1;
-REVOKE SHOW CREATE ROUTINE ON BUG52792.* FROM user1;
 
 connect (conn_1, localhost, user1, , BUG52792, $MASTER_MYPORT, $MASTER_MYSOCK);
 connection conn_1;
@@ -2350,9 +2347,7 @@ connection conn_1;
 connection default;
 disconnect conn_1;
 
---disable_warnings
 DROP USER user1;
---enable_warnings
 DROP DATABASE BUG52792;
 --echo # UTF-8
 CREATE DATABASE BUG52792;
@@ -2387,6 +2382,10 @@ DROP TABLE t1;
 --echo #                     CONSISTENCY
 --echo #
 
+--disable_warnings
+DROP DATABASE IF EXISTS b12809202_db;
+--enable_warnings
+
 CREATE DATABASE b12809202_db;
 CREATE TABLE b12809202_db.t1 (c1 INT);
 CREATE TABLE b12809202_db.t2 (c1 INT);
@@ -2419,6 +2418,9 @@ DROP DATABASE b12809202_db;
 --echo # Delete all existing binary logs.
 --echo #
 RESET MASTER;
+
+# Wait till we reached the initial number of concurrent sessions
+--source include/wait_until_count_sessions.inc
 
 --echo #
 --echo # Bug#45740 MYSQLDUMP DOESN'T DUMP GENERAL_LOG AND SLOW_QUERY CAUSES RESTORE PROBLEM
@@ -2476,12 +2478,12 @@ INSERT INTO t2 VALUES (3), (4);
 SELECT * FROM t1;
 SELECT * FROM t2;
 
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --tab=$MYSQLTEST_VARDIR/tmp/ --parallel=2 db_20772273
+--exec $MYSQL_DUMP --default-character-set=utf8mb4 --tab=$MYSQLTEST_VARDIR/tmp/ db_20772273
 --exec $MYSQL db_20772273 < $MYSQLTEST_VARDIR/tmp/t1.sql
 --exec $MYSQL db_20772273 < $MYSQLTEST_VARDIR/tmp/t2.sql
 
 # Test mysqlimport with multiple threads
---exec $MYSQL_IMPORT --silent --parallel=2 db_20772273 $MYSQLTEST_VARDIR/tmp/t1.txt $MYSQLTEST_VARDIR/tmp/t2.txt
+--exec $MYSQL_IMPORT --silent --use-threads=2 db_20772273 $MYSQLTEST_VARDIR/tmp/t1.txt $MYSQLTEST_VARDIR/tmp/t2.txt
 
 SELECT * FROM t1;
 SELECT * FROM t2;
@@ -2549,7 +2551,7 @@ DROP DATABASE bug25717383;
 #
 # MDEV-6091 mysqldump goes in a loop and segfaults if --dump-slave is specified and it cannot connect to the server
 #
---replace_regex /mariadb-dump\.exe/mariadb-dump/ /'unknownhost' \(.*\)/'unknownhost'/ /Got error: 2002: "Can't connect to server on/Got error: 2005: "Unknown server host/
+--replace_regex /mariadb-dump\.exe/mariadb-dump/ /'unknownhost' \(.*\)/'unknownhost'/
 --error 2
 --exec $MYSQL_DUMP --default-character-set=utf8mb4 -hunknownhost --dump-slave nulldb 2>&1
 
@@ -2657,7 +2659,7 @@ DROP FUNCTION f;
 --exec $MYSQL -uroot test < $MYSQLTEST_VARDIR/test.dmp
 
 --echo #
---echo # Cleanup after successful import.
+--echo # Cleanup after succesful import.
 --echo #
 DROP VIEW v1;
 DROP FUNCTION f;
@@ -2697,8 +2699,6 @@ drop tables t2, t1;
 --echo # (work around for MDEV-20939)
 --echo #
 
-create user a;
-grant SELECT on test.* to  a;
 use mysql;
 
 --echo # check that all tables we need are not empty
@@ -2724,7 +2724,6 @@ let SEARCH_PATTERN=CREATE TABLE `proc`;
 source include/search_pattern_in_file.inc;
 
 --remove_file $MYSQLTEST_VARDIR/tmp/MDEV-20939.sql
-drop user a;
 use test;
 
 --echo # End of 10.1 tests
@@ -3060,7 +3059,12 @@ exec $MYSQL test < $MYSQLTEST_VARDIR/tmp/con@fame.sql;
 show tables;
 exec $MYSQL_IMPORT test $MYSQLTEST_VARDIR/tmp/con@@@.txt;
 exec $MYSQL_IMPORT test $MYSQLTEST_VARDIR/tmp/con@002fbar.txt;
+if (`select @@version like '10.6.%'`) {
+# utf8 console output on Windows is fixed in MDEV-26713, until then
+--disable_result_log
+}
 exec $MYSQL_IMPORT --default-character-set=utf8mb4 test $MYSQLTEST_VARDIR/tmp/con_sch@1ine_gr@1o@1je.txt;
+--enable_result_log
 exec $MYSQL_IMPORT test $MYSQLTEST_VARDIR/tmp/con@fame.txt;
 select * from `con_schöne_grüße`;
 select * from `con`;
@@ -3072,231 +3076,3 @@ drop table `con/bar`;
 drop table `con@fame`;
 
 --echo # End of 10.6 tests
-
---echo #
---echo # MDEV-16733 mysqldump --tab and --xml options are conflicting
---echo #
---replace_result mariadb-dump.exe mariadb-dump
---error 1
---exec $MYSQL_DUMP --xml --tab=$MYSQLTEST_VARDIR/tmp 2>&1
-
---echo # End of 10.11 tests
-
-#
-# MDEV-32589 parallel-mysqldump - test "too many connections"
-#
---disable_cursor_protocol
-select @@max_connections into @save_max_connections;
---enable_cursor_protocol
-set global max_connections=10;
---replace_result mariadb-dump.exe mariadb-dump
---error 2
---exec $MYSQL_DUMP --tab=$MYSQLTEST_VARDIR/tmp/ --parallel=20 mysql 2>&1
-#
-# MDEV-32589 test builtin 256 connections limit
-#
-set global max_connections=300;
---replace_result mariadb-dump.exe mariadb-dump
---error 1
---exec $MYSQL_DUMP --tab=$MYSQLTEST_VARDIR/tmp/ --parallel=280 mysql 2>&1
-set global max_connections=@save_max_connections;
-
---echo #
---echo # End of 11.4 tests
---echo #
-#
-# MDEV-33625 Add option --dir to mariadb-dump
-#
-
-# test --all-databases
---mkdir $MYSQLTEST_VARDIR/tmp/dump
---exec $MYSQL_DUMP --dir=$MYSQLTEST_VARDIR/tmp/dump --all-databases --parallel=10
---echo # Content of dump directory
---list_files $MYSQLTEST_VARDIR/tmp/dump
---echo # Content of 'test' dump subdirectory
---list_files $MYSQLTEST_VARDIR/tmp/dump/test
---rmdir $MYSQLTEST_VARDIR/tmp/dump
-
-# test --databases
-create database db1;
-use db1;
-create table t1(i int);
-insert into t1 values(1);
-create database db2;
-use db2;
-create table t1(i int);
-insert into t1 values(2);
---mkdir $MYSQLTEST_VARDIR/tmp/dump
---exec $MYSQL_DUMP --dir=$MYSQLTEST_VARDIR/tmp/dump --databases db1 db2
---echo # Content of dump directory
---list_files $MYSQLTEST_VARDIR/tmp/dump
---echo # Content of 'db1' dump subdirectory
---list_files $MYSQLTEST_VARDIR/tmp/dump/db1
---echo # Content of 'db2' dump subdirectory
---list_files $MYSQLTEST_VARDIR/tmp/dump/db2
-drop table db1.t1;
-drop table db2.t1;
-# Test mysqlimport
---exec $MYSQL db1 < $MYSQLTEST_VARDIR/tmp/dump/db1/t1.sql
---exec $MYSQL db2 < $MYSQLTEST_VARDIR/tmp/dump/db2/t1.sql
---exec $MYSQL_IMPORT --silent db1 $MYSQLTEST_VARDIR/tmp/dump/db1/t1.txt
---exec $MYSQL_IMPORT --silent db2 $MYSQLTEST_VARDIR/tmp/dump/db2/t1.txt
-select * from db1.t1;
-select * from db2.t1;
-drop database db1;
-drop database db2;
---rmdir $MYSQLTEST_VARDIR/tmp/dump
-
-#
-# --tab and --dir options are conflicting
-#
---replace_result mariadb-dump.exe mariadb-dump
---error 1
---exec $MYSQL_DUMP --dir=$MYSQLTEST_VARDIR/tmp --tab=$MYSQLTEST_VARDIR/tmp mysql 2>&1
-
-# --dir can't create directory, because file with the same name already exists
---write_file $MYSQLTEST_VARDIR/tmp/mysql
-EOF
---replace_result mariadb-dump.exe mariadb-dump $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
---error 3
---exec $MYSQL_DUMP --dir=$MYSQLTEST_VARDIR/tmp mysql 2>&1
---remove_file $MYSQLTEST_VARDIR/tmp/mysql
-
-# --dir is a file, not directory
---write_file $MYSQLTEST_VARDIR/tmp/dump
-EOF
---replace_result mariadb-dump.exe mariadb-dump $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
---error 3
---exec $MYSQL_DUMP --dir=$MYSQLTEST_VARDIR/tmp/dump mysql 2>&1
---remove_file $MYSQLTEST_VARDIR/tmp/dump
-
-# --dir is not existent
---replace_result mariadb-dump.exe mariadb-dump $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
---error 3
---exec $MYSQL_DUMP --dir=$MYSQLTEST_VARDIR/does_not_exist mysql 2>&1
-
---source include/test_db_charset_restore.inc
-
---echo # MDEV-21376 mysqldump should support wildcards.
-
-CREATE DATABASE test1;
-USE test1;
-CREATE TABLE t1(a int);
-INSERT INTO t1 VALUES (2),(5),(11);
-CREATE TABLE t2(a int);
-INSERT INTO t2 VALUES (21),(52),(131);
---exec $MYSQL_DUMP --skip-comments --wildcards=ON test1 t_
---exec $MYSQL_DUMP --skip-comments --wildcards=ON test1 t? tx
-DROP DATABASE test1;
-
---echo #
-
-CREATE DATABASE test1;
-USE test1;
-CREATE TABLE t1(a int);
-INSERT INTO t1 VALUES (2),(5),(11);
-CREATE TABLE t2(a int);
-INSERT INTO t2 VALUES (21),(52),(131);
---exec $MYSQL_DUMP --skip-comments --wildcards=ON test1 t%
---exec $MYSQL_DUMP --skip-comments --wildcards=ON --ignore-table=test1.t1 test1 %
-DROP DATABASE test1;
-
---echo #
-
-CREATE DATABASE test1;
-USE test1;
-CREATE TABLE t1(a int);
-INSERT INTO t1 VALUES (2),(5),(11);
-CREATE DATABASE test2;
-USE test2;
-CREATE TABLE t1(a int);
-INSERT INTO t1 VALUES (2),(5),(11);
---exec $MYSQL_DUMP --skip-comments --databases --wildcards=ON test_
---exec $MYSQL_DUMP --skip-comments --databases --wildcards=ON test_ --ignore-database test1
-DROP DATABASE test1;
-DROP DATABASE test2;
-
---echo #
-
-CREATE DATABASE test1;
-USE test1;
-CREATE TABLE t1(a int);
-INSERT INTO t1 VALUES (2),(5),(11);
-CREATE TABLE tt(a int);
-INSERT INTO tt VALUES (2),(5),(11);
-CREATE DATABASE test2;
-USE test2;
-CREATE TABLE t1(a int);
-INSERT INTO t1 VALUES (2),(5),(11);
---exec $MYSQL_DUMP --skip-comments --databases --wildcards=ON t%
-
---echo #
---echo # Table names match multiple patterns.
---echo #
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compact --opt -L test1 "t%" "t%"
---echo #
---echo # Database names match multiple patterns.
---echo #
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compact --opt -L -B "t%" "t%"
-
-DROP DATABASE test1;
-DROP DATABASE test2;
-
---echo #
-
-CREATE DATABASE test1;
-USE test1;
-CREATE TABLE table1(a int);
-INSERT INTO table1 VALUES (2),(5),(11);
-CREATE TABLE tt(a int);
-INSERT INTO tt VALUES (2),(5),(11);
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compact --opt -L test1 table1
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compact --opt -L test1 tab?e1
-
-DROP DATABASE test1;
-
---echo #
-
-
---echo #
---echo # strange names 
---echo #
-
-CREATE DATABASE `t?1`;
-USE `t?1`;
-CREATE TABLE `t?1`(a int);
-INSERT INTO `t?1` VALUES (2),(5),(11);
-CREATE TABLE `t%t`(a int);
-INSERT INTO `t%t` VALUES (2),(5),(11);
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compatible=ansi --skip-comments -L "t?1" "t%1"
-CREATE DATABASE `t%*!`;
-USE `t%*!`;
-CREATE TABLE `t???1`(a int);
-INSERT INTO `t???1` VALUES (2),(5),(11);
-CREATE TABLE `t___t`(a int);
-INSERT INTO `t___t` VALUES (2),(5),(11);
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compatible=ansi --skip-comments -L -B "t%"
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compatible=ansi --skip-comments -L "t%*!" "t?%1 "
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compatible=ansi --skip-comments -L "t%*!" "t?t" "t%t"
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compatible=ansi --skip-comments --databases -L "t%1"
-DROP DATABASE `t?1`;
-DROP DATABASE `t%*!`;
-
-CREATE DATABASE test1;
-USE test1;
-create table t_1 (a int);
-create table tt1 (b int);
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compatible=ansi --skip-comments -L test1 "t\_1"
-
-DROP DATABASE test1;
-
---exec $MYSQL_DUMP --default-character-set=utf8mb4 --compatible=ansi --skip-comments --databases -L "%" >/dev/null
-
---echo #
---echo # no database matches the pattern.
---echo #
-
---replace_result mariadb-dump.exe mariadb-dump
---exec $MYSQL_DUMP --skip-comments -L -B  a% 2>&1
---replace_result mariadb-dump.exe mariadb-dump
---exec $MYSQL_DUMP --skip-comments --databases --wildcards=ON perf% 2>&1

@@ -20,7 +20,7 @@
 DROP TABLE IF EXISTS diaries;
 --enable_warnings
 
-FLUSH GLOBAL STATUS;
+FLUSH STATUS;
 
 SET NAMES UTF8;
 CREATE TABLE diaries (

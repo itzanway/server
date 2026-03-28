@@ -67,7 +67,7 @@ RESET SLAVE;
 DROP TABLE t1;
 connection node_3;
 DROP TABLE t1;
-include/reset_master.inc
+RESET MASTER;
 connection node_1;
 disconnect node_2a;
 disconnect node_3;

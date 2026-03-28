@@ -37,9 +37,8 @@ struct st_crypt_key
 struct st_maria_crypt_data
 {
   struct st_encryption_scheme scheme;
-  mysql_mutex_t lock;          /* protecting keys */
   uint space;
-  my_bool no_alloc;
+  mysql_mutex_t lock;          /* protecting keys */
 };
 
 /**
@@ -106,7 +105,6 @@ ma_crypt_create(MARIA_SHARE* share)
     (MARIA_CRYPT_DATA*)my_malloc(PSI_INSTRUMENT_ME, sizeof(MARIA_CRYPT_DATA), MYF(MY_ZEROFILL));
   crypt_data->scheme.type= CRYPT_SCHEME_1;
   crypt_data->scheme.locker= crypt_data_scheme_locker;
-  crypt_data->no_alloc= 0;
   mysql_mutex_init(key_CRYPT_DATA_lock, &crypt_data->lock, MY_MUTEX_INIT_FAST);
   crypt_data->scheme.key_id= get_encryption_key_id(share);
   my_random_bytes(crypt_data->scheme.iv, sizeof(crypt_data->scheme.iv));
@@ -158,7 +156,7 @@ ma_crypt_write(MARIA_SHARE* share, File file)
 }
 
 uchar*
-ma_crypt_read(MARIA_SHARE* share, uchar *buff, my_bool silent, my_bool no_alloc)
+ma_crypt_read(MARIA_SHARE* share, uchar *buff, my_bool silent)
 {
   uchar type= buff[0];
   uchar iv_length= buff[1];
@@ -168,7 +166,7 @@ ma_crypt_read(MARIA_SHARE* share, uchar *buff, my_bool silent, my_bool no_alloc)
       iv_length != sizeof(((MARIA_CRYPT_DATA*)1)->scheme.iv) + 4)
   {
     my_printf_error(HA_ERR_UNSUPPORTED,
-                    "Unsupported crypt scheme type: %d iv_length: %d",
+                    "Unsupported crypt scheme type: %d iv_length: %d\n",
                     MYF(ME_ERROR_LOG | (silent ? ME_WARNING : ME_FATAL)),
                     type, iv_length);
     return 0;
@@ -178,8 +176,7 @@ ma_crypt_read(MARIA_SHARE* share, uchar *buff, my_bool silent, my_bool no_alloc)
   {
     /* opening a table */
     MARIA_CRYPT_DATA *crypt_data=
-      (MARIA_CRYPT_DATA*) my_malloc(PSI_INSTRUMENT_ME,
-                                    sizeof(MARIA_CRYPT_DATA), MYF(MY_ZEROFILL));
+      (MARIA_CRYPT_DATA*)my_malloc(PSI_INSTRUMENT_ME, sizeof(MARIA_CRYPT_DATA), MYF(MY_ZEROFILL));
     uint key_version;
 
     crypt_data->scheme.type= type;
@@ -188,7 +185,6 @@ ma_crypt_read(MARIA_SHARE* share, uchar *buff, my_bool silent, my_bool no_alloc)
     crypt_data->scheme.locker= crypt_data_scheme_locker;
     crypt_data->scheme.key_id= get_encryption_key_id(share);
     crypt_data->space= uint4korr(buff + 2);
-    crypt_data->no_alloc= no_alloc;
     memcpy(crypt_data->scheme.iv, buff + 6, sizeof(crypt_data->scheme.iv));
     share->crypt_data= crypt_data;
 
@@ -230,8 +226,8 @@ static my_bool ma_crypt_pre_read_hook(PAGECACHE_IO_HOOK_ARGS *args)
   return 0;
 }
 
-my_bool ma_crypt_data_post_read_hook(int res,
-                                     PAGECACHE_IO_HOOK_ARGS *args)
+static my_bool ma_crypt_data_post_read_hook(int res,
+                                            PAGECACHE_IO_HOOK_ARGS *args)
 {
   MARIA_SHARE *share= (MARIA_SHARE*) args->data;
   const uint size= share->block_size;
@@ -267,8 +263,7 @@ my_bool ma_crypt_data_post_read_hook(int res,
     uchar *tmp= args->page;
     args->page= args->crypt_buf;
     args->crypt_buf= NULL;
-    if (!share->crypt_data->no_alloc)
-      my_free(tmp);
+    my_free(tmp);
   }
 
   return maria_page_crc_check_data(res, args);
@@ -366,8 +361,8 @@ void ma_crypt_set_data_pagecache_callbacks(PAGECACHE_FILE *file,
   }
 }
 
-my_bool ma_crypt_index_post_read_hook(int res,
-                                      PAGECACHE_IO_HOOK_ARGS *args)
+static my_bool ma_crypt_index_post_read_hook(int res,
+                                            PAGECACHE_IO_HOOK_ARGS *args)
 {
   MARIA_SHARE *share= (MARIA_SHARE*) args->data;
   const uint block_size= share->block_size;
@@ -375,7 +370,7 @@ my_bool ma_crypt_index_post_read_hook(int res,
 
   if (res ||
       page_used < share->keypage_header ||
-      page_used > block_size - CRC_SIZE)
+      page_used >= block_size - CRC_SIZE)
   {
     res= 1;
     my_errno= HA_ERR_DECRYPTION_FAILED;
@@ -408,8 +403,7 @@ my_bool ma_crypt_index_post_read_hook(int res,
     uchar *tmp= args->page;
     args->page= args->crypt_buf;
     args->crypt_buf= NULL;
-    if (!share->crypt_data->no_alloc)
-      my_free(tmp);
+    my_free(tmp);
   }
 
   return maria_page_crc_check_index(res, args);
@@ -488,7 +482,7 @@ static int ma_encrypt(MARIA_SHARE *share, MARIA_CRYPT_DATA *crypt_data,
                       uint *key_version)
 {
   int rc;
-  uint32 dstlen= size;
+  uint32 dstlen= 0;              /* Must be set because of error message */
 
   *key_version = encryption_key_get_latest_version(crypt_data->scheme.key_id);
   if (unlikely(*key_version == ENCRYPTION_KEY_VERSION_INVALID))
@@ -515,12 +509,9 @@ static int ma_encrypt(MARIA_SHARE *share, MARIA_CRYPT_DATA *crypt_data,
   DBUG_ASSERT(!my_assert_on_error || dstlen == size);
   if (! (rc == MY_AES_OK && dstlen == size))
   {
-    if (rc != MY_AES_OK)
-      dstlen= 0; /* reset dstlen if failed, to match expected message */
-
     my_errno= HA_ERR_DECRYPTION_FAILED;
     my_printf_error(HA_ERR_DECRYPTION_FAILED,
-                    "failed to encrypt '%s'  rc: %d  dstlen: %u  size: %u",
+                    "failed to encrypt '%s'  rc: %d  dstlen: %u  size: %u\n",
                     MYF(ME_FATAL|ME_ERROR_LOG),
                     share->open_file_name.str, rc, dstlen, size);
     return 1;
@@ -535,7 +526,7 @@ static int ma_decrypt(MARIA_SHARE *share, MARIA_CRYPT_DATA *crypt_data,
                       uint key_version)
 {
   int rc;
-  uint32 dstlen= size;
+  uint32 dstlen= 0;              /* Must be set because of error message */
 
   rc= encryption_scheme_decrypt(src, size, dst, &dstlen,
                                 &crypt_data->scheme, key_version,
@@ -545,12 +536,10 @@ static int ma_decrypt(MARIA_SHARE *share, MARIA_CRYPT_DATA *crypt_data,
   DBUG_ASSERT(!my_assert_on_error || dstlen == size);
   if (! (rc == MY_AES_OK && dstlen == size))
   {
-    if (rc != MY_AES_OK)
-      dstlen= 0; /* reset dstlen if failed, to match expected message */
     my_errno= HA_ERR_DECRYPTION_FAILED;
     if (!share->silence_encryption_errors)
       my_printf_error(HA_ERR_DECRYPTION_FAILED,
-                      "failed to decrypt '%s'  rc: %d  dstlen: %u  size: %u",
+                      "failed to decrypt '%s'  rc: %d  dstlen: %u  size: %u\n",
                       MYF(ME_FATAL|ME_ERROR_LOG),
                       share->open_file_name.str, rc, dstlen, size);
     return 1;

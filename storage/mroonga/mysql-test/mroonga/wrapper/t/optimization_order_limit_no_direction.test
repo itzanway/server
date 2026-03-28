@@ -21,7 +21,7 @@
 DROP TABLE IF EXISTS memos;
 --enable_warnings
 
-FLUSH GLOBAL STATUS;
+FLUSH STATUS;
 
 CREATE TABLE memos (
   id int PRIMARY KEY,

@@ -20,7 +20,6 @@
 #define USE_MY_FUNC			/* We need at least my_malloc */
 #endif
 
-#define VER "1.23"
 #include "myisamdef.h"
 #include "my_default.h"
 #include <queues.h>
@@ -31,7 +30,6 @@
 #endif
 #include <my_getopt.h>
 #include <assert.h>
-#include <welcome_copyright_notice.h>
 
 #if SIZEOF_LONG_LONG > 4
 #define BITS_SAVED 64
@@ -250,6 +248,9 @@ int main(int argc, char **argv)
   free_defaults(default_argv);
   my_end(verbose ? MY_CHECK_ERROR | MY_GIVE_INFO : MY_CHECK_ERROR);
   exit(error ? 2 : 0);
+#ifndef _lint
+  return 0;					/* No compiler warning */
+#endif
 }
 
 enum options_mp {OPT_CHARSETS_DIR_MP=256};
@@ -286,6 +287,13 @@ static struct my_option my_long_options[] =
    &opt_wait, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   { 0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
+
+
+static void print_version(void)
+{
+  printf("%s Ver 1.23 for %s on %s\n",
+              my_progname, SYSTEM_TYPE, MACHINE_TYPE);
+}
 
 
 static void usage(void)
@@ -407,7 +415,7 @@ static MI_INFO *open_isam_file(char *name,int mode)
     }
     if (verbose)
       puts("Recompressing already compressed table");
-    share->options&= ~HA_OPTION_READ_ONLY_DATA; /* We are modifying it */
+    share->options&= ~HA_OPTION_READ_ONLY_DATA; /* We are modifing it */
 
     /* We want to use the new checksums if we have null fields */
     if (share->has_null_fields)
@@ -1414,7 +1422,7 @@ test_space_compress(HUFF_COUNTS *huff_counts, my_off_t records,
   min_pos= -2;
   huff_counts->counts[(uint) ' ']=space_count;
 
-	/* Test with always space-count */
+	/* Test with allways space-count */
   new_length=huff_counts->bytes_packed+length_bits*records/8;
   if (new_length+1 < min_pack)
   {
@@ -2815,7 +2823,7 @@ static char *make_old_name(char *new_name, char *old_name)
   return fn_format(new_name,old_name,"",OLD_EXT,2+4);
 }
 
-	/* routines for bit writing buffer */
+	/* rutines for bit writing buffer */
 
 static void init_file_buffer(File file, pbool read_buffer)
 {

@@ -18,7 +18,7 @@
 --connection node_4
 
 --disable_query_log
---eval CHANGE MASTER TO master_host='127.0.0.1', master_user='root', MASTER_SSL_VERIFY_SERVER_CERT=0, master_port=$NODE_MYPORT_1, master_use_gtid=current_pos;
+--eval CHANGE MASTER TO master_host='127.0.0.1', master_user='root', master_port=$NODE_MYPORT_1, master_use_gtid=current_pos;
 --enable_query_log
 START SLAVE;
 --source include/wait_for_slave_to_start.inc
@@ -138,7 +138,6 @@ DROP TABLE t1;
 STOP SLAVE;
 RESET SLAVE;
 SET GLOBAL wsrep_on = OFF;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 SET GLOBAL wsrep_on = ON;
 --source include/wait_until_ready.inc
@@ -147,7 +146,6 @@ SET GLOBAL GTID_SLAVE_POS="";
 --connection node_1
 
 SET GLOBAL wsrep_on = OFF;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 SET GLOBAL wsrep_on = ON;
 --source include/wait_until_ready.inc
@@ -155,7 +153,6 @@ SET GLOBAL wsrep_on = ON;
 --connection node_2
 
 SET GLOBAL wsrep_on = OFF;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 SET GLOBAL wsrep_on = ON;
 --source include/wait_until_ready.inc
@@ -163,7 +160,6 @@ SET GLOBAL wsrep_on = ON;
 --connection node_3
 
 SET GLOBAL wsrep_on = OFF;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 SET GLOBAL wsrep_on = ON;
 --source include/wait_until_ready.inc
@@ -171,7 +167,6 @@ SET GLOBAL wsrep_on = ON;
 --connection node_5
 
 SET GLOBAL wsrep_on = OFF;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 SET GLOBAL wsrep_on = ON;
 --source include/wait_until_ready.inc
@@ -179,7 +174,6 @@ SET GLOBAL wsrep_on = ON;
 --connection node_6
 
 SET GLOBAL wsrep_on = OFF;
---source include/kill_binlog_dump_threads.inc
 RESET MASTER;
 SET GLOBAL wsrep_on = ON;
 --source include/wait_until_ready.inc

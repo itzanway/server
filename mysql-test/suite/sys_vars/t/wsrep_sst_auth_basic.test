@@ -4,6 +4,9 @@
 --echo # wsrep_sst_auth
 --echo #
 
+--echo # save the initial value
+SET @wsrep_sst_auth_global_saved = @@global.wsrep_sst_auth;
+
 --echo # default
 SELECT @@global.wsrep_sst_auth;
 
@@ -36,4 +39,7 @@ SELECT @@global.wsrep_sst_auth;
 SET @@global.wsrep_sst_auth=user:pass;
 
 --echo
+--echo # restore the initial value
+SET @@global.wsrep_sst_auth = @wsrep_sst_auth_global_saved;
+
 --echo # End of test

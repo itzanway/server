@@ -4,7 +4,9 @@ COUNT(@@GLOBAL.innodb_log_file_size)
 1
 1 Expected
 '#---------------------BS_STVARS_035_02----------------------#'
-SET @@GLOBAL.innodb_log_file_size=10485760;
+SET @@GLOBAL.innodb_log_file_size=1;
+ERROR HY000: Variable 'innodb_log_file_size' is a read only variable
+Expected error 'Read only variable'
 SELECT COUNT(@@GLOBAL.innodb_log_file_size);
 COUNT(@@GLOBAL.innodb_log_file_size)
 1

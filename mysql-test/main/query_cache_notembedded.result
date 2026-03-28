@@ -7,6 +7,7 @@ flush query cache;
 flush query cache;
 reset query cache;
 flush status;
+drop table if exists t1, t2, t3, t11, t21;
 create table t1 (a int not null);
 insert into t1 values (1),(2),(3);
 create table t2 (a int not null);
@@ -110,7 +111,7 @@ disconnect root;
 disconnect root2;
 flush query cache;
 reset query cache;
-flush global status;
+flush status;
 create table t1 (s1 int)//
 create procedure f1 () begin
 select sql_cache * from t1;
@@ -214,7 +215,7 @@ Variable_name	Value
 Qcache_hits	10
 flush query cache;
 reset query cache;
-flush global status;
+flush status;
 select sql_cache * from t1;
 s1
 1
@@ -373,7 +374,7 @@ connection default;
 set GLOBAL query_cache_size=0;
 SET @@global.log_bin_trust_function_creators = @old_log_bin_trust_function_creators;
 DROP DATABASE IF EXISTS bug30269;
-FLUSH GLOBAL STATUS;
+FLUSH STATUS;
 CREATE DATABASE bug30269;
 USE bug30269;
 CREATE TABLE test1 (id int, name varchar(23));
@@ -426,7 +427,7 @@ end|
 insert into t1 values ("x", 3), ("y", 5)|
 set @x = @@query_cache_size|
 set global query_cache_size = 10*1024*1024|
-flush global status|
+flush status|
 flush query cache|
 show status like 'Qcache_hits'|
 Variable_name	Value
@@ -456,7 +457,7 @@ show status like 'Qcache_hits'|
 Variable_name	Value
 Qcache_hits	2
 set global query_cache_size = @x|
-flush global status|
+flush status|
 flush query cache|
 delete from t1|
 drop procedure bug3583|
@@ -479,7 +480,9 @@ select 'x' a, 'y' b from d.t1, d.t2;
 a	b
 drop database d;
 drop table t1, t2, t3;
+#
 # End of 10.5 tests
+#
 SET GLOBAL query_cache_size=@query_cache_size_save;
 SET GLOBAL query_cache_type=@query_cache_type_save;
 set GLOBAL sql_mode=@sql_mode_save;

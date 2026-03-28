@@ -6,7 +6,6 @@
 -- source include/have_maria.inc
 -- source include/have_partition.inc
 -- source include/have_sequence.inc
---source include/test_db_charset_latin1.inc
 
 call mtr.add_suppression("Can't find record in '.*'");
 
@@ -21,6 +20,10 @@ let $default_log_file_size=`select @@global.aria_log_file_size`;
 set global aria_log_file_size=4294959104;
 
 # Initialise
+--disable_warnings
+drop table if exists t1,t2;
+drop view if exists v1;
+--enable_warnings
 SET SQL_WARNINGS=1;
 
 #
@@ -585,7 +588,7 @@ DROP TABLE t1,t2;
 #
 # Test RTREE index
 #
---error ER_WRONG_ARGUMENTS
+--error 1235, 1289
 CREATE TABLE t1 (`a` int(11) NOT NULL default '0', `b` int(11) NOT NULL default '0', UNIQUE KEY `a` USING RTREE (`a`,`b`));
 # INSERT INTO t1 VALUES (1,1),(1,1);
 # DELETE FROM rt WHERE a<1;
@@ -1058,7 +1061,7 @@ drop table t1;
 create table t1 (c1 int) pack_keys=0;
 create table t2 (c1 int) pack_keys=1;
 create table t3 (c1 int) pack_keys=default;
---error ER_PARSE_ERROR
+--error 1064
 create table t4 (c1 int) pack_keys=2;
 drop table t1, t2, t3;
 
@@ -1205,9 +1208,9 @@ create table t1 (a int not null, key `a` (a) key_block_size=1025);
 show create table t1;
 drop table t1;
 
---error ER_PARSE_ERROR
+--error 1064
 create table t1 (a int not null, key key_block_size=1024 (a));
---error ER_PARSE_ERROR
+--error 1064
 create table t1 (a int not null, key `a` key_block_size=1024 (a));
 
 #
@@ -2070,10 +2073,8 @@ drop table t1;
 --echo #
 
 connect (session1,localhost,root,,);
+SET big_tables= on;
 SET NAMES 'sjis';
-set statement tmp_memory_table_size=0 for
 SELECT 'למטה' AS a UNION SELECT 'Wetter' AS a;
 connection default;
 disconnect session1;
-
---source include/test_db_charset_restore.inc

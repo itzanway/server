@@ -38,9 +38,7 @@ INSERT INTO t1 VALUES('Procedure Executed.');
 #
 
 CREATE USER 'userTest'@'localhost';
-GRANT CREATE ROUTINE, SELECT ON test.* to 'userTest'@'localhost';
 CREATE USER 'userTest1'@'localhost';
-GRANT CREATE ROUTINE, SELECT ON test.* to 'userTest1'@'localhost';
 
 #
 # Value TRUE
@@ -103,7 +101,7 @@ GRANT EXECUTE, ALTER ROUTINE ON PROCEDURE testProc1 TO 'userTest1'@'localhost';
 connection conUser1;
 
 CALL testProc1();
---echo Expecting select executed
+--echo Expecting seelect executed
 
 ALTER PROCEDURE testProc1 COMMENT 'My Comment';
 

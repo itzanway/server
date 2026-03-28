@@ -16,6 +16,8 @@
 #include "maria_def.h"
 #include "trnman.h"
 #include "ma_key_recover.h"
+
+#ifdef HAVE_RTREE_KEYS
 #include "ma_rt_index.h"
 #include "ma_rt_key.h"
 #include "ma_rt_mbr.h"
@@ -114,3 +116,5 @@ int maria_rtree_set_key_mbr(MARIA_HA *info, MARIA_KEY *key,
   DBUG_RETURN(maria_rtree_page_mbr(key->keyinfo->seg,
                                    &page, key->data, key->data_length));
 }
+
+#endif /*HAVE_RTREE_KEYS*/

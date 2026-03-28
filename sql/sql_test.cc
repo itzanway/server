@@ -26,6 +26,7 @@
 #include "keycaches.h"
 #include "my_json_writer.h"
 #include <hash.h>
+#include <thr_alarm.h>
 #include "sql_connect.h"
 #include "thread_cache.h"
 
@@ -268,7 +269,7 @@ static void print_keyuse(KEYUSE *keyuse)
 void print_keyuse_array(DYNAMIC_ARRAY *keyuse_array)
 {
   DBUG_LOCK_FILE;
-  fprintf(DBUG_FILE, "KEYUSE array (%zu elements)\n", keyuse_array->elements);
+  fprintf(DBUG_FILE, "KEYUSE array (%d elements)\n", keyuse_array->elements);
   for(uint i=0; i < keyuse_array->elements; i++)
     print_keyuse((KEYUSE*)dynamic_array_ptr(keyuse_array, i));
   DBUG_UNLOCK_FILE;
@@ -387,7 +388,7 @@ void print_sjm(SJ_MATERIALIZATION_INFO *sjm)
   }
   fprintf(DBUG_FILE, "  }\n");
   fprintf(DBUG_FILE, "  materialize_cost= %g\n",
-          sjm->materialization_cost);
+          sjm->materialization_cost.total_cost());
   fprintf(DBUG_FILE, "  rows= %g\n", sjm->rows);
   fprintf(DBUG_FILE, "}\n");
   DBUG_UNLOCK_FILE;
@@ -615,6 +616,17 @@ Open streams:  %10lu\n",
 	 my_file_opened,
 	 my_stream_opened);
 
+#ifndef DONT_USE_THR_ALARM
+  ALARM_INFO alarm_info;
+  thr_alarm_info(&alarm_info);
+  printf("\nAlarm status:\n\
+Active alarms:   %u\n\
+Max used alarms: %u\n\
+Next alarm time: %lu\n",
+	 alarm_info.active_alarms,
+	 alarm_info.max_used_alarms,
+	(ulong)alarm_info.next_alarm_time);
+#endif
   display_table_locks();
 #if defined(HAVE_MALLINFO2)
   struct mallinfo2 info = mallinfo2();
@@ -691,19 +703,58 @@ void print_keyuse_array_for_trace(THD *thd, DYNAMIC_ARRAY *keyuse_array)
     KEYUSE *keyuse= (KEYUSE*)dynamic_array_ptr(keyuse_array, i);
     Json_writer_object keyuse_elem(thd);
     keyuse_elem.add_table_name(keyuse->table->reginfo.join_tab);
-    if (keyuse->keypart != FT_KEYPART && !keyuse->is_for_hash_join())
-    {
-      keyuse_elem.add("index", keyuse->table->key_info[keyuse->key].name);
-    }
-    keyuse_elem.
-      add("field", (keyuse->keypart == FT_KEYPART) ? "<fulltext>":
-          (keyuse->is_for_hash_join() ?
-           keyuse->table->field[keyuse->keypart]
-           ->field_name.str :
-           keyuse->table->key_info[keyuse->key]
-           .key_part[keyuse->keypart]
-           .field->field_name.str)).
-      add("equals",keyuse->val).
-      add("null_rejecting",keyuse->null_rejecting);
+    keyuse_elem.add("field", (keyuse->keypart == FT_KEYPART) ? "<fulltext>":
+                                        (keyuse->is_for_hash_join() ?
+                                        keyuse->table->field[keyuse->keypart]
+                                                     ->field_name.str :
+                                        keyuse->table->key_info[keyuse->key]
+                                          .key_part[keyuse->keypart]
+                                          .field->field_name.str));
+    keyuse_elem.add("equals",keyuse->val);
+    keyuse_elem.add("null_rejecting",keyuse->null_rejecting);
   }
 }
+
+
+#ifndef DBUG_OFF
+
+/* Check if ptr points to memory on the mem_root */
+
+bool dbug_is_mem_on_mem_root(const MEM_ROOT *mem_root, void *ptr)
+{
+  const USED_MEM *ptrs[]= {mem_root->free, mem_root->used};
+  for (const USED_MEM **p= ptrs; p!=ptrs + 2; p++)
+  {
+    for (const USED_MEM *block= *p; block; block= block->next)
+    {
+      const char *start= (const char*)block;
+      const char *end= start + block->size - block->left;
+      DBUG_ASSERT(end >= start);
+      if (ptr >= start && ptr < end)
+        return true;
+    }
+  }
+  return false;
+}
+
+
+/*
+  Check whether ptr has been allocated on a statement mem_root
+  or transient mem_root or somewhere else.
+*/
+const char *dbug_which_mem_root(THD *thd, void *ptr)
+{
+  if (dbug_is_mem_on_mem_root(thd->mem_root, ptr))
+  {
+    if (thd->mem_root == thd->stmt_arena->mem_root)
+      return "thd->mem_root, same as stmt_arena->mem_root";
+    return "thd->mem_root";
+  }
+
+  if (dbug_is_mem_on_mem_root(thd->stmt_arena->mem_root, ptr))
+    return "thd->stmt_arena->mem_root";
+
+  return "Unknown";
+}
+
+#endif

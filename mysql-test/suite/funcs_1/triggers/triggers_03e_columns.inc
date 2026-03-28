@@ -36,13 +36,9 @@ let $message= ####### Testcase for column privileges of triggers: #######;
         grant SELECT,UPDATE on priv_db.* to test_noprivs@localhost;
         show grants for test_noprivs@localhost;
 
-	connect (yes_privs,localhost,test_yesprivs,PWD,"*NO-ONE*",$MASTER_MYPORT,$MASTER_MYSOCK);
-# next is to check that we connected above
-        connection yes_privs;
+	connect (yes_privs,localhost,test_yesprivs,PWD,test,$MASTER_MYPORT,$MASTER_MYSOCK);
 
-	connect (no_privs,localhost,test_noprivs,PWD,"*NO-ONE*",$MASTER_MYPORT,$MASTER_MYSOCK);
-# next is to check that we connected above
-        connection no_privs;
+	connect (no_privs,localhost,test_noprivs,PWD,test,$MASTER_MYPORT,$MASTER_MYSOCK);
 
 # grant TRIGGER and UPDATE on column -> succeed
 

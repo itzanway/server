@@ -1,7 +1,3 @@
-select database();
-database()
-test
-use mysql;
 Running bootstrap
 Creating my.ini file
 Removing default user
@@ -33,4 +29,3 @@ skip-name-resolve
 [client]
 port=3307
 # restart
-use test;

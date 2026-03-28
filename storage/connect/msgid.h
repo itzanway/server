@@ -324,4 +324,3 @@
 #define MSG_FIX_OVFLW_TIMES    522
 #define MSG_FIX_UNFLW_ADD      523
 #define MSG_FIX_UNFLW_TIMES    524
-#define MSG_ARG_IS_NULL        525

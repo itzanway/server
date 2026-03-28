@@ -1,4 +1,3 @@
-ALTER DATABASE test CHARACTER SET latin1 COLLATE latin1_swedish_ci;
 SET @save_stats_persistent = @@GLOBAL.innodb_stats_persistent;
 SET GLOBAL innodb_stats_persistent = 0;
 #
@@ -315,12 +314,12 @@ ALTER TABLE t3 ADD COLUMN c7 TIME NOT NULL DEFAULT current_timestamp();
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 1
 Warnings:
-Note	1265	Data truncated for column 'c7' at row 0
+Note	1265	Data truncated for column 'c7' at row 1
 ALTER TABLE t3 ADD COLUMN c8 DATE NOT NULL DEFAULT current_timestamp();
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 1
 Warnings:
-Note	1265	Data truncated for column 'c8' at row 0
+Note	1265	Data truncated for column 'c8' at row 1
 SELECT id, c2, ST_AsText(c3) c3, c4, c5, c6, c7, c8 FROM t3;
 id	c2	c3	c4	c5	c6	c7	c8
 1	1	POLYGON((1 1,2 2,3 3,1 1))	1970-01-01 03:00:42	1970-01-01 03:00:42	NULL	03:00:42	1970-01-01
@@ -468,7 +467,7 @@ CREATE TABLE t2 (b INT PRIMARY KEY, FOREIGN KEY(b) REFERENCES t1(a))
 ENGINE=InnoDB ROW_FORMAT=REDUNDANT;
 INSERT INTO t1 SET a=1;
 INSERT INTO t2 SET b=1;
-ALTER TABLE t2 ADD COLUMN a INT, DROP FOREIGN KEY `1`;
+ALTER TABLE t2 ADD COLUMN a INT, DROP FOREIGN KEY t2_ibfk_1;
 ALTER TABLE t2 ADD INDEX(a);
 ALTER TABLE t1 ADD COLUMN b INT, ADD FOREIGN KEY(a) REFERENCES t2(a),
 ALGORITHM=INSTANT;
@@ -480,7 +479,7 @@ ALTER TABLE t2 ADD CONSTRAINT fk FOREIGN KEY(b) REFERENCES t1(a),
 ALGORITHM=INSTANT;
 SET foreign_key_checks=1;
 ALTER TABLE t2 COMMENT 'domestic keys only', DROP FOREIGN KEY fk;
-ALTER TABLE t1 DROP FOREIGN KEY `1`;
+ALTER TABLE t1 DROP FOREIGN KEY t1_ibfk_1;
 ALTER TABLE t1 ADD COLUMN big BLOB NOT NULL
 DEFAULT REPEAT('a', @@GLOBAL.innodb_page_size * .75);
 CHECK TABLE t2, t1;
@@ -1249,12 +1248,12 @@ ALTER TABLE t3 ADD COLUMN c7 TIME NOT NULL DEFAULT current_timestamp();
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 1
 Warnings:
-Note	1265	Data truncated for column 'c7' at row 0
+Note	1265	Data truncated for column 'c7' at row 1
 ALTER TABLE t3 ADD COLUMN c8 DATE NOT NULL DEFAULT current_timestamp();
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 1
 Warnings:
-Note	1265	Data truncated for column 'c8' at row 0
+Note	1265	Data truncated for column 'c8' at row 1
 SELECT id, c2, ST_AsText(c3) c3, c4, c5, c6, c7, c8 FROM t3;
 id	c2	c3	c4	c5	c6	c7	c8
 1	1	POLYGON((1 1,2 2,3 3,1 1))	1970-01-01 03:00:42	1970-01-01 03:00:42	NULL	03:00:42	1970-01-01
@@ -1402,7 +1401,7 @@ CREATE TABLE t2 (b INT PRIMARY KEY, FOREIGN KEY(b) REFERENCES t1(a))
 ENGINE=InnoDB ROW_FORMAT=COMPACT;
 INSERT INTO t1 SET a=1;
 INSERT INTO t2 SET b=1;
-ALTER TABLE t2 ADD COLUMN a INT, DROP FOREIGN KEY `1`;
+ALTER TABLE t2 ADD COLUMN a INT, DROP FOREIGN KEY t2_ibfk_1;
 ALTER TABLE t2 ADD INDEX(a);
 ALTER TABLE t1 ADD COLUMN b INT, ADD FOREIGN KEY(a) REFERENCES t2(a),
 ALGORITHM=INSTANT;
@@ -1414,7 +1413,7 @@ ALTER TABLE t2 ADD CONSTRAINT fk FOREIGN KEY(b) REFERENCES t1(a),
 ALGORITHM=INSTANT;
 SET foreign_key_checks=1;
 ALTER TABLE t2 COMMENT 'domestic keys only', DROP FOREIGN KEY fk;
-ALTER TABLE t1 DROP FOREIGN KEY `1`;
+ALTER TABLE t1 DROP FOREIGN KEY t1_ibfk_1;
 ALTER TABLE t1 ADD COLUMN big BLOB NOT NULL
 DEFAULT REPEAT('a', @@GLOBAL.innodb_page_size * .75);
 CHECK TABLE t2, t1;
@@ -2183,12 +2182,12 @@ ALTER TABLE t3 ADD COLUMN c7 TIME NOT NULL DEFAULT current_timestamp();
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 1
 Warnings:
-Note	1265	Data truncated for column 'c7' at row 0
+Note	1265	Data truncated for column 'c7' at row 1
 ALTER TABLE t3 ADD COLUMN c8 DATE NOT NULL DEFAULT current_timestamp();
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 1
 Warnings:
-Note	1265	Data truncated for column 'c8' at row 0
+Note	1265	Data truncated for column 'c8' at row 1
 SELECT id, c2, ST_AsText(c3) c3, c4, c5, c6, c7, c8 FROM t3;
 id	c2	c3	c4	c5	c6	c7	c8
 1	1	POLYGON((1 1,2 2,3 3,1 1))	1970-01-01 03:00:42	1970-01-01 03:00:42	NULL	03:00:42	1970-01-01
@@ -2336,7 +2335,7 @@ CREATE TABLE t2 (b INT PRIMARY KEY, FOREIGN KEY(b) REFERENCES t1(a))
 ENGINE=InnoDB ROW_FORMAT=DYNAMIC;
 INSERT INTO t1 SET a=1;
 INSERT INTO t2 SET b=1;
-ALTER TABLE t2 ADD COLUMN a INT, DROP FOREIGN KEY `1`;
+ALTER TABLE t2 ADD COLUMN a INT, DROP FOREIGN KEY t2_ibfk_1;
 ALTER TABLE t2 ADD INDEX(a);
 ALTER TABLE t1 ADD COLUMN b INT, ADD FOREIGN KEY(a) REFERENCES t2(a),
 ALGORITHM=INSTANT;
@@ -2348,7 +2347,7 @@ ALTER TABLE t2 ADD CONSTRAINT fk FOREIGN KEY(b) REFERENCES t1(a),
 ALGORITHM=INSTANT;
 SET foreign_key_checks=1;
 ALTER TABLE t2 COMMENT 'domestic keys only', DROP FOREIGN KEY fk;
-ALTER TABLE t1 DROP FOREIGN KEY `1`;
+ALTER TABLE t1 DROP FOREIGN KEY t1_ibfk_1;
 ALTER TABLE t1 ADD COLUMN big BLOB NOT NULL
 DEFAULT REPEAT('a', @@GLOBAL.innodb_page_size * .75);
 CHECK TABLE t2, t1;
@@ -2913,19 +2912,20 @@ CREATE TABLE t2 (f1 INT, f2 INT, PRIMARY KEY(f1),
 FOREIGN KEY fk (f2) REFERENCES t2(f1)
 )ENGINE=InnoDB;
 ALTER TABLE t1 ADD f5 INT;
-SET STATEMENT FOREIGN_KEY_CHECKS=0 FOR
+SET FOREIGN_KEY_CHECKS=0;
 ALTER TABLE t1 DROP COLUMN f3, ADD FOREIGN KEY fk (f1)
 REFERENCES x(x);
+ERROR HY000: Failed to add the foreign key constraint 'test/fk' to system tables
 ALTER TABLE t1 DROP COLUMN f5;
 SHOW CREATE TABLE t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `f1` int(11) NOT NULL,
   `f2` int(11) DEFAULT NULL,
+  `f3` int(11) DEFAULT NULL,
   `f4` int(11) NOT NULL,
   PRIMARY KEY (`f1`,`f4`),
-  KEY `f2` (`f2`),
-  CONSTRAINT `fk` FOREIGN KEY (`f1`) REFERENCES `x` (`x`)
+  KEY `f2` (`f2`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
 DROP TABLE t1, t2;
 #
@@ -2940,4 +2940,3 @@ FLUSH TABLES;
 ALTER TABLE mdev28822_100427_innodb ADD i1 INTEGER, ALGORITHM=INSTANT;
 DROP TABLE mdev28822_100427_innodb;
 SET GLOBAL innodb_stats_persistent = @save_stats_persistent;
-ALTER DATABASE test CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_ci;

@@ -13,6 +13,9 @@
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1335  USA */
+#ifdef USE_PRAGMA_IMPLEMENTATION
+#pragma implementation                         /* gcc class implementation */
+#endif
 
 #include "mariadb.h"
 #include "sql_priv.h"
@@ -20,7 +23,72 @@
 #include "sql_cursor.h"
 #include "probes_mysql.h"
 #include "sql_parse.h"                        // mysql_execute_command
-#include "sp_instr.h"                         // sp_lex_cursor
+
+/****************************************************************************
+  Declarations.
+****************************************************************************/
+
+/**
+  Materialized_cursor -- an insensitive materialized server-side
+  cursor. The result set of this cursor is saved in a temporary
+  table at open. The cursor itself is simply an interface for the
+  handler of the temporary table.
+*/
+
+class Materialized_cursor: public Server_side_cursor
+{
+  MEM_ROOT main_mem_root;
+  /* A fake unit to supply to select_send when fetching */
+  SELECT_LEX_UNIT fake_unit;
+  TABLE *table;
+  List<Item> item_list;
+  ulong fetch_limit;
+  ulong fetch_count;
+  bool is_rnd_inited;
+public:
+  Materialized_cursor(select_result *result, TABLE *table);
+
+  int send_result_set_metadata(THD *thd, List<Item> &send_result_set_metadata);
+  bool is_open() const override { return table != 0; }
+  int open(JOIN *join __attribute__((unused))) override;
+  void fetch(ulong num_rows) override;
+  void close() override;
+  bool export_structure(THD *thd, Row_definition_list *defs) override
+  {
+    return table->export_structure(thd, defs);
+  }
+  ~Materialized_cursor() override;
+
+  void on_table_fill_finished();
+};
+
+
+/**
+  Select_materialize -- a mediator between a cursor query and the
+  protocol. In case we were not able to open a non-materialzed
+  cursor, it creates an internal temporary HEAP table, and insert
+  all rows into it. When the table reaches max_heap_table_size,
+  it's converted to a MyISAM table. Later this table is used to
+  create a Materialized_cursor.
+*/
+
+class Select_materialize: public select_unit
+{
+  select_result *result; /**< the result object of the caller (PS or SP) */
+public:
+  Materialized_cursor *materialized_cursor;
+  Select_materialize(THD *thd_arg, select_result *result_arg):
+    select_unit(thd_arg), result(result_arg), materialized_cursor(0) {}
+  bool send_result_set_metadata(List<Item> &list, uint flags) override;
+  bool send_eof() override { return false; }
+  bool view_structure_only() const override
+  {
+    return result->view_structure_only();
+  }
+};
+
+
+/**************************************************************************/
 
 /**
   Attempt to open a materialized cursor.
@@ -47,7 +115,6 @@ int mysql_open_cursor(THD *thd, select_result *result,
   Select_materialize *result_materialize;
   LEX *lex= thd->lex;
   int rc;
-  const CSET_STRING query_backup= thd->query_string;
 
   if (!(result_materialize= new (thd->mem_root) Select_materialize(thd, result)))
     return 1;
@@ -55,12 +122,6 @@ int mysql_open_cursor(THD *thd, select_result *result,
   save_result= lex->result;
 
   lex->result= result_materialize;
-
-  if (const sp_lex_cursor *clex= lex->get_lex_for_cursor())
-  {
-    const LEX_CSTRING tmp_query= get_cursor_query(clex->get_expr_str());
-    thd->set_query((char*) tmp_query.str, tmp_query.length);
-  }
 
   MYSQL_QUERY_EXEC_START(thd->query(),
                          thd->thread_id,
@@ -75,7 +136,6 @@ int mysql_open_cursor(THD *thd, select_result *result,
   /* Mark that we can't use query cache with cursors */
   thd->query_cache_is_applicable= 0;
   rc= mysql_execute_command(thd);
-  thd->update_server_status();
   thd->lex->restore_set_statement_var();
   thd->m_digest= parent_digest;
   thd->m_statement_psi= parent_locker;
@@ -129,7 +189,6 @@ int mysql_open_cursor(THD *thd, select_result *result,
   }
 
 end:
-  thd->set_query(query_backup);
   delete result_materialize;
   return rc;
 }
@@ -214,9 +273,8 @@ int Materialized_cursor::send_result_set_metadata(
     Item_ident *ident= static_cast<Item_ident *>(item_dst);
     Send_field send_field(thd, item_org);
 
-    ident->db_name= Lex_ident_db(thd->strmake_lex_cstring(send_field.db_name));
-    ident->table_name= Lex_ident_table(thd->strmake_lex_cstring(
-                                              send_field.table_name));
+    ident->db_name= thd->strmake_lex_cstring(send_field.db_name);
+    ident->table_name= thd->strmake_lex_cstring(send_field.table_name);
   }
 
   /*

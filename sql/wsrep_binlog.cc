@@ -118,13 +118,12 @@ cleanup:
  */
 static int wsrep_write_cache_inc(THD*      const thd,
                                  IO_CACHE* const cache,
-                                 size_t    const log_position,
                                  size_t*   const len)
 {
   DBUG_ENTER("wsrep_write_cache_inc");
   my_off_t const saved_pos(my_b_tell(cache));
 
-  if (reinit_io_cache(cache, READ_CACHE, log_position, 0, 0))
+  if (reinit_io_cache(cache, READ_CACHE, thd->wsrep_sr().log_position(), 0, 0))
   {
     WSREP_ERROR("failed to initialize io-cache");
     DBUG_RETURN(1);;
@@ -158,7 +157,7 @@ static int wsrep_write_cache_inc(THD*      const thd,
     } while ((cache->file >= 0) && (length= my_b_fill(cache)));
     if (ret == 0)
     {
-      assert(total_length + log_position == saved_pos);
+      assert(total_length + thd->wsrep_sr().log_position() == saved_pos);
     }
   }
 
@@ -179,10 +178,9 @@ cleanup:
  */
 int wsrep_write_cache(THD*      const thd,
                       IO_CACHE* const cache,
-                      size_t    const log_position,
                       size_t*   const len)
 {
-  return wsrep_write_cache_inc(thd, cache, log_position, len);
+  return wsrep_write_cache_inc(thd, cache, len);
 }
 
 void wsrep_dump_rbr_buf(THD *thd, const void* rbr_buf, size_t buf_len)
@@ -238,9 +236,7 @@ void wsrep_dump_rbr_buf_with_header(THD *thd, const void *rbr_buf,
 
   File file;
   IO_CACHE cache;
-  enum_binlog_checksum_alg checksum_alg=
-    (enum_binlog_checksum_alg) binlog_checksum_options;
-  Log_event_writer writer(&cache, 0, checksum_alg, NULL);
+  Log_event_writer writer(&cache, 0);
   Format_description_log_event *ev= 0;
 
   longlong thd_trx_seqno= (long long)wsrep_thd_trx_seqno(thd);
@@ -292,7 +288,7 @@ void wsrep_dump_rbr_buf_with_header(THD *thd, const void *rbr_buf,
     to the dump file).
   */
   ev= (thd->wsrep_applier) ? wsrep_get_apply_format(thd) :
-    (new Format_description_log_event(4, NULL, checksum_alg));
+    (new Format_description_log_event(4));
 
   if (writer.write(ev) || my_b_write(&cache, (uchar*)rbr_buf, buf_len) ||
       flush_io_cache(&cache))

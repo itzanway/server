@@ -19,13 +19,11 @@
 
 --connection slave
 --source include/stop_slave.inc
---let $master_use_gtid_option=No
---source include/reset_slave.inc
+reset slave;
 
 --connection master
 --let $datadir= `SELECT @@datadir`
 
---source include/kill_binlog_dump_threads.inc
 reset master; # Master starts a new serious of binlog files
 
 create table t2 (a timestamp, b int);

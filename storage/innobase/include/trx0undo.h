@@ -152,7 +152,7 @@ dberr_t trx_undo_free_last_page(trx_undo_t *undo, mtr_t *mtr)
 /** Try to truncate the undo logs.
 @param trx transaction
 @return error code */
-dberr_t trx_undo_try_truncate(trx_t *trx);
+dberr_t trx_undo_try_truncate(const trx_t &trx);
 
 /** Truncate the head of an undo log.
 NOTE that only whole pages are freed; the header page is not
@@ -171,20 +171,24 @@ trx_undo_truncate_start(
 	undo_no_t	limit)
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
 /** Mark that an undo log header belongs to a data dictionary transaction.
+@param[in]	trx	dictionary transaction
 @param[in,out]	undo	undo log
 @param[in,out]	mtr	mini-transaction */
-void trx_undo_mark_as_dict(trx_undo_t* undo, mtr_t* mtr);
+void trx_undo_mark_as_dict(const trx_t* trx, trx_undo_t* undo, mtr_t* mtr);
 /** Assign an undo log for a persistent transaction.
 A new undo log is created or a cached undo log reused.
-@param[in,out]	mtr	mini-transaction
+@param[in,out]	trx	transaction
 @param[out]	err	error code
+@param[in,out]	mtr	mini-transaction
 @return	the undo log block
 @retval	NULL	on error */
-buf_block_t *trx_undo_assign(mtr_t* mtr, dberr_t *err) noexcept
+buf_block_t*
+trx_undo_assign(trx_t* trx, dberr_t* err, mtr_t* mtr)
 	MY_ATTRIBUTE((nonnull));
 /** Assign an undo log for a transaction.
 A new undo log is created or a cached undo log reused.
 @tparam is_temp  whether this is temporary undo log
+@param[in,out]	trx	transaction
 @param[in]	rseg	rollback segment
 @param[out]	undo	the undo log
 @param[in,out]	mtr	mini-transaction
@@ -193,16 +197,18 @@ A new undo log is created or a cached undo log reused.
 @retval	nullptr	on error */
 template<bool is_temp>
 buf_block_t*
-trx_undo_assign_low(mtr_t *mtr, dberr_t *err, trx_rseg_t *rseg,
-                    trx_undo_t **undo)
+trx_undo_assign_low(trx_t *trx, trx_rseg_t *rseg, trx_undo_t **undo,
+                    mtr_t *mtr, dberr_t *err)
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
 
 /** Set the state of the undo log segment at a XA PREPARE or XA ROLLBACK.
+@param[in,out]	trx		transaction
 @param[in,out]	undo		undo log
 @param[in]	rollback	false=XA PREPARE, true=XA ROLLBACK
 @param[in,out]	mtr		mini-transaction */
-void trx_undo_set_state_at_prepare(trx_undo_t *undo, bool rollback, mtr_t *mtr)
-  noexcept MY_ATTRIBUTE((nonnull));
+void trx_undo_set_state_at_prepare(trx_t *trx, trx_undo_t *undo, bool rollback,
+                                   mtr_t *mtr)
+  MY_ATTRIBUTE((nonnull));
 
 /** At shutdown, frees the undo logs of a transaction. */
 void
@@ -265,8 +271,6 @@ struct trx_undo_t {
 	uint16_t	top_offset;	/*!< offset of the latest undo record,
 					i.e., the topmost element in the undo
 					log if we think of it as a stack */
-	uint16_t	old_offset;	/*!< previous undo record offset
-					for ALTER IGNORE */
 	undo_no_t	top_undo_no;	/*!< undo number of the latest record
 					(IB_ID_MAX if the undo log is empty) */
 	buf_block_t*	guess_block;	/*!< guess for the buffer block where
@@ -307,8 +311,8 @@ class UndorecApplier
   mtr_t mtr;
 
 public:
-  UndorecApplier(page_id_t page_id, trx_t &trx) :
-    page_id(page_id), trx_id(trx.id), heap(mem_heap_create(100)), mtr(&trx)
+  UndorecApplier(page_id_t page_id, trx_id_t trx_id) :
+    page_id(page_id), trx_id(trx_id), heap(mem_heap_create(100))
   {
   }
 
@@ -446,10 +450,10 @@ completely purged and trx_purge_free_segment() has started freeing it */
 /** Transaction end identifier (if the log is in a history list),
 or 0 if the transaction has not been committed */
 #define	TRX_UNDO_TRX_NO		8
-/* Before MariaDB 10.3.1, when purge did not reset DB_TRX_ID of
+/** Before MariaDB 10.3.1, when purge did not reset DB_TRX_ID of
 surviving user records, this used to be called TRX_UNDO_DEL_MARKS.
 
-This field was removed in MariaDB 11.0.
+This field is redundant; it is only being read by some debug assertions.
 
 The value 1 indicates that purge needs to process the undo log segment.
 The value 0 indicates that all of it has been processed, and
@@ -458,7 +462,7 @@ trx_purge_free_segment() has been invoked, so the log is not safe to access.
 Before MariaDB 10.3.1, a log segment may carry the value 0 even before
 trx_purge_free_segment() was called, for those undo log records for
 which purge would not result in removing delete-marked records. */
-/*#define	TRX_UNDO_NEEDS_PURGE	16*/
+#define	TRX_UNDO_NEEDS_PURGE	16
 #define	TRX_UNDO_LOG_START	18	/*!< Offset of the first undo log record
 					of this log on the header page; purge
 					may remove undo log record from the

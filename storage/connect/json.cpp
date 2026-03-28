@@ -24,8 +24,10 @@
 
 #define ARGS       MY_MIN(24,(int)len-i),s+MY_MAX(i-3,0)
 
-#define EL "\n"
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#define EL  "\r\n"
+#else
+#define EL  "\n"
 #undef     SE_CATCH                  // Does not work for Linux
 #endif
 
@@ -1770,7 +1772,7 @@ void JVALUE::SetValue(PGLOBAL g, PVAL valp)
     DataType = TYPE_BINT;
     break;
   default:
-    snprintf(g->Message, sizeof(g->Message), "Unsupported typ %d", valp->GetType());
+    snprintf(g->Message, sizeof(g->Message), "Unsupported typ %d\n", valp->GetType());
     throw(777);
   } // endswitch Type
 

@@ -202,16 +202,23 @@ bool TDBMUL::InitFileNames(PGLOBAL g)
 
       p = filename + strlen(filename) - 1;
 
-
-      // Data files can have CRLF
+#if !defined(_WIN32)
+      // Data files can be imported from Windows (having CRLF)
       if (*p == '\n' || *p == '\r') {
+        // is this enough for Unix ???
         p--;          // Eliminate ending CR or LF character
 
         if (p >= filename)
+          // is this enough for Unix ???
           if (*p == '\n' || *p == '\r')
             p--;    // Eliminate ending CR or LF character
 
-      } // endif p
+        } // endif p
+
+#else
+      if (*p == '\n')
+        p--;        // Eliminate ending new-line character
+#endif
       // Trim rightmost blanks
       for (; p >= filename && *p == ' '; p--) ;
 
@@ -676,7 +683,7 @@ char* TDBDIR::Path(PGLOBAL g)
     PlugSetPath(Fpath, To_File, defp ? defp->GetPath() : NULL);
     _splitpath(Fpath, Drive, Direc, Fname, Ftype);
   } else
-    _makepath(Fpath, Drive, Direc, Fname, Ftype); // Useful for TDBSDR
+    _makepath(Fpath, Drive, Direc, Fname, Ftype); // Usefull for TDBSDR
 
   return Fpath;
 #else   // !_WIN32

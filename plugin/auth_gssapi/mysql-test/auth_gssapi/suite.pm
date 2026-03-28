@@ -1,9 +1,8 @@
-
 package My::Suite::AuthGSSAPI;
 
 @ISA = qw(My::Suite);
 
-return "No AUTH_GSSAPI plugin" unless ($ENV{AUTH_GSSAPI_SO} or $::mysqld_variables{gssapi} eq "ON");
+return "No AUTH_GSSAPI plugin" unless $ENV{AUTH_GSSAPI_SO};
 
 return "Not run for embedded server" if $::opt_embedded_server;
 

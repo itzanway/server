@@ -11,3 +11,4 @@ return "Not run for embedded server" if $::opt_embedded_server;
 sub is_default { 1 }
 
 bless { };
+

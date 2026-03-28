@@ -188,6 +188,5 @@
 +DROP TABLE t1;
 +COMMIT;
 +SET GLOBAL debug_dbug = $debug_orig;
- connection node_2;
- Shutting down server ...
- connection node_1;
+ disconnect node_2;
+ disconnect node_1;

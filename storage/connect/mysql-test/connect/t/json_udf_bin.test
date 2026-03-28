@@ -1,4 +1,3 @@
---source include/no_view_protocol.inc
 --source json_udf.inc
 
 let $MYSQLD_DATADIR= `select @@datadir`;

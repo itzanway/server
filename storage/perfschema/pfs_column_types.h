@@ -66,6 +66,7 @@
 /**
   Enum values for the TIMER_NAME columns.
   This enum is found in the following tables:
+  - performance_schema.setup_timer (TIMER_NAME)
   - performance_schema.performance_timer (TIMER_NAME)
 */
 enum enum_timer_name
@@ -74,12 +75,13 @@ enum enum_timer_name
   TIMER_NAME_NANOSEC= 2,
   TIMER_NAME_MICROSEC= 3,
   TIMER_NAME_MILLISEC= 4,
+  TIMER_NAME_TICK= 5
 };
 
 /** Integer, first value of @sa enum_timer_name. */
 #define FIRST_TIMER_NAME (static_cast<int> (TIMER_NAME_CYCLE))
 /** Integer, last value of @sa enum_timer_name. */
-#define LAST_TIMER_NAME (static_cast<int> (TIMER_NAME_MILLISEC))
+#define LAST_TIMER_NAME (static_cast<int> (TIMER_NAME_TICK))
 /** Integer, number of values of @sa enum_timer_name. */
 #define COUNT_TIMER_NAME (LAST_TIMER_NAME - FIRST_TIMER_NAME + 1)
 
@@ -306,7 +308,7 @@ enum enum_isolation_level
 #define COUNT_TRANS_LEVEL (LAST_TRANS_LEVEL - FIRST_TRANS_LEVEL + 1)
 
 /**
-  Enum values for transaction access mode columns.
+  Enum values for transaction acces mode columns.
 */
 enum enum_transaction_mode
 {

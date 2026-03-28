@@ -224,9 +224,9 @@ void hp_movelink(HASH_INFO *pos, HASH_INFO *next_link, HASH_INFO *newlink)
 
 static ulong hp_hashnr(HP_KEYDEF *keydef, const uchar *key)
 {
-  /*register*/
-  my_hasher_st hasher= my_hasher_mysql5x();
-  HA_KEYSEG * seg, *endseg;
+  /*register*/ 
+  ulong nr=1, nr2=4;
+  HA_KEYSEG *seg,*endseg;
 
   for (seg=keydef->seg,endseg=seg+keydef->keysegs ; seg < endseg ; seg++)
   {
@@ -237,7 +237,7 @@ static ulong hp_hashnr(HP_KEYDEF *keydef, const uchar *key)
       key++;					/* Skip null byte */
       if (*pos)					/* Found null */
       {
-	hasher.m_nr1^= (hasher.m_nr1 << 1) | 1;
+	nr^= (nr << 1) | 1;
 	/* Add key pack length (2) to key for VARCHAR segments */
         if (seg->type == HA_KEYTYPE_VARTEXT1)
           key+= 2;
@@ -255,7 +255,7 @@ static ulong hp_hashnr(HP_KEYDEF *keydef, const uchar *key)
          char_length= hp_charpos(cs, pos, pos + length, length/cs->mbmaxlen);
          set_if_smaller(length, char_length);
        }
-       my_ci_hash_sort(&hasher, cs, pos, length);
+       my_ci_hash_sort(cs, pos, length, &nr, &nr2);
     }
     else if (seg->type == HA_KEYTYPE_VARTEXT1)  /* Any VARCHAR segments */
     {
@@ -270,28 +270,29 @@ static ulong hp_hashnr(HP_KEYDEF *keydef, const uchar *key)
                                  seg->length/cs->mbmaxlen);
          set_if_smaller(length, char_length);
        }
-       my_ci_hash_sort(&hasher, cs, pos+pack_length, length);
+       my_ci_hash_sort(cs, pos+pack_length, length, &nr, &nr2);
        key+= pack_length;
     }
     else
     {
       for (; pos < (uchar*) key ; pos++)
       {
-        MY_HASH_ADD_MARIADB(hasher.m_nr1, hasher.m_nr2, *pos);
+	nr^=(ulong) ((((uint) nr & 63)+nr2)*((uint) *pos)) + (nr << 8);
+	nr2+=3;
       }
     }
   }
 #ifdef ONLY_FOR_HASH_DEBUGGING
   DBUG_PRINT("exit", ("hash: 0x%lx", nr));
 #endif
-  return((ulong) hasher.m_nr1);
+  return((ulong) nr);
 }
 
 	/* Calc hashvalue for a key in a record */
 
 ulong hp_rec_hashnr(register HP_KEYDEF *keydef, register const uchar *rec)
 {
-  my_hasher_st hasher= my_hasher_mysql5x();
+  ulong nr=1, nr2=4;
   HA_KEYSEG *seg,*endseg;
 
   for (seg=keydef->seg,endseg=seg+keydef->keysegs ; seg < endseg ; seg++)
@@ -301,7 +302,7 @@ ulong hp_rec_hashnr(register HP_KEYDEF *keydef, register const uchar *rec)
     {
       if (rec[seg->null_pos] & seg->null_bit)
       {
-	hasher.m_nr1^= (hasher.m_nr1 << 1) | 1;
+	nr^= (nr << 1) | 1;
 	continue;
       }
     }
@@ -315,7 +316,7 @@ ulong hp_rec_hashnr(register HP_KEYDEF *keydef, register const uchar *rec)
                                 char_length / cs->mbmaxlen);
         set_if_smaller(char_length, seg->length); /* QQ: ok to remove? */
       }
-      my_ci_hash_sort(&hasher, cs, pos, char_length);
+      my_ci_hash_sort(cs, pos, char_length, &nr, &nr2);
     }
     else if (seg->type == HA_KEYTYPE_VARTEXT1)  /* Any VARCHAR segments */
     {
@@ -332,26 +333,30 @@ ulong hp_rec_hashnr(register HP_KEYDEF *keydef, register const uchar *rec)
       }
       else
         set_if_smaller(length, seg->length);
-      my_ci_hash_sort(&hasher, cs, pos+pack_length, length);
+      my_ci_hash_sort(cs, pos+pack_length, length, &nr, &nr2);
     }
     else
     {
       if (seg->type == HA_KEYTYPE_BIT && seg->bit_length)
       {
-        MY_HASH_ADD_MARIADB(hasher.m_nr1, hasher.m_nr2, *pos);
+        uchar bits= get_rec_bits(rec + seg->bit_pos,
+                                 seg->bit_start, seg->bit_length);
+	nr^=(ulong) ((((uint) nr & 63)+nr2)*((uint) bits))+ (nr << 8);
+	nr2+=3;
         end--;
       }
 
       for (; pos < end ; pos++)
       {
-        MY_HASH_ADD_MARIADB(hasher.m_nr1, hasher.m_nr2, *pos);
+	nr^=(ulong) ((((uint) nr & 63)+nr2)*((uint) *pos))+ (nr << 8);
+	nr2+=3;
       }
     }
   }
 #ifdef ONLY_FOR_HASH_DEBUGGING
-  DBUG_PRINT("exit", ("hash: 0x%lx", hasher.m_nr1));
+  DBUG_PRINT("exit", ("hash: 0x%lx", nr));
 #endif
-  return(hasher.m_nr1);
+  return(nr);
 }
 
 
@@ -370,7 +375,7 @@ ulong hp_rec_hashnr(register HP_KEYDEF *keydef, register const uchar *rec)
 
   RETURN
     0		Key is identical
-    <> 0 	Key differs
+    <> 0 	Key differes
 */
 
 int hp_rec_key_cmp(HP_KEYDEF *keydef, const uchar *rec1, const uchar *rec2)
@@ -415,61 +420,41 @@ int hp_rec_key_cmp(HP_KEYDEF *keydef, const uchar *rec1, const uchar *rec2)
     {
       uchar *pos1= (uchar*) rec1 + seg->start;
       uchar *pos2= (uchar*) rec2 + seg->start;
-      size_t len1, len2;
+      size_t char_length1, char_length2;
       size_t pack_length= seg->bit_start;
       CHARSET_INFO *cs= seg->charset;
       if (pack_length == 1)
       {
-        len1= (size_t) *(uchar*) pos1++;
-        len2= (size_t) *(uchar*) pos2++;
+        char_length1= (size_t) *(uchar*) pos1++;
+        char_length2= (size_t) *(uchar*) pos2++;
       }
       else
       {
-        len1= uint2korr(pos1);
-        len2= uint2korr(pos2);
+        char_length1= uint2korr(pos1);
+        char_length2= uint2korr(pos2);
         pos1+= 2;
         pos2+= 2;
       }
-      /*
-        We're not using my_ci_strnncollsp_nchars() here for NOPAD collations
-        because some virtual implementations do not work correctly. For details see:
-        https://jira.mariadb.org/browse/MDEV-38712
-      */
-      if (cs->mbmaxlen > 1 && !(cs->state & MY_CS_NOPAD))
+      if (cs->mbmaxlen > 1)
       {
-        size_t nchars= seg->length / cs->mbmaxlen;
-        if (my_ci_strnncollsp_nchars(cs, 
-                                     pos1, len1, 
-                                     pos2, len2, 
-                                     nchars,
-                                     MY_STRNNCOLLSP_NCHARS_EMULATE_TRIMMED_TRAILING_SPACES))
-          return 1;
+        size_t safe_length1= char_length1;
+        size_t safe_length2= char_length2;
+        size_t char_length= seg->length / cs->mbmaxlen;
+        char_length1= hp_charpos(cs, pos1, pos1 + char_length1, char_length);
+        set_if_smaller(char_length1, safe_length1);
+        char_length2= hp_charpos(cs, pos2, pos2 + char_length2, char_length);
+        set_if_smaller(char_length2, safe_length2);
       }
       else
       {
-        size_t char_length1= len1;
-        size_t char_length2= len2;
-
-        if (cs->mbmaxlen > 1)
-        {
-          size_t safe_length1= char_length1;
-          size_t safe_length2= char_length2;
-          size_t char_length= seg->length / cs->mbmaxlen;
-          char_length1= hp_charpos(cs, pos1, pos1 + char_length1, char_length);
-          set_if_smaller(char_length1, safe_length1);
-          char_length2= hp_charpos(cs, pos2, pos2 + char_length2, char_length);
-          set_if_smaller(char_length2, safe_length2);
-        }
-        else
-        {
-          set_if_smaller(char_length1, seg->length);
-          set_if_smaller(char_length2, seg->length);
-        }
-        if (my_ci_strnncollsp(seg->charset,
-                              pos1, char_length1,
-                              pos2, char_length2))
-          return 1;
+        set_if_smaller(char_length1, seg->length);
+        set_if_smaller(char_length2, seg->length);
       }
+
+      if (my_ci_strnncollsp(seg->charset,
+                            pos1, char_length1,
+                            pos2, char_length2))
+	return 1;
     }
     else
     {
@@ -550,35 +535,22 @@ int hp_key_cmp(HP_KEYDEF *keydef, const uchar *rec, const uchar *key)
       size_t char_length_key= uint2korr(key);
       pos+= pack_length;
       key+= 2;                                  /* skip key pack length */
-      if (cs->mbmaxlen > 1 && !(cs->state & MY_CS_NOPAD))
+      if (cs->mbmaxlen > 1)
       {
-        size_t nchars= seg->length / cs->mbmaxlen; 
-        if (my_ci_strnncollsp_nchars(cs,
-                                     pos, char_length_rec,
-                                     key, char_length_key,
-                                     nchars,
-                                     MY_STRNNCOLLSP_NCHARS_EMULATE_TRIMMED_TRAILING_SPACES))
-          return 1;
+        size_t char_length1, char_length2;
+        char_length1= char_length2= seg->length / cs->mbmaxlen; 
+        char_length1= hp_charpos(cs, key, key + char_length_key, char_length1);
+        set_if_smaller(char_length_key, char_length1);
+        char_length2= hp_charpos(cs, pos, pos + char_length_rec, char_length2);
+        set_if_smaller(char_length_rec, char_length2);
       }
       else
-      {
-        if (cs->mbmaxlen > 1)
-        {
-          size_t char_length1, char_length2;
-          char_length1= char_length2= seg->length / cs->mbmaxlen; 
-          char_length1= hp_charpos(cs, key, key + char_length_key, char_length1);
-          set_if_smaller(char_length_key, char_length1);
-          char_length2= hp_charpos(cs, pos, pos + char_length_rec, char_length2);
-          set_if_smaller(char_length_rec, char_length2);
-        }
-        else
-          set_if_smaller(char_length_rec, seg->length);
+        set_if_smaller(char_length_rec, seg->length);
 
-        if (my_ci_strnncollsp(seg->charset,
-                              pos, char_length_rec,
-                              key, char_length_key))
-          return 1;
-      }
+      if (my_ci_strnncollsp(seg->charset,
+                            pos, char_length_rec,
+                            key, char_length_key))
+	return 1;
     }
     else
     {
@@ -663,7 +635,9 @@ uint hp_rb_make_key(HP_KEYDEF *keydef, uchar *key,
 
       if (seg->type == HA_KEYTYPE_FLOAT)
       {
-	if (isnan(get_float(pos)))
+	float nr;
+	float4get(nr, pos);
+	if (isnan(nr))
 	{
 	  /* Replace NAN with zero */
  	  bzero(key, length);

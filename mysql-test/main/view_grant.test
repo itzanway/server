@@ -1,6 +1,15 @@
 # Can't test with embedded server
 -- source include/not_embedded.inc
 
+# Save the initial number of concurrent sessions
+--source include/count_sessions.inc
+
+--disable_warnings
+drop database if exists mysqltest;
+drop view if exists v1,v2,v3;
+--enable_warnings
+
+
 # simple test of grants
 create user test@localhost;
 grant create view on test.* to test@localhost;
@@ -14,7 +23,9 @@ drop user test@localhost;
 #
 connect (root,localhost,root,,test);
 connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
 
 create table mysqltest.t1 (a int, b int);
 create table mysqltest.t2 (a int, b int);
@@ -60,43 +71,48 @@ revoke all privileges on test.* from mysqltest_1@localhost;
 
 drop database mysqltest;
 drop view test.v1;
-disconnect user1;
 
 #
 # grants per columns
 #
 # MERGE algorithm
+--disable_warnings
 create database mysqltest;
+--enable_warnings
+
 create table mysqltest.t1 (a int, b int);
 create view mysqltest.v1 (c,d) as select a+1,b+1 from mysqltest.t1;
 grant select (c) on mysqltest.v1 to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
 select c from mysqltest.v1;
 # there are no privileges on column 'd'
 --error ER_COLUMNACCESS_DENIED_ERROR
 select d from mysqltest.v1;
 
 connection root;
-disconnect user1;
+revoke all privileges on mysqltest.v1 from mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
 
 # TEMPORARY TABLE algorithm
+--disable_warnings
 create database mysqltest;
+--enable_warnings
+
 create table mysqltest.t1 (a int, b int);
 create algorithm=temptable view mysqltest.v1 (c,d) as select a+1,b+1 from mysqltest.t1;
 create user mysqltest_1@localhost;
 grant select (c) on mysqltest.v1 to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
 select c from mysqltest.v1;
 # there are no privileges on column 'd'
 --error ER_COLUMNACCESS_DENIED_ERROR
 select d from mysqltest.v1;
 
 connection root;
-disconnect user1;
+revoke all privileges on mysqltest.v1 from mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
 
@@ -104,7 +120,9 @@ drop database mysqltest;
 # EXPLAIN rights
 #
 connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
 # prepare views and tables
 create table mysqltest.t1 (a int, b int);
 create table mysqltest.t2 (a int, b int);
@@ -121,7 +139,7 @@ grant select on mysqltest.v3 to mysqltest_1@localhost;
 grant select on mysqltest.v4 to mysqltest_1@localhost;
 grant show view on mysqltest.v5 to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
 # all SELECTs works, except v5 which lacks SELECT privs
 select c from mysqltest.v1;
 select c from mysqltest.v2;
@@ -129,7 +147,7 @@ select c from mysqltest.v3;
 select c from mysqltest.v4;
 --error ER_TABLEACCESS_DENIED_ERROR
 select c from mysqltest.v5;
-# test of show columns
+# test of show coluns
 show columns from mysqltest.v1;
 show columns from mysqltest.v2;
 # explain/show fail
@@ -170,8 +188,7 @@ connection root;
 grant show view on mysqltest.v1 to mysqltest_1@localhost;
 grant select on mysqltest.t1 to mysqltest_1@localhost;
 revoke select on mysqltest.v5 from mysqltest_1@localhost;
-disconnect user1;
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
 # EXPLAIN works
 explain select c from mysqltest.v1;
 show create view mysqltest.v1;
@@ -196,8 +213,7 @@ explain select c from mysqltest.v5;
 # allow to see any view in mysqltest database
 connection root;
 grant show view on mysqltest.* to mysqltest_1@localhost;
-disconnect user1;
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
 explain select c from mysqltest.v1;
 show create view mysqltest.v1;
 explain select c from mysqltest.v2;
@@ -212,14 +228,18 @@ explain select c from mysqltest.v4;
 show create view mysqltest.v4;
 
 connection root;
-disconnect user1;
+revoke all privileges on mysqltest.* from mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
 
 #
 # UPDATE privileges on VIEW columns and whole VIEW
 #
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
+
 create table mysqltest.t1 (a int, b int, primary key(a));
 insert into mysqltest.t1 values (10,2), (20,3), (30,4), (40,5), (50,10);
 create table mysqltest.t2 (x int);
@@ -236,7 +256,8 @@ grant update on mysqltest.v1 to mysqltest_1@localhost;
 grant update on mysqltest.t3 to mysqltest_1@localhost;
 grant select on mysqltest.* to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
+use mysqltest;
 # update with rights on VIEW column
 update t2,v1 set v1.a=v1.a+v1.c where t2.x=v1.c;
 select * from t1;
@@ -260,15 +281,20 @@ update t2,v3 set v3.a=v3.a+v3.c where t2.x=v3.c;
 --error ER_TABLEACCESS_DENIED_ERROR
 update v3 set a=a+c;
 
+use test;
 connection root;
-disconnect user1;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
 
 #
 # DELETE privileges on VIEW
 #
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
+
 create table mysqltest.t1 (a int, b int, primary key(a));
 insert into mysqltest.t1 values (1,2), (2,3), (3,4), (4,5), (5,10);
 create table mysqltest.t2 (x int);
@@ -280,7 +306,7 @@ create user mysqltest_1@localhost;
 grant delete on mysqltest.v1 to mysqltest_1@localhost;
 grant select on mysqltest.* to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
 use mysqltest;
 # update with rights on VIEW column
 delete from v1 where c < 4;
@@ -293,15 +319,20 @@ delete v2 from t2,v2 where t2.x=v2.c;
 --error ER_TABLEACCESS_DENIED_ERROR
 delete from v2 where c < 4;
 
+use test;
 connection root;
-disconnect user1;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
 
 #
 # insert privileges on VIEW
 #
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
+
 create table mysqltest.t1 (a int, b int, primary key(a));
 insert into mysqltest.t1 values (1,2), (2,3);
 create table mysqltest.t2 (x int, y int);
@@ -313,7 +344,7 @@ create user mysqltest_1@localhost;
 grant insert on mysqltest.v1 to mysqltest_1@localhost;
 grant select on mysqltest.* to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
 use mysqltest;
 # update with rights on VIEW column
 insert into v1 values (5,6);
@@ -326,8 +357,9 @@ insert into v2 values (5,6);
 --error ER_TABLEACCESS_DENIED_ERROR
 insert into v2 select x,y from t2;
 
+use test;
 connection root;
-disconnect user1;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
 
@@ -335,7 +367,10 @@ drop database mysqltest;
 # test of CREATE VIEW privileges if we have limited privileges
 #
 connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
+
 create table mysqltest.t1 (a int, b int);
 create table mysqltest.t2 (a int, b int);
 
@@ -344,7 +379,7 @@ grant update on mysqltest.t1 to mysqltest_1@localhost;
 grant update(b) on mysqltest.t2 to mysqltest_1@localhost;
 grant create view,update on test.* to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,test);
+connection user1;
 
 create view v1 as select * from mysqltest.t1;
 create view v2 as select b from mysqltest.t2;
@@ -387,7 +422,7 @@ connection user1;
 create view v4 as select b+1 from mysqltest.t2;
 
 connection root;
-disconnect user1;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
 drop view v1,v2,v4;
@@ -395,30 +430,39 @@ drop view v1,v2,v4;
 #
 # user with global DB privileges
 #
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
 create table mysqltest.t1 (a int);
 create user mysqltest_1@localhost;
 grant all privileges on mysqltest.* to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
+use mysqltest;
 create view v1 as select * from t1;
+use test;
 
 connection root;
-disconnect user1;
+revoke all privileges on mysqltest.* from mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
 
 #
 # view definer grants revoking
 #
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
+
 create table mysqltest.t1 (a int, b int);
 
 create user mysqltest_1@localhost;
 grant select on mysqltest.t1 to mysqltest_1@localhost;
 grant create view,select on test.* to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,test);
+connection user1;
 
 create view v1 as select * from mysqltest.t1;
 
@@ -430,21 +474,26 @@ revoke select on mysqltest.t1 from mysqltest_1@localhost;
 select * from v1;
 grant select on mysqltest.t1 to mysqltest_1@localhost;
 select * from v1;
-
-disconnect user1;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop view v1;
 drop database mysqltest;
 
 #
-# rights on execution of view underlying functions (Bug#9505)
+# rights on execution of view underlying functiond (Bug#9505)
 #
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
 
 use mysqltest;
 create table t1 (a int);
 insert into t1 values (1);
 create table t2 (s1 int);
+--disable_warnings
+drop function if exists f2;
+--enable_warnings
 --enable_prepare_warnings
 delimiter //;
 create function f2 () returns int begin declare v int; select s1 from t2
@@ -463,7 +512,8 @@ grant select on v3 to mysqltest_1@localhost;
 grant select on v4 to mysqltest_1@localhost;
 grant select on v5 to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
+use mysqltest;
 select * from v1;
 select * from v2;
 --error ER_VIEW_INVALID
@@ -472,24 +522,34 @@ select * from v3;
 select * from v4;
 --error ER_VIEW_INVALID
 select * from v5;
+use test;
 
 connection root;
-disconnect user1;
+drop view v1, v2, v3, v4, v5;
+drop function f2;
+drop table t1, t2;
+use test;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
-use test;
 
 #
 # revertion of previous test, definer of view lost his/her rights to execute
 # function
 #
 
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
 
 use mysqltest;
 create table t1 (a int);
 insert into t1 values (1);
 create table t2 (s1 int);
+--disable_warnings
+drop function if exists f2;
+--enable_warnings
 --enable_prepare_warnings
 delimiter //;
 create function f2 () returns int begin declare v int; select s1 from t2
@@ -501,11 +561,13 @@ grant select on t1 to mysqltest_1@localhost;
 grant execute on function f2 to mysqltest_1@localhost;
 grant create view on mysqltest.* to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
+use mysqltest;
 create algorithm=TEMPTABLE view v1 as select f2() from t1;
 create algorithm=MERGE view v2 as select f2() from t1;
 create algorithm=TEMPTABLE SQL SECURITY INVOKER view v3 as select f2() from t1;
 create algorithm=MERGE SQL SECURITY INVOKER view v4 as select f2() from t1;
+use test;
 
 connection root;
 create view v5 as select * from v1;
@@ -519,15 +581,21 @@ select * from v4;
 --error ER_VIEW_INVALID
 select * from v5;
 
-disconnect user1;
+drop view v1, v2, v3, v4, v5;
+drop function f2;
+drop table t1, t2;
+use test;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
-use test;
 
 #
 # definer/invoker rights for columns
 #
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
 
 use mysqltest;
 create table t1 (a int);
@@ -539,12 +607,14 @@ grant select on v1 to mysqltest_1@localhost;
 grant create view on mysqltest.* to mysqltest_1@localhost;
 drop table v1;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
+use mysqltest;
 create algorithm=TEMPTABLE view v1 as select *, a as b from t1;
 create algorithm=MERGE view v2 as select *, a as b from t1;
 create algorithm=TEMPTABLE SQL SECURITY INVOKER view v3 as select *, a as b from t1;
 create algorithm=MERGE SQL SECURITY INVOKER view v4 as select *, a as b from t1;
 create view v5 as select * from v1;
+use test;
 
 connection root;
 revoke select on t1 from mysqltest_1@localhost;
@@ -557,11 +627,18 @@ select * from v4;
 --error ER_VIEW_INVALID
 select * from v5;
 
-disconnect user1;
+#drop view v1, v2, v3, v4, v5;
+drop table t1;
+use test;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
 
+
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
 
 use mysqltest;
 create table t1 (a int);
@@ -578,7 +655,8 @@ grant select on v3 to mysqltest_1@localhost;
 grant select on v4 to mysqltest_1@localhost;
 grant select on v5 to mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
+use mysqltest;
 select * from v1;
 select * from v2;
 --error ER_VIEW_INVALID
@@ -587,12 +665,15 @@ select * from v3;
 select * from v4;
 --error ER_VIEW_INVALID
 select * from v5;
+use test;
 
 connection root;
-disconnect user1;
+drop view v1, v2, v3, v4, v5;
+drop table t1;
+use test;
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM mysqltest_1@localhost;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
-use test;
 
 #
 # Bug#14256 definer in view definition is not fully qualified
@@ -634,7 +715,10 @@ drop user test14256;
 # Bug#14726 freeing stack variable in case of an error of opening a view when
 #           we have locked tables with LOCK TABLES statement.
 #
+connection root;
+--disable_warnings
 create database mysqltest;
+--enable_warnings
 
 use mysqltest;
 CREATE TABLE t1 (i INT);
@@ -643,22 +727,24 @@ SHOW CREATE VIEW v1;
 create user mysqltest_1@localhost;
 GRANT SELECT, LOCK TABLES ON mysqltest.* TO mysqltest_1@localhost;
 
-connect (user1,localhost,mysqltest_1,,mysqltest);
+connection user1;
 
+use mysqltest;
 LOCK TABLES v1 READ;
 --error ER_TABLEACCESS_DENIED_ERROR
 SHOW CREATE TABLE v1;
 UNLOCK TABLES;
+use test;
 
 connection root;
-disconnect user1;
+use test;
 drop user mysqltest_1@localhost;
 drop database mysqltest;
-use test;
 
 #
 # switch to default connection
 #
+disconnect user1;
 disconnect root;
 connection default;
 
@@ -694,7 +780,7 @@ GRANT UPDATE,SELECT ON mysqltest1.v_tus TO readonly@localhost;
 GRANT DELETE ON mysqltest1.v_td TO readonly@localhost;
 GRANT DELETE,SELECT ON mysqltest1.v_tds TO readonly@localhost;
 
-connect (n1,localhost,readonly,,mysqltest1);
+connect (n1,localhost,readonly,,);
 connection n1;
 
 --error ER_VIEW_INVALID
@@ -728,7 +814,6 @@ INSERT INTO mysqltest1.v_ti VALUES (100);
 UPDATE mysqltest1.v_ts SET x= 200 WHERE x = 100;
 --error ER_TABLEACCESS_DENIED_ERROR
 UPDATE mysqltest1.v_ts SET x= 200;
---error ER_COLUMNACCESS_DENIED_ERROR
 UPDATE mysqltest1.v_tu SET x= 200 WHERE x = 100;
 UPDATE mysqltest1.v_tus SET x= 200 WHERE x = 100;
 UPDATE mysqltest1.v_tu SET x= 200;
@@ -763,7 +848,7 @@ INSERT INTO t1 VALUES (1), (2), (3);
 CREATE DEFINER = 'no-such-user'@localhost VIEW v AS SELECT a from t1;
 #--warning ER_VIEW_OTHER_USER
 SHOW CREATE VIEW v;
---error ER_MALFORMED_DEFINER
+--error ER_NO_SUCH_USER
 SELECT * FROM v;
 DROP VIEW v;
 DROP TABLE t1;
@@ -777,7 +862,7 @@ eval GRANT ALL ON mysqltest_db1.* TO mysqltest_db1@localhost WITH GRANT OPTION;
 
 # The session with the non root user is needed.
 --replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
-connect (session1,localhost,mysqltest_db1,PWD,"*NO-ONE*");
+connect (session1,localhost,mysqltest_db1,PWD,test);
 
 CREATE SCHEMA mysqltest_db1 ;
 USE mysqltest_db1 ;
@@ -812,8 +897,10 @@ DROP USER mysqltest_db1@localhost;
 # Bug#20482 failure on Create join view with sources views/tables
 #           in different schemas
 #
+--disable_warnings
 CREATE DATABASE test1;
 CREATE DATABASE test2;
+--enable_warnings
 
 CREATE TABLE test1.t0 (a VARCHAR(20));
 CREATE TABLE test2.t1 (a VARCHAR(20));
@@ -832,6 +919,15 @@ DROP DATABASE test1;
 # Bug#20570 CURRENT_USER() in a VIEW with SQL SECURITY DEFINER returns
 #           invoker name
 #
+--disable_warnings
+DROP VIEW IF EXISTS v1;
+DROP VIEW IF EXISTS v2;
+DROP VIEW IF EXISTS v3;
+DROP FUNCTION IF EXISTS f1;
+DROP FUNCTION IF EXISTS f2;
+DROP PROCEDURE IF EXISTS p1;
+--enable_warnings
+
 CREATE SQL SECURITY DEFINER VIEW v1 AS SELECT CURRENT_USER() AS cu;
 
 CREATE FUNCTION f1() RETURNS VARCHAR(77) SQL SECURITY INVOKER
@@ -917,13 +1013,13 @@ connection inv2;
 SHOW GRANTS;
 SELECT CURRENT_USER, SYSTEM_USER(), USER();
 --echo for a user with SET USER
---error ER_MALFORMED_DEFINER
+--error ER_NO_SUCH_USER
 SELECT * FROM v1;
 disconnect inv2;
 
 connection root;
 --echo for a superuser
---error ER_MALFORMED_DEFINER
+--error ER_NO_SUCH_USER
 SELECT * FROM v1;
 DROP USER inv_17254@localhost;
 DROP DATABASE db17254;
@@ -933,6 +1029,10 @@ disconnect def;
 #
 # Bug#24404 strange bug with view+permission+prepared statement
 #
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest_db1;
+DROP DATABASE IF EXISTS mysqltest_db2;
+--enable_warnings
 --error 0,ER_CANNOT_USER
 DROP USER mysqltest_u1;
 --error 0,ER_CANNOT_USER
@@ -1023,9 +1123,9 @@ ALTER VIEW v3 AS SELECT f2 FROM t1;
 connection root;
 SHOW CREATE VIEW v3;
 
-disconnect u1;
 DROP USER u26813@localhost;
 DROP DATABASE db26813;
+disconnect u1;
 
 --echo #
 --echo # Bug#29908 A user can gain additional access through the ALTER VIEW.
@@ -1065,11 +1165,11 @@ SHOW CREATE VIEW v1;
 ALTER VIEW v2 AS SELECT f1 FROM t1;
 SHOW CREATE VIEW v2;
 
-disconnect u1;
-disconnect u2;
 DROP USER u29908_1@localhost;
 DROP USER u29908_2@localhost;
 DROP DATABASE mysqltest_29908;
+disconnect u1;
+disconnect u2;
 --echo #######################################################################
 
 #
@@ -1077,6 +1177,11 @@ DROP DATABASE mysqltest_29908;
 #
 
 # Prepare.
+
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest1;
+DROP DATABASE IF EXISTS mysqltest2;
+--enable_warnings
 
 CREATE DATABASE mysqltest1;
 CREATE DATABASE mysqltest2;
@@ -1169,7 +1274,9 @@ CREATE USER foo;
 GRANT SELECT (f1) ON t1 TO foo;
 GRANT SELECT (f1) ON v1 TO foo;
 
-connect (addconfoo, localhost, foo,,db1);
+connect (addconfoo, localhost, foo,,);
+connection addconfoo;
+USE db1;
 
 SELECT f1 FROM t1;
 --error ER_COLUMNACCESS_DENIED_ERROR
@@ -1528,12 +1635,17 @@ connection default;
 #verify that no privileges were left after the above
 select * from information_schema.table_privileges;
 
---echo # End of 5.0 tests.
+--echo End of 5.0 tests.
+
 
 #
 # Test that ALTER VIEW accepts DEFINER and ALGORITHM, see bug#16425.
 #
 connection default;
+--disable_warnings
+DROP VIEW IF EXISTS v1;
+DROP TABLE IF EXISTS t1;
+--enable_warnings
 
 CREATE TABLE t1 (i INT);
 CREATE VIEW v1 AS SELECT * FROM t1;
@@ -1606,7 +1718,7 @@ CREATE VIEW v1 AS SELECT a, b FROM t1;
 GRANT SELECT( a ) ON v1 TO mysqluser1@localhost;
 GRANT UPDATE( b ) ON t2 TO mysqluser1@localhost;
 
---connect (connection1, localhost, mysqluser1, ,mysqltest1)
+--connect (connection1, localhost, mysqluser1, , test)
 
 --error ER_TABLEACCESS_DENIED_ERROR
 SELECT * FROM mysqltest1.v1;
@@ -1822,8 +1934,12 @@ USE test;
 --echo # Bug#47734: Assertion failed: ! is_set() when locking a view with non-existing definer
 --echo #
 
+--disable_warnings
+DROP VIEW IF EXISTS v1;
+--enable_warnings
+
 CREATE DEFINER=`unknown`@`unknown` SQL SECURITY DEFINER VIEW v1 AS SELECT 1;
---error ER_MALFORMED_DEFINER
+--error ER_NO_SUCH_USER
 LOCK TABLES v1 READ;
 DROP VIEW v1;
 
@@ -1834,6 +1950,9 @@ DROP VIEW v1;
 --echo #
 --echo # Check that we correctly handle privileges for various combinations
 --echo # of INVOKER and DEFINER-security views using each other.
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest1;
+--enable_warnings
 CREATE DATABASE mysqltest1;
 USE mysqltest1;
 CREATE TABLE t1 (i INT);
@@ -1938,6 +2057,10 @@ DROP USER 'mysqluser2'@'%';
 --echo # Test for bug #11766767 - "59957: VIEW USING MERGE PERMISSIONS
 --echo #                           IN MULTI-TABLE UPDATE".
 --echo #
+--disable_warnings
+drop database if exists mysqltest1;
+drop database if exists mysqltest2;
+--enable_warnings
 --echo #
 --echo # Prepare playground. 
 create database mysqltest1;
@@ -1987,7 +2110,7 @@ create sql security invoker view v42 as
     where t2.id = v2.id;
 
 
-connect (conn_11766767, localhost, user_11766767,,mysqltest2);
+connect (conn_11766767, localhost, user_11766767,,);
 
 --echo #
 --echo # A) Check how we handle privilege checking in multi-update for 
@@ -2172,7 +2295,6 @@ CREATE SCHEMA foo;
 CREATE VIEW foo.v AS SELECT * FROM JSON_TABLE('[1,2,3]', '$[*]' COLUMNS (num INT PATH '$[0]')) AS jt;
 
 CREATE USER foo@localhost;
-GRANT SELECT on test.* to foo@localhost;
 connect (con1,localhost,foo,,);
 --error ER_TABLEACCESS_DENIED_ERROR
 SELECT * FROM foo.v;
@@ -2185,3 +2307,6 @@ disconnect con1;
 drop user foo@localhost;
 drop schema foo;
 --echo # End of 10.6 tests
+
+# Wait till we reached the initial number of concurrent sessions
+--source include/wait_until_count_sessions.inc

@@ -1,5 +1,4 @@
 --source include/innodb_page_size.inc
---source include/test_db_charset_latin1.inc
 
 SET @old_instant=
 (SELECT variable_value FROM information_schema.global_status
@@ -75,5 +74,3 @@ if ($innodb_page_size == 4k) {
 --error $error_code
 ALTER TABLE t1 ADD COLUMN f5 TEXT, ALGORITHM=INPLACE;
 DROP TABLE t1;
-
---source include/test_db_charset_restore.inc

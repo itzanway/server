@@ -35,8 +35,8 @@ Created 11/28/1995 Heikki Tuuri
 @param[in]      page    page number
 @param[in]      boffset byte offset
 @param[in,out]  mtr     mini-transaction */
-void flst_write_addr(const buf_block_t &block, byte *faddr,
-                     uint32_t page, uint16_t boffset, mtr_t *mtr)
+static void flst_write_addr(const buf_block_t& block, byte *faddr,
+                            uint32_t page, uint16_t boffset, mtr_t* mtr)
 {
   ut_ad(mtr->memo_contains_page_flagged(faddr, MTR_MEMO_PAGE_X_FIX |
                                         MTR_MEMO_PAGE_SX_FIX));
@@ -46,14 +46,6 @@ void flst_write_addr(const buf_block_t &block, byte *faddr,
   static_assert(FIL_ADDR_PAGE == 0, "compatibility");
   static_assert(FIL_ADDR_BYTE == 4, "compatibility");
   static_assert(FIL_ADDR_SIZE == 6, "compatibility");
-
-  if (!mtr->is_logged())
-  {
-    mach_write_to_4(faddr + FIL_ADDR_PAGE, page);
-    mach_write_to_2(faddr + FIL_ADDR_BYTE, boffset);
-    mtr->set_modified(block);
-    return;
-  }
 
   const bool same_page= mach_read_from_4(faddr + FIL_ADDR_PAGE) == page;
   const bool same_offset= mach_read_from_2(faddr + FIL_ADDR_BYTE) == boffset;
@@ -417,56 +409,45 @@ dberr_t flst_remove(buf_block_t *base, uint16_t boffset,
   return err;
 }
 
+#ifdef UNIV_DEBUG
 /** Validate a file-based list. */
-dberr_t flst_validate(const buf_block_t *base, uint16_t boffset,
-                      mtr_t *mtr) noexcept
+void flst_validate(const buf_block_t *base, uint16_t boffset, mtr_t *mtr)
 {
-  if (boffset >= base->physical_size())
-    return DB_CORRUPTION;
-
+  ut_ad(boffset < base->physical_size());
   ut_ad(mtr->memo_contains_flagged(base, MTR_MEMO_PAGE_X_FIX |
                                    MTR_MEMO_PAGE_SX_FIX));
 
   const uint32_t len= flst_get_len(base->page.frame + boffset);
   fil_addr_t addr= flst_get_first(base->page.frame + boffset);
-  dberr_t err= DB_SUCCESS;
 
   for (uint32_t i= len; i--; )
   {
-    if (addr.boffset < FIL_PAGE_DATA ||
-        addr.boffset >= base->physical_size() - FIL_PAGE_DATA_END)
-      return DB_CORRUPTION;
+    ut_ad(addr.boffset >= FIL_PAGE_DATA);
+    ut_ad(addr.boffset < base->physical_size() - FIL_PAGE_DATA_END);
     const buf_block_t *b=
       buf_page_get_gen(page_id_t(base->page.id().space(), addr.page),
-                       base->zip_size(), RW_SX_LATCH, nullptr, BUF_GET, mtr,
-                       &err);
-    if (!b)
-      return err;
+                       base->zip_size(), RW_SX_LATCH, nullptr, BUF_GET, mtr);
+    ut_ad(b);
     addr= flst_get_next_addr(b->page.frame + addr.boffset);
     mtr->release_last_page();
   }
 
-  if (addr.page != FIL_NULL)
-    return DB_CORRUPTION;
+  ut_ad(addr.page == FIL_NULL);
 
   addr= flst_get_last(base->page.frame + boffset);
 
   for (uint32_t i= len; i--; )
   {
-    if (addr.boffset < FIL_PAGE_DATA ||
-        addr.boffset >= base->physical_size() - FIL_PAGE_DATA_END)
-      return DB_CORRUPTION;
+    ut_ad(addr.boffset >= FIL_PAGE_DATA);
+    ut_ad(addr.boffset < base->physical_size() - FIL_PAGE_DATA_END);
     const buf_block_t *b=
       buf_page_get_gen(page_id_t(base->page.id().space(), addr.page),
-                       base->zip_size(), RW_SX_LATCH, nullptr, BUF_GET, mtr,
-                       &err);
-    if (!b)
-      return err;
+                       base->zip_size(), RW_SX_LATCH, nullptr, BUF_GET, mtr);
+    ut_ad(b);
     addr= flst_get_prev_addr(b->page.frame + addr.boffset);
     mtr->release_last_page();
   }
 
-  if (addr.page != FIL_NULL)
-    return DB_CORRUPTION;
-  return err;
+  ut_ad(addr.page == FIL_NULL);
 }
+#endif

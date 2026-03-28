@@ -73,6 +73,14 @@ static bool dict_mem_table_is_system(const char *name)
 	return false;
 }
 
+/** The start of the table basename suffix for partitioned tables */
+const char table_name_t::part_suffix[4]
+#ifdef _WIN32
+= "#p#";
+#else
+= "#P#";
+#endif
+
 /** Display an identifier.
 @param[in,out]	s	output stream
 @param[in]	id_name	SQL identifier (other than table name)
@@ -151,7 +159,7 @@ dict_table_t *dict_table_t::create(const span<const char> &name,
   table->mdl_name.m_name= table->name.m_name;
   table->is_system_db= dict_mem_table_is_system(table->name.m_name);
   table->space= space;
-  table->space_id= space ? space->id : UINT32_MAX;
+  table->space_id= space ? space->id : ULINT_UNDEFINED;
   table->n_t_cols= static_cast<unsigned>(n_cols + DATA_N_SYS_COLS) &
     dict_index_t::MAX_N_FIELDS;
   table->n_v_cols= static_cast<unsigned>(n_v_cols) &
@@ -683,8 +691,8 @@ dict_mem_table_col_rename(
 /*======================*/
 	dict_table_t*	table,	/*!< in/out: table */
 	ulint		nth_col,/*!< in: column index */
-	const LEX_CSTRING &from,/*!< in: old column name */
-	const LEX_CSTRING &to,	/*!< in: new column name */
+	const char*	from,	/*!< in: old column name */
+	const char*	to,	/*!< in: new column name */
 	bool		is_virtual)
 				/*!< in: if this is a virtual column */
 {
@@ -699,10 +707,10 @@ dict_mem_table_col_rename(
 		s += len + 1;
 	}
 
-	ut_ad(Lex_ident_column(from).streq(Lex_cstring_strlen(s)));
+	ut_ad(!my_strcasecmp(system_charset_info, from, s));
 
 	dict_mem_table_col_rename_low(table, static_cast<unsigned>(nth_col),
-				      to.str, s, is_virtual);
+				      to, s, is_virtual);
 }
 
 /**********************************************************************//**
@@ -799,37 +807,34 @@ dict_mem_foreign_create(void)
 	DBUG_RETURN(foreign);
 }
 
-/** Duplicate a string to a memory heap, with lower-case conversion
-@param heap  memory heap where string is allocated
-@param cs    the character set of the string
-@param str   the source string
-@return own: a NUL-terminated lower-cased copy of str */
-static LEX_STRING mem_heap_alloc_casedn_z(mem_heap_t *heap,
-                                          CHARSET_INFO *cs,
-                                          const LEX_CSTRING &str) noexcept
-{
-  size_t nbytes= str.length * cs->casedn_multiply() + 1;
-  LEX_STRING res;
-  res.str= static_cast<char*>(mem_heap_alloc(heap, nbytes));
-  res.length= cs->casedn_z(str.str, str.length, res.str, nbytes);
-  return res;
-}
-
 /**********************************************************************//**
 Sets the foreign_table_name_lookup pointer based on the value of
 lower_case_table_names.  If that is 0 or 1, foreign_table_name_lookup
 will point to foreign_table_name.  If 2, then another string is
 allocated from foreign->heap and set to lower case. */
 void
-dict_foreign_t::foreign_table_name_lookup_set()
+dict_mem_foreign_table_name_lookup_set(
+/*===================================*/
+	dict_foreign_t*	foreign,	/*!< in/out: foreign struct */
+	bool		do_alloc)	/*!< in: is an alloc needed */
 {
 	if (lower_case_table_names == 2) {
-		LEX_STRING str= mem_heap_alloc_casedn_z(heap,
-				system_charset_info,
-				Lex_cstring_strlen(foreign_table_name));
-		foreign_table_name_lookup= str.str;
+		if (do_alloc) {
+			ulint	len;
+
+			len = strlen(foreign->foreign_table_name) + 1;
+
+			foreign->foreign_table_name_lookup =
+				static_cast<char*>(
+					mem_heap_alloc(foreign->heap, len));
+		}
+		strcpy(foreign->foreign_table_name_lookup,
+		       foreign->foreign_table_name);
+		my_casedn_str(system_charset_info,
+			      foreign->foreign_table_name_lookup);
 	} else {
-		foreign_table_name_lookup = foreign_table_name;
+		foreign->foreign_table_name_lookup
+			= foreign->foreign_table_name;
 	}
 }
 
@@ -839,15 +844,28 @@ lower_case_table_names.  If that is 0 or 1, referenced_table_name_lookup
 will point to referenced_table_name.  If 2, then another string is
 allocated from foreign->heap and set to lower case. */
 void
-dict_foreign_t::referenced_table_name_lookup_set()
+dict_mem_referenced_table_name_lookup_set(
+/*======================================*/
+	dict_foreign_t*	foreign,	/*!< in/out: foreign struct */
+	ibool		do_alloc)	/*!< in: is an alloc needed */
 {
 	if (lower_case_table_names == 2) {
-		LEX_STRING str= mem_heap_alloc_casedn_z(heap,
-				system_charset_info,
-				Lex_cstring_strlen(referenced_table_name));
-		referenced_table_name_lookup = str.str;
+		if (do_alloc) {
+			ulint	len;
+
+			len = strlen(foreign->referenced_table_name) + 1;
+
+			foreign->referenced_table_name_lookup =
+				static_cast<char*>(
+					mem_heap_alloc(foreign->heap, len));
+		}
+		strcpy(foreign->referenced_table_name_lookup,
+		       foreign->referenced_table_name);
+		my_casedn_str(system_charset_info,
+			      foreign->referenced_table_name_lookup);
 	} else {
-		referenced_table_name_lookup = referenced_table_name;
+		foreign->referenced_table_name_lookup
+			= foreign->referenced_table_name;
 	}
 }
 
@@ -944,7 +962,7 @@ dict_mem_fill_vcol_set_for_base_col(
 		for (ulint j = 0; j < unsigned{v_col->num_base}; j++) {
 			if (strcmp(col_name, dict_table_get_col_name(
 					table,
-					v_col->base_col[j]->ind).str) == 0) {
+					v_col->base_col[j]->ind)) == 0) {
 
 				if (*v_cols == NULL) {
 					*v_cols = UT_NEW_NOKEY(dict_vcol_set());
@@ -1024,6 +1042,32 @@ dict_mem_table_free_foreign_vcol_set(
 			foreign->v_cols = NULL;
 		}
 	}
+}
+
+/**********************************************************************//**
+Adds a field definition to an index. NOTE: does not take a copy
+of the column name if the field is a column. The memory occupied
+by the column name may be released only after publishing the index. */
+void
+dict_mem_index_add_field(
+/*=====================*/
+	dict_index_t*	index,		/*!< in: index */
+	const char*	name,		/*!< in: column name */
+	ulint		prefix_len)	/*!< in: 0 or the column prefix length
+					in a MySQL index like
+					INDEX (textcol(25)) */
+{
+	dict_field_t*	field;
+
+	ut_ad(index);
+	ut_ad(index->magic_n == DICT_INDEX_MAGIC_N);
+
+	index->n_def++;
+
+	field = dict_index_get_nth_field(index, unsigned(index->n_def) - 1);
+
+	field->name = name;
+	field->prefix_len = prefix_len & ((1U << 12) - 1);
 }
 
 /**********************************************************************//**
@@ -1280,11 +1324,13 @@ bool dict_table_t::deserialise_columns(const byte* metadata, ulint len)
 }
 
 /** Check if record in clustered index is historical row.
-@param[in,out]	mtr	mini-transaction
 @param[in]	rec	clustered row
 @param[in]	offsets	offsets
 @return true if row is historical */
-bool dict_index_t::vers_history_row(const rec_t *rec, const rec_offs *offsets)
+bool
+dict_index_t::vers_history_row(
+	const rec_t*		rec,
+	const rec_offs*		offsets)
 {
 	ut_ad(is_primary());
 
@@ -1298,17 +1344,15 @@ bool dict_index_t::vers_history_row(const rec_t *rec, const rec_offs *offsets)
 		return 0 != memcmp(data, trx_id_max_bytes, len);
 	}
 	ut_ad(len == sizeof timestamp_max_bytes);
-	return !IS_MAX_TIMESTAMP(data);
+	return 0 != memcmp(data, timestamp_max_bytes, len);
 }
 
 /** Check if record in secondary index is historical row.
-@param[in,out]	mtr	mini-transaction
 @param[in]	rec	record in a secondary index
 @param[out]	history_row true if row is historical
 @return true on error */
 bool
 dict_index_t::vers_history_row(
-	mtr_t* mtr,
 	const rec_t* rec,
 	bool &history_row)
 {
@@ -1329,52 +1373,32 @@ dict_index_t::vers_history_row(
 		insert into t1 values (1, 1);
 	 */
 	bool error = false;
+	mem_heap_t* heap = NULL;
 	dict_index_t* clust_index = NULL;
 	rec_offs offsets_[REC_OFFS_NORMAL_SIZE];
 	rec_offs* offsets = offsets_;
 	rec_offs_init(offsets_);
 
-	const auto sp = mtr->get_savepoint();
+	mtr_t mtr;
+	mtr.start();
 
 	rec_t* clust_rec =
-	    row_get_clust_rec(BTR_SEARCH_LEAF, rec, this, &clust_index, mtr);
+	    row_get_clust_rec(BTR_SEARCH_LEAF, rec, this, &clust_index, &mtr);
 	if (clust_rec) {
-		mem_heap_t* heap = NULL;
 		offsets = rec_get_offsets(clust_rec, clust_index, offsets,
 					  clust_index->n_core_fields,
 					  ULINT_UNDEFINED, &heap);
 
 		history_row = clust_index->vers_history_row(clust_rec, offsets);
-		if (heap) {
-			mem_heap_free(heap);
-		}
         } else {
 		ib::error() << "foreign constraints: secondary index is out of "
 			       "sync";
 		ut_ad("secondary index is out of sync" == 0);
 		error = true;
 	}
-
-	mtr->rollback_to_savepoint(sp);
+	mtr.commit();
+	if (heap) {
+		mem_heap_free(heap);
+	}
 	return(error);
-}
-
-/** Checks whether the file name belongs to a partition of a table.
-@param	file_name	file name
-@return pointer to the end of the table name part of the file name
-@retval nullptr  if the file name does not belong to a partition. */
-const char *dict_is_partition(const char *file_name)
-{
-  /* We look for pattern #P# to see if the table is partitioned
-  MariaDB table. We also look for #p# pattern, because it was
-  previously used on Windows. */
-  for (const char *p= file_name;; p++)
-  {
-    p= strchr(p, '#');
-    if (!p)
-      break;
-    if ((p[1] == 'P' || p[1] == 'p') && p[2] == '#')
-      return p;
-  }
-  return nullptr;
 }

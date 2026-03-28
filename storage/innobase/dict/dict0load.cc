@@ -53,7 +53,6 @@ referenced table is pushed into the output stack (fk_tables), if it is not
 NULL.  These tables must be subsequently loaded so that all the foreign
 key constraints are loaded into memory.
 
-@param[in,out]	mtr		mini-transaction
 @param[in]	name		Table name in the db/tablename format
 @param[in]	ignore_err	Error to be ignored when loading table
 				and its index definition
@@ -62,8 +61,7 @@ key constraints are loaded into memory.
 				constraints are loaded.
 @return table, possibly with file_unreadable flag set
 @retval nullptr if the table does not exist */
-static dict_table_t *dict_load_table_one(mtr_t &mtr,
-                                         const span<const char> &name,
+static dict_table_t *dict_load_table_one(const span<const char> &name,
                                          dict_err_ignore_t ignore_err,
                                          dict_names_t &fk_tables);
 
@@ -170,28 +168,40 @@ name_of_col_is(
 					      dict_index_get_nth_field(
 						      index, i)));
 
-	return(strcmp(name, dict_table_get_col_name(table, tmp).str) == 0);
+	return(strcmp(name, dict_table_get_col_name(table, tmp)) == 0);
 }
 #endif /* UNIV_DEBUG */
 
+/********************************************************************//**
+This function gets the next system table record as it scans the table.
+@return the next record if found, NULL if end of scan */
+static
 const rec_t*
-dict_getnext_system_low(btr_pcur_t *pcur, mtr_t *mtr)
+dict_getnext_system_low(
+/*====================*/
+	btr_pcur_t*	pcur,		/*!< in/out: persistent cursor to the
+					record*/
+	mtr_t*		mtr)		/*!< in: the mini-transaction */
 {
-  rec_t *rec = nullptr;
-  while (!rec)
-  {
-    btr_pcur_move_to_next_user_rec(pcur, mtr);
-    rec = btr_pcur_get_rec(pcur);
-    if (!btr_pcur_is_on_user_rec(pcur))
-    {
-      /* end of index */
-      btr_pcur_close(pcur);
-      return nullptr;
-    }
-  }
-  /* Get a record, let's save the position */
-  btr_pcur_store_position(pcur, mtr);
-  return rec;
+	rec_t*	rec = NULL;
+
+	while (!rec) {
+		btr_pcur_move_to_next_user_rec(pcur, mtr);
+
+		rec = btr_pcur_get_rec(pcur);
+
+		if (!btr_pcur_is_on_user_rec(pcur)) {
+			/* end of index */
+			btr_pcur_close(pcur);
+
+			return(NULL);
+		}
+	}
+
+	/* Get a record, let's save the position */
+	btr_pcur_store_position(pcur, mtr);
+
+	return(rec);
 }
 
 /********************************************************************//**
@@ -603,10 +613,11 @@ dict_sys_tables_type_valid(ulint type, bool not_redundant)
 @param[in]	not_redundant	whether ROW_FORMAT=REDUNDANT is not used
 @return	table flags */
 static
-uint32_t dict_sys_tables_type_to_tf(uint32_t type, bool not_redundant)
+ulint
+dict_sys_tables_type_to_tf(ulint type, bool not_redundant)
 {
 	ut_ad(dict_sys_tables_type_valid(type, not_redundant));
-	uint32_t flags = not_redundant ? 1 : 0;
+	ulint	flags = not_redundant ? 1 : 0;
 
 	/* ZIP_SSIZE, ATOMIC_BLOBS, DATA_DIR, PAGE_COMPRESSION,
 	PAGE_COMPRESSION_LEVEL are the same. */
@@ -644,14 +655,15 @@ dict_sys_tables_rec_read(
 	bool			uncommitted,
 	mtr_t*			mtr,
 	table_id_t*		table_id,
-	uint32_t*		space_id,
-	uint32_t*		n_cols,
-	uint32_t*		flags,
-	uint32_t*		flags2,
+	ulint*			space_id,
+	ulint*			n_cols,
+	ulint*			flags,
+	ulint*			flags2,
 	trx_id_t*		trx_id)
 {
 	const byte*	field;
 	ulint		len;
+	ulint		type;
 	mem_heap_t*	heap = nullptr;
 
 	field = rec_get_nth_field_old(
@@ -667,7 +679,7 @@ dict_sys_tables_rec_read(
 			rec, index, nullptr, true, ULINT_UNDEFINED, &heap);
 		const rec_t* old_vers;
 		row_vers_build_for_semi_consistent_read(
-			rec, mtr, index, &offsets, &heap,
+			nullptr, rec, mtr, index, &offsets, &heap,
 			heap, &old_vers, nullptr);
 		mtr->rollback_to_savepoint(savepoint);
 		rec = old_vers;
@@ -709,7 +721,7 @@ dict_sys_tables_rec_read(
 	field = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_TABLES__TYPE, &len);
 	ut_a(len == 4);
-	uint32_t type = mach_read_from_4(field);
+	type = mach_read_from_4(field);
 
 	/* Handle MDEV-12873 InnoDB SYS_TABLES.TYPE incompatibility
 	for PAGE_COMPRESSED=YES in MariaDB 10.2.2 to 10.2.6.
@@ -800,8 +812,8 @@ dict_sys_tables_rec_read(
 	if (!dict_sys_tables_type_valid(type, not_redundant)) {
 		sql_print_error("InnoDB: Table %.*s in InnoDB"
 				" data dictionary contains invalid flags."
-				" SYS_TABLES.TYPE=" UINT32PF
-				" SYS_TABLES.N_COLS=" UINT32PF,
+				" SYS_TABLES.TYPE=" ULINTPF
+				" SYS_TABLES.N_COLS=" ULINTPF,
 				int(rec_get_field_start_offs(rec, 1)), rec,
 				type, *n_cols);
 err_exit:
@@ -831,8 +843,8 @@ err_exit:
 			sql_print_error("InnoDB: Table %.*s in InnoDB"
 					" data dictionary"
 					" contains invalid flags."
-					" SYS_TABLES.TYPE=" UINT32PF
-					" SYS_TABLES.MIX_LEN=" UINT32PF,
+					" SYS_TABLES.TYPE=" ULINTPF
+					" SYS_TABLES.MIX_LEN=" ULINTPF,
 					int(rec_get_field_start_offs(rec, 1)),
 					rec,
 					type, *flags2);
@@ -877,19 +889,20 @@ static uint32_t dict_find_max_space_id(btr_pcur_t *pcur, mtr_t *mtr)
 /** Check MAX(SPACE) FROM SYS_TABLES and store it in fil_system.
 Open each data file if an encryption plugin has been loaded.
 
-@param spaces  set of tablespace files to open
-@param upgrade whether we need to invoke ibuf_upgrade() */
-void dict_load_tablespaces(const std::set<uint32_t> *spaces, bool upgrade)
+@param spaces  set of tablespace files to open */
+void dict_check_tablespaces_and_store_max_id(const std::set<uint32_t> *spaces)
 {
-	uint32_t	max_space_id = 0;
+	ulint		max_space_id = 0;
 	btr_pcur_t	pcur;
-	mtr_t		mtr{nullptr};
+	mtr_t		mtr;
+
+	DBUG_ENTER("dict_check_tablespaces_and_store_max_id");
 
 	mtr.start();
 
 	dict_sys.lock(SRW_LOCK_CALL);
 
-	if (!spaces && !upgrade
+	if (!spaces && ibuf.empty
 	    && !encryption_key_id_exists(FIL_DEFAULT_ENCRYPTION_KEY)) {
 		max_space_id = dict_find_max_space_id(&pcur, &mtr);
 		goto done;
@@ -900,10 +913,10 @@ void dict_load_tablespaces(const std::set<uint32_t> *spaces, bool upgrade)
 	     rec; rec = dict_getnext_system_low(&pcur, &mtr)) {
 		ulint		len;
 		table_id_t	table_id;
-		uint32_t	space_id;
-		uint32_t	n_cols;
-		uint32_t	flags;
-		uint32_t	flags2;
+		ulint		space_id;
+		ulint		n_cols;
+		ulint		flags;
+		ulint		flags2;
 
 		/* If a table record is not useable, ignore it and continue
 		on to the next record. Error messages were logged. */
@@ -991,6 +1004,8 @@ done:
 	fil_set_max_space_id_if_bigger(max_space_id);
 
 	dict_sys.unlock();
+
+	DBUG_VOID_RETURN;
 }
 
 /** Error message for a delete-marked record in dict_load_column_low() */
@@ -1077,7 +1092,7 @@ err_len:
 			rec, index, nullptr, true, ULINT_UNDEFINED, &heap);
 		const rec_t* old_vers;
 		row_vers_build_for_semi_consistent_read(
-			rec, mtr, index, &offsets, &heap,
+			nullptr, rec, mtr, index, &offsets, &heap,
 			heap, &old_vers, nullptr);
 		mtr->rollback_to_savepoint(savepoint);
 		rec = old_vers;
@@ -1138,7 +1153,7 @@ err_len:
 
 			prtype = dtype_form_prtype(
 				prtype,
-				default_charset_info->number);
+				data_mysql_default_charset_coll);
 		}
 	}
 
@@ -1292,7 +1307,6 @@ err_len:
 }
 
 /** Load the definitions for table columns.
-@param mtr	       mini-transaction
 @param table           table
 @param use_uncommitted 0=READ COMMITTED, 1=detect, 2=READ UNCOMMITTED
 @param heap            memory heap for temporary storage
@@ -1301,11 +1315,11 @@ err_len:
 @retval DB_SUCCESS_LOCKED_REC on success if use_uncommitted=1
 and instant ADD/DROP/reorder was detected */
 MY_ATTRIBUTE((nonnull, warn_unused_result))
-static dberr_t dict_load_columns(mtr_t &mtr,
-                                 dict_table_t *table, unsigned use_uncommitted,
+static dberr_t dict_load_columns(dict_table_t *table, unsigned use_uncommitted,
                                  mem_heap_t *heap)
 {
 	btr_pcur_t	pcur;
+	mtr_t		mtr;
 	ulint		n_skipped = 0;
 
 	ut_ad(dict_sys.locked());
@@ -1322,7 +1336,7 @@ static dberr_t dict_load_columns(mtr_t &mtr,
 
 	dfield_t dfield;
 	dtuple_t tuple{
-		0,1,1,0,&dfield,nullptr
+		0,1,1,&dfield,0,nullptr
 #ifdef UNIV_DEBUG
 		, DATA_TUPLE_MAGIC_N
 #endif
@@ -1376,8 +1390,8 @@ static dberr_t dict_load_columns(mtr_t &mtr,
 		/* Note: Currently we have one DOC_ID column that is
 		shared by all FTS indexes on a table. And only non-virtual
 		column can be used for FULLTEXT index */
-		if (Lex_ident_column(Lex_cstring_strlen(name)).
-		      streq(FTS_DOC_ID)
+		if (innobase_strcasecmp(name,
+					FTS_DOC_ID_COL_NAME) == 0
 		    && nth_v_col == ULINT_UNDEFINED) {
 			dict_col_t*	col;
 			/* As part of normal loading of tables the
@@ -1419,15 +1433,13 @@ func_exit:
 }
 
 /** Loads SYS_VIRTUAL info for one virtual column
-@param mtr         mini-transaction
 @param table	   table definition
 @param uncommitted false=READ COMMITTED, true=READ UNCOMMITTED
 @param nth_v_col   virtual column position */
 MY_ATTRIBUTE((nonnull, warn_unused_result))
 static
 dberr_t
-dict_load_virtual_col(mtr_t &mtr, dict_table_t *table, bool uncommitted,
-                      ulint nth_v_col)
+dict_load_virtual_col(dict_table_t *table, bool uncommitted, ulint nth_v_col)
 {
 	const dict_v_col_t* v_col = dict_table_get_nth_v_col(table, nth_v_col);
 
@@ -1437,6 +1449,7 @@ dict_load_virtual_col(mtr_t &mtr, dict_table_t *table, bool uncommitted,
 
 	dict_index_t*	sys_virtual_index;
 	btr_pcur_t	pcur;
+	mtr_t		mtr;
 
 	ut_ad(dict_sys.locked());
 
@@ -1450,7 +1463,7 @@ dict_load_virtual_col(mtr_t &mtr, dict_table_t *table, bool uncommitted,
 
 	dfield_t dfield[2];
 	dtuple_t tuple{
-		0,2,2,0,dfield,nullptr
+		0,2,2,dfield,0,nullptr
 #ifdef UNIV_DEBUG
 		, DATA_TUPLE_MAGIC_N
 #endif
@@ -1506,15 +1519,13 @@ func_exit:
 }
 
 /** Loads info from SYS_VIRTUAL for virtual columns.
-@param mtr         mini-transaction
-@param table       table definition
+@param table	   table definition
 @param uncommitted false=READ COMMITTED, true=READ UNCOMMITTED */
 MY_ATTRIBUTE((nonnull, warn_unused_result))
-static dberr_t dict_load_virtual(mtr_t &mtr, dict_table_t *table,
-                                 bool uncommitted)
+static dberr_t dict_load_virtual(dict_table_t *table, bool uncommitted)
 {
   for (ulint i= 0; i < table->n_v_cols; i++)
-    if (dberr_t err= dict_load_virtual_col(mtr, table, uncommitted, i))
+    if (dberr_t err= dict_load_virtual_col(table, uncommitted, i))
       return err;
   return DB_SUCCESS;
 }
@@ -1552,7 +1563,6 @@ dict_load_field_low(
 	ulint		len;
 	unsigned	pos_and_prefix_len;
 	unsigned	prefix_len;
-	bool		descending;
 	bool		first_field;
 	ulint		position;
 
@@ -1605,12 +1615,10 @@ err_len:
 	}
 
 	if (first_field || pos_and_prefix_len > 0xFFFFUL) {
-		prefix_len = pos_and_prefix_len & 0x7FFFUL;
-		descending = (pos_and_prefix_len & 0x8000UL);
+		prefix_len = pos_and_prefix_len & 0xFFFFUL;
 		position = (pos_and_prefix_len & 0xFFFF0000UL)  >> 16;
 	} else {
 		prefix_len = 0;
-		descending = false;
 		position = pos_and_prefix_len & 0xFFFFUL;
 	}
 
@@ -1638,7 +1646,7 @@ err_len:
 			rec, sys_field, nullptr, true, ULINT_UNDEFINED, &heap);
 		const rec_t* old_vers;
 		row_vers_build_for_semi_consistent_read(
-			rec, mtr, sys_field, &offsets, &heap,
+			nullptr, rec, mtr, sys_field, &offsets, &heap,
 			heap, &old_vers, nullptr);
 		mtr->rollback_to_savepoint(savepoint);
 		rec = old_vers;
@@ -1660,12 +1668,11 @@ err_len:
 	if (index) {
 		dict_mem_index_add_field(
 			index, mem_heap_strdupl(heap, (const char*) field, len),
-			prefix_len, descending);
+			prefix_len);
 	} else {
 		sys_field->name = mem_heap_strdupl(
 			heap, (const char*) field, len);
 		sys_field->prefix_len = prefix_len & ((1U << 12) - 1);
-		sys_field->descending = descending;
 		*pos = position;
 	}
 
@@ -1674,19 +1681,20 @@ err_len:
 
 /**
 Load definitions for index fields.
-@param mtr         mini-transaction
 @param index       index whose fields are to be loaded
 @param uncommitted false=READ COMMITTED, true=READ UNCOMMITTED
 @param heap        memory heap for temporary storage
 @return error code
 @return DB_SUCCESS if the fields were loaded successfully */
-static dberr_t dict_load_fields(mtr_t &mtr, dict_index_t *index,
-                                bool uncommitted, mem_heap_t *heap)
+static dberr_t dict_load_fields(dict_index_t *index, bool uncommitted,
+                                mem_heap_t *heap)
 {
 	btr_pcur_t	pcur;
+	mtr_t		mtr;
 
 	ut_ad(dict_sys.locked());
-	auto sp = mtr.get_savepoint();
+
+	mtr.start();
 
 	dict_index_t* sys_index = dict_sys.sys_fields->indexes.start;
 	ut_ad(!dict_sys.sys_fields->not_redundant());
@@ -1695,7 +1703,7 @@ static dberr_t dict_load_fields(mtr_t &mtr, dict_index_t *index,
 
 	dfield_t dfield;
 	dtuple_t tuple{
-		0,1,1,0,&dfield,nullptr
+		0,1,1,&dfield,0,nullptr
 #ifdef UNIV_DEBUG
 		, DATA_TUPLE_MAGIC_N
 #endif
@@ -1742,7 +1750,7 @@ static dberr_t dict_load_fields(mtr_t &mtr, dict_index_t *index,
 	}
 
 func_exit:
-	mtr.rollback_to_savepoint(sp);
+	mtr.commit();
 	return error;
 }
 
@@ -1854,7 +1862,7 @@ err_len:
 			rec, sys_index, nullptr, true, ULINT_UNDEFINED, &heap);
 		const rec_t* old_vers;
 		row_vers_build_for_semi_consistent_read(
-			rec, mtr, sys_index, &offsets, &heap,
+			nullptr, rec, mtr, sys_index, &offsets, &heap,
 			heap, &old_vers, nullptr);
 		mtr->rollback_to_savepoint(savepoint);
 		rec = old_vers;
@@ -1924,7 +1932,6 @@ err_len:
 }
 
 /** Load definitions for table indexes. Adds them to the data dictionary cache.
-@param mtr         mini-transaction
 @param table       table definition
 @param uncommitted false=READ COMMITTED, true=READ UNCOMMITTED
 @param heap        memory heap for temporary storage
@@ -1933,16 +1940,18 @@ err_len:
 @retval DB_SUCCESS if all indexes were successfully loaded
 @retval DB_CORRUPTION if corruption of dictionary table
 @retval DB_UNSUPPORTED if table has unknown index type */
-dberr_t dict_load_indexes(mtr_t *mtr, dict_table_t *table, bool uncommitted,
+static MY_ATTRIBUTE((nonnull))
+dberr_t dict_load_indexes(dict_table_t *table, bool uncommitted,
                           mem_heap_t *heap, dict_err_ignore_t ignore_err)
 {
 	dict_index_t*	sys_index;
 	btr_pcur_t	pcur;
 	byte		table_id[8];
+	mtr_t		mtr;
 
 	ut_ad(dict_sys.locked());
 
-	mtr->start();
+	mtr.start();
 
 	sys_index = dict_sys.sys_indexes->indexes.start;
 	ut_ad(!dict_sys.sys_indexes->not_redundant());
@@ -1953,7 +1962,7 @@ dberr_t dict_load_indexes(mtr_t *mtr, dict_table_t *table, bool uncommitted,
 
 	dfield_t dfield;
 	dtuple_t tuple{
-		0,1,1,0,&dfield,nullptr
+		0,1,1,&dfield,0,nullptr
 #ifdef UNIV_DEBUG
 		, DATA_TUPLE_MAGIC_N
 #endif
@@ -1964,7 +1973,7 @@ dberr_t dict_load_indexes(mtr_t *mtr, dict_table_t *table, bool uncommitted,
 	pcur.btr_cur.page_cur.index = sys_index;
 
 	dberr_t error = btr_pcur_open_on_user_rec(&tuple, BTR_SEARCH_LEAF,
-						  &pcur, mtr);
+						  &pcur, &mtr);
 	if (error != DB_SUCCESS) {
 		goto func_exit;
 	}
@@ -1997,7 +2006,7 @@ dberr_t dict_load_indexes(mtr_t *mtr, dict_table_t *table, bool uncommitted,
 		}
 
 		err_msg = dict_load_index_low(table_id, uncommitted, heap, rec,
-					      mtr, table, &index);
+					      &mtr, table, &index);
 		ut_ad(!index == !!err_msg);
 
 		if (err_msg == dict_load_index_none) {
@@ -2105,8 +2114,7 @@ corrupted:
 			of the database server */
 			dict_mem_index_free(index);
 		} else {
-			error = dict_load_fields(*mtr, index, uncommitted,
-						 heap);
+			error = dict_load_fields(index, uncommitted, heap);
 			if (error != DB_SUCCESS) {
 				goto func_exit;
 			}
@@ -2136,7 +2144,7 @@ corrupted:
 #endif /* UNIV_DEBUG */
 		}
 next_rec:
-		btr_pcur_move_to_next_user_rec(&pcur, mtr);
+		btr_pcur_move_to_next_user_rec(&pcur, &mtr);
 	}
 
 	if (!dict_table_get_first_index(table)
@@ -2150,7 +2158,7 @@ next_rec:
 
 	if (table->fts != NULL) {
 		dict_index_t *idx = dict_table_get_index_on_name(
-			table, FTS_DOC_ID_INDEX.str);
+			table, FTS_DOC_ID_INDEX_NAME);
 		if (idx && dict_index_is_unique(idx)) {
 			table->fts_doc_id_index = idx;
 		}
@@ -2165,7 +2173,7 @@ next_rec:
 	}
 
 func_exit:
-	mtr->commit();
+	mtr.commit();
 	return error;
 }
 
@@ -2181,9 +2189,13 @@ const char *dict_load_table_low(mtr_t *mtr, bool uncommitted,
                                 const rec_t *rec, dict_table_t **table)
 {
 	table_id_t	table_id;
-	uint32_t	space_id, t_num, flags, flags2;
-	ulint		n_cols, n_v_col;
+	ulint		space_id;
+	ulint		n_cols;
+	ulint		t_num;
+	ulint		flags;
+	ulint		flags2;
 	trx_id_t	trx_id;
+	ulint		n_v_col;
 
 	if (const char* error_text = dict_sys_tables_rec_check(rec)) {
 		*table = NULL;
@@ -2290,8 +2302,8 @@ dict_load_tablespace(
 		table->file_unreadable = true;
 
 		if (!(ignore_err & DICT_ERR_IGNORE_RECOVER_LOCK)) {
-			sql_print_error("InnoDB: Failed to load tablespace %"
-					PRIu32 " for table %s",
+			sql_print_error("InnoDB: Failed to load tablespace "
+					ULINTPF " for table %s",
 					table->space_id, table->name.m_name);
 		}
 	}
@@ -2307,7 +2319,6 @@ referenced table is pushed into the output stack (fk_tables), if it is not
 NULL.  These tables must be subsequently loaded so that all the foreign
 key constraints are loaded into memory.
 
-@param[in,out]	mtr		mini-transaction
 @param[in]	name		Table name in the db/tablename format
 @param[in]	ignore_err	Error to be ignored when loading table
 				and its index definition
@@ -2316,12 +2327,12 @@ key constraints are loaded into memory.
 				constraints are loaded.
 @return table, possibly with file_unreadable flag set
 @retval nullptr if the table does not exist */
-static dict_table_t *dict_load_table_one(mtr_t &mtr,
-                                         const span<const char> &name,
+static dict_table_t *dict_load_table_one(const span<const char> &name,
                                          dict_err_ignore_t ignore_err,
                                          dict_names_t &fk_tables)
 {
 	btr_pcur_t	pcur;
+	mtr_t		mtr;
 
 	DBUG_ENTER("dict_load_table_one");
 	DBUG_PRINT("dict_load_table_one",
@@ -2344,7 +2355,7 @@ static dict_table_t *dict_load_table_one(mtr_t &mtr,
 
 	dfield_t dfield;
 	dtuple_t tuple{
-		0,1,1,0,&dfield,nullptr
+		0,1,1,&dfield,0,nullptr
 #ifdef UNIV_DEBUG
 		, DATA_TUPLE_MAGIC_N
 #endif
@@ -2398,7 +2409,7 @@ err_exit:
 
 	dict_load_tablespace(table, ignore_err);
 
-	switch (dict_load_columns(mtr, table, use_uncommitted, heap)) {
+	switch (dict_load_columns(table, use_uncommitted, heap)) {
 	case DB_SUCCESS_LOCKED_REC:
 		ut_ad(!uncommitted);
 		uncommitted = true;
@@ -2406,7 +2417,7 @@ err_exit:
 		mem_heap_free(heap);
 		goto reload;
 	case DB_SUCCESS:
-		if (!dict_load_virtual(mtr, table, uncommitted)) {
+		if (!dict_load_virtual(table, uncommitted)) {
 			break;
 		}
 		/* fall through */
@@ -2436,8 +2447,7 @@ err_exit:
 		? DICT_ERR_IGNORE_ALL
 		: ignore_err;
 
-	err = dict_load_indexes(&mtr, table, uncommitted, heap,
-				index_load_err);
+	err = dict_load_indexes(table, uncommitted, heap, index_load_err);
 
 	if (err == DB_TABLE_CORRUPT) {
 		/* Refuse to load the table if the table has a corrupted
@@ -2484,7 +2494,9 @@ corrupted:
 				goto corrupted;
 			}
 
-			err = btr_cur_instant_init(&mtr, table);
+			if (table->supports_instant()) {
+				err = btr_cur_instant_init(table);
+			}
 		}
 	} else {
 		ut_ad(ignore_err & DICT_ERR_IGNORE_INDEX);
@@ -2500,7 +2512,7 @@ corrupted:
 		/* Don't attempt to load the indexes from disk. */
 	} else if (err == DB_SUCCESS) {
 		auto i = fk_tables.size();
-		err = dict_load_foreigns(mtr, table->name.m_name, nullptr,
+		err = dict_load_foreigns(table->name.m_name, nullptr,
 					 0, true, ignore_err, fk_tables);
 
 		if (err != DB_SUCCESS) {
@@ -2551,15 +2563,13 @@ dict_table_t *dict_sys_t::load_table(const span<const char> &name,
   if (dict_table_t *table= find_table(name))
     return table;
   dict_names_t fk_list;
-  THD* const thd{current_thd};
-  mtr_t mtr{thd ? thd_to_trx(thd) : nullptr};
-  dict_table_t *table= dict_load_table_one(mtr, name, ignore, fk_list);
+  dict_table_t *table= dict_load_table_one(name, ignore, fk_list);
   while (!fk_list.empty())
   {
     const char *f= fk_list.front();
     const span<const char> name{f, strlen(f)};
     if (!find_table(name))
-      dict_load_table_one(mtr, name, ignore, fk_list);
+      dict_load_table_one(name, ignore, fk_list);
     fk_list.pop_front();
   }
 
@@ -2580,7 +2590,7 @@ dict_load_table_on_id(
 	btr_pcur_t	pcur;
 	const byte*	field;
 	ulint		len;
-	mtr_t		mtr{nullptr};
+	mtr_t		mtr;
 
 	ut_ad(dict_sys.locked());
 
@@ -2596,7 +2606,7 @@ dict_load_table_on_id(
 
 	dfield_t dfield;
 	dtuple_t tuple{
-		0,1,1,0,&dfield,nullptr
+		0,1,1,&dfield,0,nullptr
 #ifdef UNIV_DEBUG
 		, DATA_TUPLE_MAGIC_N
 #endif
@@ -2649,6 +2659,26 @@ check_rec:
 	return table;
 }
 
+/********************************************************************//**
+This function is called when the database is booted. Loads system table
+index definitions except for the clustered index which is added to the
+dictionary cache at booting before calling this function. */
+void
+dict_load_sys_table(
+/*================*/
+	dict_table_t*	table)	/*!< in: system table */
+{
+	mem_heap_t*	heap;
+
+	ut_ad(dict_sys.locked());
+
+	heap = mem_heap_create(1000);
+
+	dict_load_indexes(table, false, heap, DICT_ERR_IGNORE_NONE);
+
+	mem_heap_free(heap);
+}
+
 MY_ATTRIBUTE((nonnull, warn_unused_result))
 /********************************************************************//**
 Loads foreign key constraint col names (also for the referenced table).
@@ -2660,10 +2690,10 @@ Members that will be created and set by this function:
 foreign->foreign_col_names[i]
 foreign->referenced_col_names[i]
 (for i=0..foreign->n_fields-1) */
-static dberr_t dict_load_foreign_cols(mtr_t &mtr, dict_foreign_t *foreign,
-                                      trx_id_t trx_id)
+static dberr_t dict_load_foreign_cols(dict_foreign_t *foreign, trx_id_t trx_id)
 {
 	btr_pcur_t	pcur;
+	mtr_t		mtr;
 	size_t		id_len;
 
 	ut_ad(dict_sys.locked());
@@ -2685,7 +2715,7 @@ static dberr_t dict_load_foreign_cols(mtr_t &mtr, dict_foreign_t *foreign,
 
 	dfield_t dfield;
 	dtuple_t tuple{
-		0,1,1,0,&dfield,nullptr
+		0,1,1,&dfield,0,nullptr
 #ifdef UNIV_DEBUG
 		, DATA_TUPLE_MAGIC_N
 #endif
@@ -2723,7 +2753,7 @@ static dberr_t dict_load_foreign_cols(mtr_t &mtr, dict_foreign_t *foreign,
 				&heap);
 			const rec_t* old_vers;
 			row_vers_build_for_semi_consistent_read(
-				rec, &mtr, sys_index, &offsets, &heap,
+				nullptr, rec, &mtr, sys_index, &offsets, &heap,
 				heap, &old_vers, nullptr);
 			mtr.rollback_to_savepoint(savepoint);
 			rec = old_vers;
@@ -2814,7 +2844,6 @@ static MY_ATTRIBUTE((warn_unused_result))
 dberr_t
 dict_load_foreign(
 /*==============*/
-	mtr_t&			mtr,		/*!< in/out: mini-transaction*/
 	const char*		table_name,	/*!< in: table name */
 	bool			uncommitted,	/*!< in: use READ UNCOMMITTED
 						transaction isolation level */
@@ -2846,6 +2875,7 @@ dict_load_foreign(
 	btr_pcur_t	pcur;
 	const byte*	field;
 	ulint		len;
+	mtr_t		mtr;
 	dict_table_t*	for_table;
 	dict_table_t*	ref_table;
 
@@ -2861,7 +2891,7 @@ dict_load_foreign(
 
 	dfield_t dfield;
 	dtuple_t tuple{
-		0,1,1,0,&dfield,nullptr
+		0,1,1,&dfield,0,nullptr
 #ifdef UNIV_DEBUG
 		, DATA_TUPLE_MAGIC_N
 #endif
@@ -2912,7 +2942,7 @@ err_exit:
 			rec, sys_index, nullptr, true, ULINT_UNDEFINED, &heap);
 		const rec_t* old_vers;
 		row_vers_build_for_semi_consistent_read(
-			rec, &mtr, sys_index, &offsets, &heap,
+			nullptr, rec, &mtr, sys_index, &offsets, &heap,
 			heap, &old_vers, nullptr);
 		mtr.rollback_to_savepoint(savepoint);
 		rec = old_vers;
@@ -2949,7 +2979,7 @@ err_exit:
 
 	foreign->foreign_table_name = mem_heap_strdupl(
 		foreign->heap, (char*) field, len);
-	foreign->foreign_table_name_lookup_set();
+	dict_mem_foreign_table_name_lookup_set(foreign, TRUE);
 
 	const size_t foreign_table_name_len = len;
 	const size_t table_name_len = strlen(table_name);
@@ -2970,14 +3000,14 @@ err_exit:
 
 	foreign->referenced_table_name = mem_heap_strdupl(
 		foreign->heap, (const char*) field, len);
-	foreign->referenced_table_name_lookup_set();
+	dict_mem_referenced_table_name_lookup_set(foreign, TRUE);
 
 	mtr.commit();
 	if (UNIV_LIKELY_NULL(heap)) {
 		mem_heap_free(heap);
 	}
 
-	err = dict_load_foreign_cols(mtr, foreign, trx_id);
+	err = dict_load_foreign_cols(foreign, trx_id);
 	if (err != DB_SUCCESS) {
 		goto load_error;
 	}
@@ -3032,7 +3062,6 @@ cache, then it is added to the output parameter (fk_tables).
 @return DB_SUCCESS or error code */
 dberr_t
 dict_load_foreigns(
-	mtr_t&			mtr,		/*!< in/out: mini-transaction*/
 	const char*		table_name,	/*!< in: table name */
 	const char**		col_names,	/*!< in: column names, or NULL
 						to use table->col_names */
@@ -3050,6 +3079,7 @@ dict_load_foreigns(
 						foreign key constraints. */
 {
 	btr_pcur_t	pcur;
+	mtr_t		mtr;
 
 	DBUG_ENTER("dict_load_foreigns");
 
@@ -3072,7 +3102,7 @@ dict_load_foreigns(
 	bool check_recursive = !trx_id;
 	dfield_t dfield;
 	dtuple_t tuple{
-		0,1,1,0,&dfield,nullptr
+		0,1,1,&dfield,0,nullptr
 #ifdef UNIV_DEBUG
 		, DATA_TUPLE_MAGIC_N
 #endif
@@ -3111,12 +3141,12 @@ loop:
 	following call does the comparison in the latin1_swedish_ci
 	charset-collation, in a case-insensitive way. */
 
-	if (cmp_data(dfield_get_type(&dfield)->mtype,
-		     dfield_get_type(&dfield)->prtype,
-		     false,
-		     reinterpret_cast<const byte*>(table_name),
-		     dfield_get_len(&dfield),
-		     field, len)) {
+	if (0 != cmp_data_data(dfield_get_type(&dfield)->mtype,
+			       dfield_get_type(&dfield)->prtype,
+			       reinterpret_cast<const byte*>(table_name),
+			       dfield_get_len(&dfield),
+			       field, len)) {
+
 		goto load_next_index;
 	}
 
@@ -3150,7 +3180,7 @@ loop:
 	/* Load the foreign constraint definition to the dictionary cache */
 
 	err = len < sizeof fk_id
-		? dict_load_foreign(mtr, table_name, false, col_names, trx_id,
+		? dict_load_foreign(table_name, false, col_names, trx_id,
 				    check_recursive, check_charsets,
 				    {fk_id, len}, ignore_err, fk_tables)
 		: DB_CORRUPTION;

@@ -19,6 +19,10 @@
 
 /* Analyse database */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface				/* gcc class implementation */
+#endif
+
 #include "procedure.h"                          /* Procedure */
 
 #define my_thd_charset	default_charset_info

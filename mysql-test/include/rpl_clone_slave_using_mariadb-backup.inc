@@ -5,14 +5,13 @@ if ($cnf == "galera2_to_mariadb")
   --connect slave, 127.0.0.1, root, , test, $NODE_MYPORT_3
   --disable_query_log
   --replace_result $MASTER_MYPORT ###
-  --eval CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_USER='root', MASTER_PORT=$MASTER_MYPORT, MASTER_USE_GTID=NO, MASTER_SSL_VERIFY_SERVER_CERT=0;
+  --eval CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_USER='root', MASTER_PORT=$MASTER_MYPORT;
   --enable_query_log
   START SLAVE;
   --source include/wait_for_slave_to_start.inc
 
-  --let XTRABACKUP_BACKUP_OPTIONS=--no-defaults --user=root --host='127.0.0.1' --port=$NODE_MYPORT_3 --loose-disable-ssl-verify-server-cert --loose-ssl-cert=$MYSQL_TEST_DIR/std_data/server-cert.pem --loose-ssl-key=$MYSQL_TEST_DIR/std_data/server-key.pem --loose-ssl-ca=$MYSQL_TEST_DIR/std_data/cacert.pem
-
-  --let XTRABACKUP_COPY_BACK_OPTIONS=--no-defaults
+  --let XTRABACKUP_BACKUP_OPTIONS=--no-defaults --user=root --host='127.0.0.1' --port=$NODE_MYPORT_3
+  --let XTRABACKUP_COPY_BACK_OPTIONS= --no-defaults
 }
 
 if ($cnf == "mariadb_to_mariadb")
@@ -42,7 +41,7 @@ if ($cnf == "mariadb_to_mariadb")
 
 --echo ### Master: Create and populate t1
 --connection master
-CREATE TABLE t1(a TEXT) ENGINE=InnoDB CHARSET=latin1;
+CREATE TABLE t1(a TEXT) ENGINE=InnoDB;
 START TRANSACTION;
 INSERT INTO t1 VALUES ('tr#00:stmt#00 - slave run#0, before backup');
 INSERT INTO t1 VALUES ('tr#00:stmt#01 - slave run#0, before backup');
@@ -93,7 +92,7 @@ COMMIT;
 
 --echo ##############################################################
 --echo ### Running `mariadb-backup --backup,--prepare` and checking
---echo ### that mariadb_backup_slave_info and mariadb_backup_binlog_info are OK
+--echo ### that xtrabackup_slave_info and xtrabackup_binlog_info are OK
 
 --echo ### Slave: Create a backup
 --let $backup_slave=$MYSQLTEST_VARDIR/tmp/backup-slave
@@ -105,12 +104,12 @@ COMMIT;
 --exec $XTRABACKUP --prepare --target-dir=$backup_slave
 
 --echo ### Slave: xtrabackup files:
---echo ############################ mariadb_backup_slave_info
+--echo ############################ xtrabackup_slave_info
 --replace_result $master_after_tr01_show_master_status_file master_after_tr01_show_master_status_file $master_after_tr01_show_master_status_position master_after_tr01_show_master_status_position
---cat_file $backup_slave/mariadb_backup_slave_info
---echo ############################ mariadb_backup_binlog_info
+--cat_file $backup_slave/xtrabackup_slave_info
+--echo ############################ xtrabackup_binlog_info
 --replace_result $slave_after_tr01_show_master_status_file slave_after_tr01_show_master_status_file $slave_after_tr01_show_master_status_position slave_after_tr01_show_master_status_position $slave_after_tr01_gtid_binlog_pos slave_after_tr01_gtid_binlog_pos
---cat_file $backup_slave/mariadb_backup_binlog_info
+--cat_file $backup_slave/xtrabackup_binlog_info
 --echo ############################
 
 
@@ -230,11 +229,11 @@ SELECT * FROM t1 ORDER BY a;
 
 --echo ### Slave: Execute the CHANGE MASTER statement to set up the host and port
 --replace_result $MASTER_MYPORT ###
---eval CHANGE MASTER '' TO MASTER_USER='root', MASTER_HOST='127.0.0.1', MASTER_PORT=$MASTER_MYPORT, MASTER_CONNECT_RETRY=1, MASTER_SSL_VERIFY_SERVER_CERT=0
+--eval CHANGE MASTER '' TO MASTER_USER='root', MASTER_HOST='127.0.0.1', MASTER_PORT=$MASTER_MYPORT, MASTER_CONNECT_RETRY=1
 
---echo ### Slave: Execute the CHANGE MASTER statement from mariadb_backup_slave_info
+--echo ### Slave: Execute the CHANGE MASTER statement from xtrabackup_slave_info
 --replace_result $master_after_tr01_show_master_status_file master_after_tr01_show_master_status_file $master_after_tr01_show_master_status_position master_after_tr01_show_master_status_position
---source $backup_slave/mariadb_backup_slave_info
+--source $backup_slave/xtrabackup_slave_info
 
 --echo ### Slave: Execute START SLAVE
 --source include/start_slave.inc
@@ -293,7 +292,6 @@ if ($cnf == "galera2_to_mariadb")
 
   --connection master
   set global wsrep_on=OFF;
-  --source include/kill_binlog_dump_threads.inc
   RESET MASTER;
   set global wsrep_on=ON;
 }

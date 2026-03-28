@@ -16,6 +16,8 @@
 
 #include "maria_def.h"
 
+#ifdef HAVE_RTREE_KEYS
+
 #include "ma_rt_index.h"
 #include "ma_rt_mbr.h"
 
@@ -812,3 +814,5 @@ int maria_rtree_page_mbr(const HA_KEYSEG *keyseg,
   }
   return 0;
 }
+
+#endif /*HAVE_RTREE_KEYS*/

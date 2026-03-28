@@ -30,9 +30,8 @@ a	b	c
 1	1	1
 2	2	3
 include/stop_slave_io.inc
-include/reset_slave.inc
+reset slave;
 connection master;
-include/kill_binlog_dump_threads.inc
 reset master;
 drop table t1;
 connection slave;
@@ -190,9 +189,8 @@ a	b	c
 1	1	1
 2	2	3
 include/stop_slave_io.inc
-include/reset_slave.inc
+reset slave;
 connection master;
-include/kill_binlog_dump_threads.inc
 reset master;
 drop table t1;
 connection slave;

@@ -82,8 +82,7 @@ MI_INFO *test_if_reopen(char *filename)
 
 MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 {
-  int lock_error,kfile,save_errno,have_rtree=0, realpath_err;
-  int open_mode, try_open_mode;
+  int lock_error,kfile,open_mode,save_errno,have_rtree=0, realpath_err;
   uint i,j,len,errpos,head_length,base_pos,offset,info_length,keys,
     key_parts,unique_key_parts,base_key_parts,fulltext_keys,uniques;
   uint internal_table= open_flags & HA_OPEN_INTERNAL_TABLE;
@@ -139,31 +138,18 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
                     });
 
     DEBUG_SYNC_C("mi_open_kfile");
-
-    /*
-      We first try to open the file on read-write mode to ensure that
-      the table is usable for future read and write queries in
-      MariaDB.  Only if the read-write mode fails we try to readonly.
-    */
-    try_open_mode= (open_flags & HA_OPEN_FORCE_MODE) ? mode : O_RDWR;
-
     if ((kfile= mysql_file_open(mi_key_file_kfile, name_buff,
-                                (open_mode= try_open_mode) | O_SHARE |
-                                O_NOFOLLOW | O_CLOEXEC,
+                                (open_mode= O_RDWR) | O_SHARE | O_NOFOLLOW | O_CLOEXEC,
                                 MYF(MY_NOSYMLINKS))) < 0)
     {
-      if ((errno != EROFS && errno != EACCES) || open_mode == O_RDONLY ||
+      if ((errno != EROFS && errno != EACCES) ||
 	  mode != O_RDONLY ||
           (kfile= mysql_file_open(mi_key_file_kfile, name_buff,
-                                  (open_mode= O_RDONLY) | O_SHARE |
-                                  O_NOFOLLOW | O_CLOEXEC,
+                                  (open_mode= O_RDONLY) | O_SHARE| O_NOFOLLOW | O_CLOEXEC,
                                   MYF(MY_NOSYMLINKS))) < 0)
 	goto err;
     }
-    share->index_mode= share->data_mode= open_mode;
-    if (open_flags & HA_OPEN_DATA_READONLY)
-      share->data_mode= O_RDONLY;
-
+    share->mode=open_mode;
     errpos=1;
     if (mysql_file_read(kfile, (uchar*)&share->state.header, head_length,
                         MYF(MY_NABP)))
@@ -214,9 +200,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
         my_errno= HA_WRONG_CREATE_OPTION;
         goto err;
       }
-      /* all symlinks are resolved by realpath() */
-      share->index_mode|= O_NOFOLLOW;
-      share->data_mode|= O_NOFOLLOW;
+      share->mode|= O_NOFOLLOW; /* all symlinks are resolved by realpath() */
     }
 
     info_length=mi_uint2korr(share->state.header.header_length);
@@ -402,14 +386,19 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 	  else if (pos->type == HA_KEYTYPE_BINARY)
 	    pos->charset= &my_charset_bin;
 	}
-        if (keyinfo->key_alg == HA_KEY_ALG_RTREE)
+        if (keyinfo->flag & HA_SPATIAL)
 	{
+#ifdef HAVE_SPATIAL
           uint sp_segs= SPDIMS*2;
           keyinfo->seg= pos - sp_segs;
           DBUG_ASSERT(keyinfo->keysegs == sp_segs + 1);
           keyinfo->keysegs= sp_segs;
+#else
+	  my_errno=HA_ERR_UNSUPPORTED;
+	  goto err;
+#endif
 	}
-        else if (keyinfo->key_alg == HA_KEY_ALG_FULLTEXT)
+        else if (keyinfo->flag & HA_FULLTEXT)
 	{
           if (!fulltext_keys)
           { /* 4.0 compatibility code, to be removed in 5.0 */
@@ -437,7 +426,6 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
             memcpy(& share->ft2_keyinfo, keyinfo, sizeof(MI_KEYDEF));
             share->ft2_keyinfo.keysegs=1;
             share->ft2_keyinfo.flag=0;
-            share->ft2_keyinfo.key_alg=HA_KEY_ALG_BTREE;
             share->ft2_keyinfo.keylength=
             share->ft2_keyinfo.minlength=
             share->ft2_keyinfo.maxlength=HA_FT_WLEN+share->base.rec_reflength;
@@ -600,7 +588,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   else
   {
     share= old_info->s;
-    if (mode == O_RDWR && share->index_mode == O_RDONLY)
+    if (mode == O_RDWR && share->mode == O_RDONLY)
     {
       my_errno=EACCES;				/* Can't open in write mode */
       goto err;
@@ -860,8 +848,12 @@ static void setup_key_functions(register MI_KEYDEF *keyinfo)
 {
   if (keyinfo->key_alg == HA_KEY_ALG_RTREE)
   {
+#ifdef HAVE_RTREE_KEYS
     keyinfo->ck_insert = rtree_insert;
     keyinfo->ck_delete = rtree_delete;
+#else
+    DBUG_ASSERT(0); /* mi_open should check it never happens */
+#endif
   }
   else
   {
@@ -1287,11 +1279,10 @@ active seek-positions.
 
 int mi_open_datafile(MI_INFO *info, MYISAM_SHARE *share)
 {
-  myf flags= MY_WME | (share->data_mode & O_NOFOLLOW ? MY_NOSYMLINKS: 0);
+  myf flags= MY_WME | (share->mode & O_NOFOLLOW ? MY_NOSYMLINKS: 0);
   DEBUG_SYNC_C("mi_open_datafile");
   info->dfile= mysql_file_open(mi_key_file_dfile, share->data_file_name,
-                               share->data_mode | O_SHARE | O_CLOEXEC,
-                               MYF(flags));
+                               share->mode | O_SHARE | O_CLOEXEC, MYF(flags));
   return info->dfile >= 0 ? 0 : 1;
 }
 
@@ -1300,8 +1291,7 @@ int mi_open_keyfile(MYISAM_SHARE *share)
 {
   if ((share->kfile= mysql_file_open(mi_key_file_kfile,
                                      share->unique_file_name,
-                                     share->index_mode | O_SHARE | O_NOFOLLOW
-                                     | O_CLOEXEC,
+                                     share->mode | O_SHARE | O_NOFOLLOW | O_CLOEXEC,
                                      MYF(MY_NOSYMLINKS | MY_WME))) < 0)
     return 1;
   return 0;
@@ -1387,9 +1377,13 @@ int mi_indexes_are_disabled(MI_INFO *info)
 {
   MYISAM_SHARE *share= info->s;
 
-  /* No keys or all are enabled */
+  /*
+    No keys or all are enabled. keys is the number of keys. Left shifted
+    gives us only one bit set. When decreased by one, gives us all all bits
+    up to this one set and it gets unset.
+  */
   if (!share->base.keys ||
-      mi_is_all_keys_active(share->state.key_map, share->base.keys))
+      (mi_is_all_keys_active(share->state.key_map, share->base.keys)))
     return 0;
 
   /* All are disabled */

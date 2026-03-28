@@ -27,8 +27,9 @@ Query optimization produces two data structures:
 produce output of SHOW EXPLAIN, EXPLAIN [FORMAT=JSON], or 
 ANALYZE [FORMAT=JSON], without accessing the execution data structures.
 
-The exception is that Explain data structures have Item* pointers. See
-ExplainDataStructureLifetime below for details.
+(the only exception is that Explain data structures keep Item* pointers,
+and we require that one might call item->print(QT_EXPLAIN) when printing
+FORMAT=JSON output)
 
 === ANALYZE data ===
 EXPLAIN data structures have embedded ANALYZE data structures. These are 
@@ -73,6 +74,7 @@ class Json_writer;
 *************************************************************************************/
 
 
+const uint FAKE_SELECT_LEX_ID= UINT_MAX;
 
 class Explain_query;
 
@@ -201,7 +203,7 @@ class Explain_aggr_node;
   1. A degenerate case. In this case, message!=NULL, and it contains a 
      description of what kind of degenerate case it is (e.g. "Impossible 
      WHERE").
-  2. a non-degenerate join. In this case, join_tabs describes the join.
+  2. a non-degenrate join. In this case, join_tabs describes the join.
 
   In the non-degenerate case, a SELECT may have a GROUP BY/ORDER BY operation.
 
@@ -224,7 +226,6 @@ public:
     message(NULL),
     having(NULL), having_value(Item::COND_UNDEF),
     using_temporary(false), using_filesort(false),
-    cost(0.0),
     time_tracker(is_analyze),
     aggr_tree(NULL)
   {}
@@ -258,10 +259,9 @@ public:
   bool using_temporary;
   bool using_filesort;
 
-  double cost;
   /* ANALYZE members */
   Time_and_counter_tracker time_tracker;
-
+  
   /* 
     Part of query plan describing sorting, temp.table usage, and duplicate 
     removal
@@ -342,12 +342,11 @@ public:
 /////////////////////////////////////////////////////////////////////////////
 
 extern const char *unit_operation_text[4];
-extern const char *pushed_unit_operation_text[4];
 extern const char *pushed_derived_text;
 extern const char *pushed_select_text;
 
 /*
-  Explain structure for a UNION [ALL].
+  Explain structure for a UNION.
 
   A UNION may or may not have "Using filesort".
 */
@@ -357,7 +356,7 @@ class Explain_union : public Explain_node
 public:
   Explain_union(MEM_ROOT *root, bool is_analyze) : 
     Explain_node(root), union_members(PSI_INSTRUMENT_MEM),
-    is_recursive_cte(false), is_pushed_down_to_engine(false),
+    is_recursive_cte(false),
     fake_select_lex_explain(root, is_analyze)
   {}
 
@@ -386,20 +385,15 @@ public:
   {
     union_members.append(select_no);
   }
-  int print_explain(Explain_query *query, select_result_sink *output,
+  int print_explain(Explain_query *query, select_result_sink *output, 
                     uint8 explain_flags, bool is_analyze) override;
-  void print_explain_json(Explain_query *query, Json_writer *writer,
+  void print_explain_json(Explain_query *query, Json_writer *writer, 
                           bool is_analyze) override;
-  void print_explain_json_regular(Explain_query *query, Json_writer *writer,
-                          bool is_analyze);
-  void print_explain_json_pushed_down(Explain_query *query,
-                                      Json_writer *writer, bool is_analyze);
 
   const char *fake_select_type;
   bool using_filesort;
   bool using_tmp;
   bool is_recursive_cte;
-  bool is_pushed_down_to_engine;
   
   /*
     Explain data structure for "fake_select_lex" (i.e. for the degenerate
@@ -418,10 +412,6 @@ public:
   }
 private:
   uint make_union_table_name(char *buf);
-  int print_explain_regular(Explain_query *query, select_result_sink *output,
-                            uint8 explain_flags, bool is_analyze);
-  int print_explain_pushed_down(select_result_sink *output,
-                                uint8 explain_flags, bool is_analyze);
   
   Table_access_tracker fake_select_lex_tracker;
   /* This one is for reading after ORDER BY */
@@ -437,54 +427,36 @@ class Explain_insert;
 /*
   Explain structure for a query (i.e. a statement).
 
-  This should be able to survive when the query plan was deleted. Currently,
-  we do not intend for it survive until after query's MEM_ROOT is freed.
-
-  == ExplainDataStructureLifetime ==
+  This should be able to survive when the query plan was deleted. Currently, 
+  we do not intend for it survive until after query's MEM_ROOT is freed. It
+  does surivive freeing of query's items.
+   
+  For reference, the process of post-query cleanup is as follows:
 
     >dispatch_command
     | >mysql_parse
-    | | ...
-    | |
-    | | explain->query_plan_ready(); // (1)
-    | |
-    | |   some_join->cleanup(); //  (2)
-    | |
-    | | explain->notify_tables_are_closed(); // (3)
-    | | close_thread_tables();  // (4)
-    | | ...
-    | | free_items(); // (5)
-    | | ...
+    | |  ...
+    | | lex_end()
+    | |  ...
+    | | >THD::cleanup_after_query
+    | | | ...
+    | | | free_items()
+    | | | ...
+    | | <THD::cleanup_after_query
     | |
     | <mysql_parse
     |
-    | log_slow_statement() // (6)
-    |
+    | log_slow_statement()
+    | 
     | free_root()
-    |
+    | 
     >dispatch_command
-
-  (1) - Query plan construction is finished and it is available for reading.
-
-  (2) - Temporary tables are freed (with exception of derived tables
-        which are freed at step (4)).
-        The tables are no longer accessible but one can still call
-        item->print(), even for items that refer to temp.tables (see
-        Item_field::print() for details)
-
-  (3) - Notification about (4).
-  (4) - Tables used by the query are closed. One consequence of this is that
-        the values of the const tables' fields are not available anymore.
-        We could adjust the code in Item_field::print() to handle this but
-        instead we make step (3) disallow production of FORMAT=JSON output.
-        We also disable processing of SHOW EXPLAIN|ANALYZE output because
-        the query is about to finish anyway.
-
-  (5) - Item objects are freed. After this, it's certainly not possible to
-        print them into FORMAT=JSON output.
-
-  (6) - We may decide to log tabular EXPLAIN output to the slow query log.
-
+  
+  That is, the order of actions is:
+    - free query's Items
+    - write to slow query log 
+    - free query's MEM_ROOT
+    
 */
 
 class Explain_query : public Sql_alloc
@@ -516,23 +488,17 @@ public:
   /* Return tabular EXPLAIN output as a text string */
   bool print_explain_str(THD *thd, String *out_str, bool is_analyze);
 
-  int print_explain_json(select_result_sink *output, bool is_analyze,
-                         ulonglong query_time_in_progress_ms= 0);
+  void print_explain_json(select_result_sink *output, bool is_analyze);
 
   /* If true, at least part of EXPLAIN can be printed */
   bool have_query_plan() { return insert_plan || upd_del_plan|| get_node(1) != NULL; }
 
   void query_plan_ready();
-  void notify_tables_are_closed();
 
   MEM_ROOT *mem_root;
 
   Explain_update *get_upd_del_plan() { return upd_del_plan; }
 private:
-  bool print_query_blocks_json(Json_writer *writer, const bool is_analyze);
-  void print_query_optimization_json(Json_writer *writer);
-  void send_explain_json_to_output(Json_writer *writer, select_result_sink *output);
- 
   /* Explain_delete inherits from Explain_update */
   Explain_update *upd_del_plan;
 
@@ -542,7 +508,7 @@ private:
   Dynamic_array<Explain_union*> unions;
   Dynamic_array<Explain_select*> selects;
   
-  THD *stmt_thd; // for APC start/stop
+  THD *thd; // for APC start/stop
   bool apc_enabled;
   /* 
     Debugging aid: count how many times add_node() was called. Ideally, it
@@ -551,11 +517,6 @@ private:
     is unacceptable.
   */
   longlong operations;
-#ifndef DBUG_OFF
-  bool can_print_json= false;
-#endif
-
-  Exec_time_tracker optimization_time_tracker;
 };
 
 
@@ -613,20 +574,17 @@ enum explain_extra_tag
 class EXPLAIN_BKA_TYPE
 {
 public:
-  EXPLAIN_BKA_TYPE() : join_alg(NULL), is_bka(false) {}
+  EXPLAIN_BKA_TYPE() : join_alg(NULL) {}
 
   size_t join_buffer_size;
 
   bool incremental;
 
   /* 
-    NULL if no join buffering used.
+    NULL if no join buferring used.
     Other values: BNL, BNLH, BKA, BKAH.
   */
   const char *join_alg;
-
-  /* true <=> BKA is used */
-  bool is_bka;
 
   /* Information about MRR usage.  */
   StringBuffer<64> mrr_type;
@@ -688,6 +646,14 @@ public:
 
   void print_explain_json(Explain_query *query, Json_writer *writer,
                           bool is_analyze);
+
+  /*
+    TODO:
+      Here should be ANALYZE members:
+      - r_rows for the quick select
+      - An object that tracked the table access time
+      - real selectivity of the filter.
+  */
 };
 
 
@@ -768,8 +734,6 @@ public:
   Explain_table_access(MEM_ROOT *root, bool timed) :
     derived_select_number(0),
     non_merged_sjm_number(0),
-    cost(0.0),
-    loops(0.0),
     extra_tags(root),
     range_checked_fer(NULL),
     full_scan_on_null_key(false),
@@ -839,10 +803,6 @@ public:
   ha_rows rows;
   double filtered;
 
-  /* Total cost incurred during one execution of this select */
-  double cost;
-
-  double loops;
   /* 
     Contents of the 'Extra' column. Some are converted into strings, some have
     parameters, values for which are stored below.
@@ -874,7 +834,7 @@ public:
   /*
     This is either pushed index condition, or BKA's index condition. 
     (the latter refers to columns of other tables and so can only be checked by
-     BKA code). Examine extra_tags (or bka_type.is_bka) to tell which one it is.
+     BKA code). Examine extra_tags to tell which one it is.
   */
   Item *pushed_index_cond;
 
@@ -1020,7 +980,6 @@ public:
   /* TODO: This tracks time to read rows from the table */
   Exec_time_tracker table_tracker;
 
-  Gap_time_tracker extra_time_tracker;
   /* The same as  Explain_table_access::handler_for_stats */
   handler *handler_for_stats;
 

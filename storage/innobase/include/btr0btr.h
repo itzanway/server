@@ -56,8 +56,12 @@ is acceptable for the program to die with a clear assert failure. */
 #define BTR_MAX_LEVELS		100
 
 #define BTR_LATCH_MODE_WITHOUT_FLAGS(latch_mode)		\
-	btr_latch_mode((latch_mode) & ~(BTR_RTREE_UNDO_INS	\
+	btr_latch_mode((latch_mode) & ~(BTR_INSERT	\
+				| BTR_DELETE_MARK		\
+				| BTR_RTREE_UNDO_INS		\
 				| BTR_RTREE_DELETE_MARK		\
+				| BTR_DELETE			\
+				| BTR_IGNORE_SEC_UNIQUE		\
 				| BTR_ALREADY_S_LATCHED		\
 				| BTR_LATCH_FOR_INSERT		\
 				| BTR_LATCH_FOR_DELETE))
@@ -68,19 +72,12 @@ is acceptable for the program to die with a clear assert failure. */
 
 /**************************************************************//**
 Checks and adjusts the root node of a tree during IMPORT TABLESPACE.
-@param trx    transaction
-@param index  index tree
-@return error code */
-dberr_t btr_root_adjust_on_import(trx_t *trx, const dict_index_t *index)
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
-
-/** Check a file segment header within a B-tree root page.
-@param offset      file segment header offset
-@param block       B-tree root page
-@param space       tablespace
-@return whether the segment header is valid */
-bool btr_root_fseg_validate(ulint offset, const buf_block_t &block,
-                            const fil_space_t &space);
+@return error code, or DB_SUCCESS */
+dberr_t
+btr_root_adjust_on_import(
+/*======================*/
+	const dict_index_t*	index)	/*!< in: index tree */
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Report a read failure if it is a decryption failure.
 @param err   error code
@@ -91,12 +88,13 @@ ATTRIBUTE_COLD void btr_read_failed(dberr_t err, const dict_index_t &index);
 @param  index         index tree
 @param  page          page number
 @param  latch_mode    latch mode
+@param  merge         whether change buffer merge should be attempted
 @param  mtr           mini-transaction
 @param  err           error code
 @param  first         set if this is a first-time access to the page
 @return block */
 buf_block_t *btr_block_get(const dict_index_t &index, uint32_t page,
-                           rw_lock_type_t latch_mode, mtr_t *mtr,
+                           rw_lock_type_t latch_mode, bool merge, mtr_t *mtr,
                            dberr_t *err= nullptr, bool *first= nullptr
 #if defined(UNIV_DEBUG) || !defined(DBUG_OFF)
                            , ulint page_get_mode= BUF_GET
@@ -184,9 +182,8 @@ void btr_free_if_exists(fil_space_t *space, uint32_t page,
                         index_id_t index_id, mtr_t *mtr);
 
 /** Drop a temporary table
-@param trx    transaction
 @param table   temporary table */
-void btr_drop_temporary_table(trx_t *trx, const dict_table_t &table);
+void btr_drop_temporary_table(const dict_table_t &table);
 
 /** Read the last used AUTO_INCREMENT value from PAGE_ROOT_AUTO_INC.
 @param[in,out]	index	clustered index
@@ -210,15 +207,13 @@ uint64_t btr_read_autoinc_with_fallback(const dict_table_t *table,
   MY_ATTRIBUTE((nonnull, warn_unused_result));
 
 /** Write the next available AUTO_INCREMENT value to PAGE_ROOT_AUTO_INC.
-@param[in,out]	trx	transaction
 @param[in,out]	index	clustered index
 @param[in]	autoinc	the AUTO_INCREMENT value
 @param[in]	reset	whether to reset the AUTO_INCREMENT
 			to a possibly smaller value than currently
 			exists in the page */
 void
-btr_write_autoinc(trx_t *trx, dict_index_t *index, uint64_t autoinc,
-		  bool reset = false)
+btr_write_autoinc(dict_index_t* index, ib_uint64_t autoinc, bool reset = false)
 	MY_ATTRIBUTE((nonnull));
 
 /** Write instant ALTER TABLE metadata to a root page.
@@ -257,7 +252,15 @@ btr_root_raise_and_insert(
 	mtr_t*		mtr,	/*!< in: mtr */
 	dberr_t*	err)	/*!< out: error code */
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
-/** Reorganize an index page.
+/*************************************************************//**
+Reorganizes an index page.
+
+IMPORTANT: On success, the caller will have to update IBUF_BITMAP_FREE
+if this is a compressed leaf page in a secondary index. This has to
+be done either within the same mini-transaction, or by invoking
+ibuf_reset_free_bits() before mtr_commit(). On uncompressed pages,
+IBUF_BITMAP_FREE is unaffected by reorganization.
+
 @param cursor  page cursor
 @param mtr     mini-transaction
 @return error code
@@ -354,7 +357,6 @@ btr_check_node_ptr(
 /*===============*/
 	dict_index_t*	index,	/*!< in: index tree */
 	buf_block_t*	block,	/*!< in: index page */
-	que_thr_t*	thr,	/*!< in/out: query thread */
 	mtr_t*		mtr)	/*!< in: mtr */
 	MY_ATTRIBUTE((warn_unused_result));
 #endif /* UNIV_DEBUG */
@@ -458,8 +460,15 @@ btr_root_block_get(
 					or RW_X_LATCH */
 	mtr_t*			mtr,	/*!< in: mtr */
 	dberr_t*		err);	/*!< out: error code */
+/*************************************************************//**
+Reorganizes an index page.
 
-/** Reorganize an index page.
+IMPORTANT: On success, the caller will have to update IBUF_BITMAP_FREE
+if this is a compressed leaf page in a secondary index. This has to
+be done either within the same mini-transaction, or by invoking
+ibuf_reset_free_bits() before mtr_commit(). On uncompressed pages,
+IBUF_BITMAP_FREE is unaffected by reorganization.
+
 @return error code
 @retval DB_FAIL if reorganizing a ROW_FORMAT=COMPRESSED page failed */
 dberr_t btr_page_reorganize_block(
@@ -508,8 +517,8 @@ dberr_t
 btr_validate_index(
 /*===============*/
 	dict_index_t*	index,	/*!< in: index */
-	trx_t*		trx)	/*!< in: transaction */
-	MY_ATTRIBUTE((warn_unused_result,nonnull));
+	const trx_t*	trx)	/*!< in: transaction or 0 */
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Remove a page from the level list of pages.
 @param[in]	block		page to remove
@@ -530,10 +539,9 @@ btr_lift_page_up(
 				must not be empty: use
 				btr_discard_only_page_on_level if the last
 				record from the page should be removed */
-	que_thr_t*	thr,	/*!< in/out: query thread for SPATIAL INDEX */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	dberr_t*	err)	/*!< out: error code */
-	__attribute__((nonnull(1,2,4,5)));
+	__attribute__((nonnull));
 
 #define BTR_N_LEAF_PAGES	1
 #define BTR_TOTAL_SIZE		2

@@ -61,11 +61,13 @@ connect  john, localhost, john,,information_schema;
 show databases;
 Database
 information_schema
+test
 set role client;
 show databases;
 Database
 bug_db
 information_schema
+test
 use bug_db;
 #
 # Try using the database as usertestjohn.
@@ -74,11 +76,13 @@ connect  usertestjohn, localhost, usertestjohn,,information_schema;
 show databases;
 Database
 information_schema
+test
 set role client;
 show databases;
 Database
 bug_db
 information_schema
+test
 show grants;
 Grants for usertestjohn@%
 GRANT `client` TO `usertestjohn`@`%`
@@ -90,8 +94,6 @@ use bug_db;
 # Cleanup
 #
 connection default;
-disconnect john;
-disconnect usertestjohn;
 drop user john;
 drop user usertestjohn;
 drop role client;

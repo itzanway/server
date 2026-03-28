@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2015, 2023, MariaDB Corporation.
+Copyright (c) 2015, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -36,14 +36,12 @@ Created 3/26/1996 Heikki Tuuri
 #include "read0types.h"
 #include "ilist.h"
 #include "small_vector.h"
-#include "row0merge.h"
 
 #include <vector>
 
 // Forward declaration
 struct mtr_t;
 struct rw_trx_hash_element_t;
-class ha_handler_stats;
 
 /******************************************************************//**
 Set detailed error message for the transaction. */
@@ -413,11 +411,6 @@ class trx_mod_table_time_t
   /** Whether the modified table is a FTS auxiliary table */
   bool fts_aux_table= false;
 #endif /* UNIV_DEBUG */
-
-  /** Buffer to store insert opertion */
-  row_merge_bulk_t *bulk_store= nullptr;
-
-  friend struct trx_t;
 public:
   /** Constructor
   @param rows   number of modified rows so far */
@@ -451,15 +444,8 @@ public:
     first_versioned= BULK;
   }
 
-  /** Notify the start of a bulk insert operation
-  @param table table to do bulk operation
-  @param also_primary start bulk insert operation for primary index */
-  void start_bulk_insert(dict_table_t *table, bool also_primary)
-  {
-    first|= BULK;
-    if (!table->is_temporary())
-      bulk_store= new row_merge_bulk_t(table, also_primary);
-  }
+  /** Notify the start of a bulk insert operation */
+  void start_bulk_insert() { first|= BULK; }
 
   /** Notify the end of a bulk insert operation */
   void end_bulk_insert() { first&= ~BULK; }
@@ -485,46 +471,6 @@ public:
 
   bool is_aux_table() const { return fts_aux_table; }
 #endif /* UNIV_DEBUG */
-
-  /** @return the first undo record that modified the table */
-  undo_no_t get_first() const
-  {
-    ut_ad(valid());
-    return LIMIT & first;
-  }
-
-  /** Add the tuple to the transaction bulk buffer for the given index.
-  @param entry  tuple to be inserted
-  @param index  bulk insert for the index
-  @param trx    transaction */
-  dberr_t bulk_insert_buffered(const dtuple_t &entry,
-                               const dict_index_t &index, trx_t *trx)
-  {
-    return bulk_store->bulk_insert_buffered(entry, index, trx);
-  }
-
-  /** Do bulk insert operation present in the buffered operation
-  @return DB_SUCCESS or error code */
-  dberr_t write_bulk(dict_table_t *table, trx_t *trx);
-
-  /** @return whether the buffer storage exist */
-  bool bulk_buffer_exist() const
-  {
-    return bulk_store && is_bulk_insert();
-  }
-
-  /** @return whether InnoDB has to skip sort for clustered index */
-  bool skip_sort_pk() const
-  {
-    return bulk_store && !bulk_store->m_sort_primary_key;
-  }
-
-  /** Free bulk insert operation */
-  void clear_bulk_buffer()
-  {
-    delete bulk_store;
-    bulk_store= nullptr;
-  }
 };
 
 /** Collection of persistent tables and their first modification
@@ -639,8 +585,7 @@ public:
   {
     /** The largest encountered transaction identifier for which no
     transaction was observed to be active. This is a cache to speed up
-    trx_sys_t::find_same_or_older() as well as to elide some calls to
-    trx_sys_t::find().
+    trx_sys_t::find_same_or_older().
 
     This will be zero-initialized in Pool::Pool() and not initialized
     when a transaction object in the pool is freed and reused. The
@@ -711,7 +656,7 @@ public:
 
   Regular transactions:
   * NOT_STARTED -> ACTIVE -> COMMITTED -> NOT_STARTED
-  * NOT_STARTED -> ABORTED (when THD::mark_transaction_to_rollback() is called)
+  * NOT_STARTED -> ABORTED (when thd_mark_transaction_to_rollback() is called)
   * ABORTED -> NOT_STARTED (acknowledging the rollback of a transaction)
 
   Auto-commit non-locking read-only:
@@ -720,10 +665,10 @@ public:
   XA (2PC):
   * NOT_STARTED -> ACTIVE -> PREPARED -> COMMITTED -> NOT_STARTED
 
-  Recovered XA(2PC) followed by XA COMMIT :
+  Recovered XA:
   * NOT_STARTED -> PREPARED -> COMMITTED -> (freed)
 
-  Recovered XA followed by XA ROLLBACK or recover_rollback_by_xid:
+  Recovered XA followed by XA ROLLBACK:
   * NOT_STARTED -> PREPARED -> ACTIVE -> COMMITTED -> (freed)
 
   XA (2PC) (shutdown or disconnect before ROLLBACK or COMMIT):
@@ -811,13 +756,8 @@ public:
   /** normally set; "SET unique_checks=0, foreign_key_checks=0"
   enables bulk insert into an empty table */
   unsigned check_unique_secondary:1;
-  /** whether an insert into an empty table is active
-  Possible states are
-  TRX_NO_BULK
-  TRX_DML_BULK
-  TRX_DDL_BULK
-  @see trx_bulk_insert in trx0types.h */
-  unsigned bulk_insert:2;
+  /** whether an insert into an empty table is active */
+  unsigned bulk_insert:1;
 	/*------------------------------*/
 	/* MySQL has a transaction coordinator to coordinate two phase
 	commit between multiple storage engines and the binary log. When
@@ -830,8 +770,6 @@ public:
 					rollback. */
 	/** whether this is holding the prepare mutex */
 	bool		active_commit_ordered;
-	/** whether innobase_xa_prepare() was done. */
-	bool		active_prepare;
 	/*------------------------------*/
 	bool		flush_log_later;/* In 2PC, we hold the
 					prepare_commit mutex across
@@ -839,7 +777,7 @@ public:
 					defer flush of the logs to disk
 					until after we release the
 					mutex. */
-	byte		duplicates;	/*!< TRX_DUP_IGNORE | TRX_DUP_REPLACE */
+	ulint		duplicates;	/*!< TRX_DUP_IGNORE | TRX_DUP_REPLACE */
   /** whether this modifies InnoDB dictionary tables */
   bool dict_operation;
 #ifdef UNIV_DEBUG
@@ -859,11 +797,6 @@ public:
 	/*------------------------------*/
 	THD*		mysql_thd;	/*!< MySQL thread handle corresponding
 					to this trx, or NULL */
-
-  /** EXPLAIN ANALYZE statistics, or nullptr if not active */
-  ha_handler_stats *active_handler_stats;
-  /** number of pages accessed in the buffer pool */
-  size_t pages_accessed;
 
 	const char*	mysql_log_file_name;
 					/*!< if MySQL binlog is used, this field
@@ -1023,13 +956,16 @@ private:
   /** Process tables that were modified by the committing transaction. */
   inline void commit_tables();
   /** Mark a transaction committed in the main memory data structures.
-  @param mtr  mini-transaction */
-  inline void commit_in_memory(mtr_t *mtr);
-  /** Commit the transaction in the file system. */
+  @param mtr  mini-transaction (if there are any persistent modifications) */
+  inline void commit_in_memory(const mtr_t *mtr);
+  /** Write log for committing the transaction. */
   void commit_persist() noexcept;
   /** Clean up the transaction after commit_in_memory()
-  @retval false (always) */
+  @return false (always) */
   bool commit_cleanup() noexcept;
+  /** Commit the transaction in a mini-transaction.
+  @param mtr  mini-transaction (if there are any persistent modifications) */
+  void commit_low(mtr_t *mtr= nullptr);
   /** Commit an empty transaction.
   @param mtr   mini-transaction */
   void commit_empty(mtr_t *mtr);
@@ -1040,9 +976,8 @@ private:
   @param mtr   mini-transaction */
   inline void write_serialisation_history(mtr_t *mtr);
 public:
-  /** Commit the transaction.
-  @retval false (always) */
-  bool commit() noexcept;
+  /** Commit the transaction. */
+  void commit() noexcept;
 
   /** Try to drop a persistent table.
   @param table       persistent table
@@ -1103,10 +1038,8 @@ public:
   bool has_stats_table_lock() const;
 
   /** Free the memory to trx_pools */
-  void free() noexcept;
+  void free();
 
-  /** Clear commit_lsn and free the memory */
-  void clear_and_free() noexcept { ut_d(commit_lsn= 0;) free(); }
 
   void assert_freed() const
   {
@@ -1131,7 +1064,6 @@ public:
     ut_ad(!is_not_inheriting_locks());
     ut_ad(check_foreigns);
     ut_ad(check_unique_secondary);
-    ut_ad(bulk_insert == TRX_NO_BULK);
   }
 
   /** This has to be invoked on SAVEPOINT or at the end of a statement.
@@ -1157,8 +1089,6 @@ public:
   rollback to the start of a statement will work. */
   void end_bulk_insert()
   {
-    if (bulk_insert == TRX_DDL_BULK)
-      return;
     for (auto& t : mod_tables)
       t.second.end_bulk_insert();
   }
@@ -1166,15 +1096,7 @@ public:
   /** @return whether a bulk insert into empty table is in progress */
   bool is_bulk_insert() const
   {
-    switch (bulk_insert) {
-    case TRX_NO_BULK:
-      return false;
-    case TRX_DDL_BULK:
-      return true;
-    default:
-      ut_ad(bulk_insert == TRX_DML_BULK);
-    }
-    if (check_unique_secondary || check_foreigns)
+    if (!bulk_insert || check_unique_secondary || check_foreigns)
       return false;
     for (const auto& t : mod_tables)
       if (t.second.is_bulk_insert())
@@ -1182,70 +1104,7 @@ public:
     return false;
   }
 
-  /**
-  @return logical modification time of a table
-  @retval nullptr if the table doesn't have bulk buffer or
-  can skip sorting for primary key */
-  trx_mod_table_time_t *use_bulk_buffer(dict_index_t *index) noexcept
-  {
-    if (UNIV_LIKELY(!bulk_insert))
-      return nullptr;
-    ut_ad(index->table->skip_alter_undo || !check_unique_secondary);
-    ut_ad(index->table->skip_alter_undo || !check_foreigns);
-    auto it= mod_tables.find(index->table);
-    if (it == mod_tables.end() || !it->second.bulk_buffer_exist())
-      return nullptr;
-    /* Avoid using bulk buffer for load statement */
-    if (index->is_clust() && it->second.skip_sort_pk())
-      return nullptr;
-    return &it->second;
-  }
-
-  /** Do the bulk insert for the buffered insert operation
-  for the transaction.
-  @return DB_SUCCESS or error code */
-  template<trx_bulk_insert type= TRX_DML_BULK>
-  dberr_t bulk_insert_apply()
-  {
-    static_assert(type != TRX_NO_BULK, "");
-    return bulk_insert == type ? bulk_insert_apply_low(): DB_SUCCESS;
-  }
-
-  /** This function used only during ALTER IGNORE TABLE command.
-  Reset the undo no and remove the undo log from transaction.
-  By doing this, InnoDB doesn't add any undo logs to purge queue
-  during transaction commit */
-  inline void reset_and_truncate_undo() noexcept;
-
-  /** Clear TRX_DML_BULK, retaining TRX_DDL_BULK if it was set. */
-  void clear_dml_bulk() noexcept
-  {
-    static_assert(TRX_NO_BULK == 0, "");
-    static_assert(TRX_DML_BULK == 2, "");
-    static_assert(TRX_DDL_BULK == 3, "");
-    static_assert((TRX_DML_BULK & 1) == 0, "");
-    ut_ad(bulk_insert != 1);
-    bulk_insert= unsigned(
-      (bulk_insert & (((bulk_insert ^ bulk_insert << 1) & 2 >> 1) * 3)) & 3);
-  }
-
-  /** Clear TRX_DDL_BULK, retaining TRX_DML_BULK if it was set. */
-  void clear_ddl_bulk() noexcept
-  {
-    static_assert(TRX_NO_BULK == 0, "");
-    static_assert(TRX_DML_BULK == 2, "");
-    static_assert(TRX_DDL_BULK == 3, "");
-    static_assert((TRX_DML_BULK & 1) == 0, "");
-    ut_ad(bulk_insert != 1);
-    bulk_insert= unsigned((bulk_insert ^ ((bulk_insert & 1) * 3)) & 3);
-  }
-
 private:
-  /** Apply the buffered bulk inserts. */
-  dberr_t bulk_insert_apply_low();
-
-  /** Rollback the bulk insert operation for the transaction */
-  void bulk_rollback_low();
   /** Assign a rollback segment for modifying temporary tables.
   @return the assigned rollback segment */
   trx_rseg_t *assign_temp_rseg();

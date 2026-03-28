@@ -12,10 +12,6 @@
 
 --source include/default_optimizer_switch.inc
 
-set
-  @rgmm_hist_type=@@histogram_type,
-  histogram_type=double_prec_hb;
-
 --disable_warnings
 drop table if exists t1;
 --enable_warnings
@@ -205,7 +201,7 @@ select a2, min(c), max(c) from t1 group by a1,a2,b;
 # Queries with a where clause
 #
 
-# A) Predicates only over the group 'A' attributes
+# A) Preds only over the group 'A' attributes
 # plans
 explain select a1,a2,b,min(c),max(c) from t1 where a1 < 'd' group by a1,a2,b;
 explain select a1,a2,b,min(c),max(c) from t1 where a1 >= 'b' group by a1,a2,b;
@@ -1442,5 +1438,3 @@ SHOW SESSION STATUS LIKE 'Handler_read%';
 DROP TABLE t1;
 
 --echo # End of test for Bug#18109609
-
-set histogram_type=@rgmm_hist_type;

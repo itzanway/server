@@ -74,7 +74,7 @@ open IN_FILE,"<", "$dir/tmp/$file" or die $!;
 open OUT_FILE, ">", "$dir/tmp/tmpfile" or die $!;
 while(<IN_FILE>) {
  unless ($_=~ /^debug.*$/ || $_=~ /\-#, \-\-debug.*$/ || $_=~ /http:.*html/) {
-    $_=~ s/^\S*innochecksum.* from .+$/innochecksum Ver #.#.#/g;
+    $_=~ s/^\S*innochecksum.+Ver.+[0-9]*\.[0-9]*\.[0-9]*.+$/innochecksum Ver #.#.#/g;
     $_=~ s/(Copyright\s\(c\))\s([0-9]*),\s([0-9]*)(.*)/$1 YEAR, YEAR $4/g;
     $_=~ s/Usage:.*\[-c/Usage: innochecksum [-c/g;
     print OUT_FILE $_;
@@ -82,7 +82,7 @@ while(<IN_FILE>) {
 }
 close(IN_FILE);
 close(OUT_FILE);
-# move the new content from tmp file to the original file.
+# move the new content from tmp file to the orginal file.
 move ("$dir/tmp/tmpfile", "$dir/tmp/$file");
 EOF
 
@@ -97,7 +97,7 @@ EOF
 --exec $INNOCHECKSUM -c $MYSQLD_DATADIR/test/t1.ibd
 
 --echo [4]:# Print the version of innochecksum and exit
---replace_regex /for \S+/for OS/ /\d+/#/ /#[-_A-Za-z0-9]*-MariaDB,/#-MariaDB,/ /\(.*\)/(ARCH)/ /^.*innochecksum(\.exe)?/innochecksum/
+--replace_regex /.*innochecksum.*Ver [0-9]*\.[0-9]*\.[0-9]*, for .*\)/innochecksum Ver #.#.#/
 --exec $INNOCHECKSUM -V
 
 --echo [5]:# check t1.ibd and t2.ibd summary with and without tablespace_flags

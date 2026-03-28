@@ -133,8 +133,8 @@ my_bool test_compare_operators(MY_BITMAP *map, uint bitsize)
   MY_BITMAP *map2= &map2_obj, *map3= &map3_obj;
   my_bitmap_map map2buf[MAX_TESTED_BITMAP_SIZE];
   my_bitmap_map map3buf[MAX_TESTED_BITMAP_SIZE];
-  my_bitmap_init(&map2_obj, map2buf, bitsize);
-  my_bitmap_init(&map3_obj, map3buf, bitsize);
+  my_bitmap_init(&map2_obj, map2buf, bitsize, FALSE);
+  my_bitmap_init(&map3_obj, map3buf, bitsize, FALSE);
   bitmap_clear_all(map2);
   bitmap_clear_all(map3);
   for (i=0; i < no_loops; i++)
@@ -297,44 +297,6 @@ error2:
   return TRUE;
 }
 
-
-my_bool test_get_last_bit(MY_BITMAP *map, uint bitsize)
-{
-  uint i, test_bit= 0;
-  uint no_loops= bitsize > 128 ? 128 : bitsize;
-
-  bitmap_set_all(map);
-  test_bit= bitsize;
-  if (bitmap_get_last_set(map) != bitsize-1)
-    goto error1;
-
-  bitmap_clear_all(map);
-  test_bit= 0;
-  if (bitmap_get_last_set(map) != MY_BIT_NONE)
-    goto error1;
-
-  for (i=0; i < no_loops; i++)
-  {
-    uint test_bit1, test_bit2;
-    bitmap_clear_all(map);
-    test_bit1= get_rand_bit(bitsize);
-    bitmap_set_bit(map, test_bit1);
-
-    test_bit2= get_rand_bit(bitsize);
-    bitmap_set_bit(map, test_bit2);
-
-    test_bit= MY_MAX(test_bit1, test_bit2);
-    if (bitmap_get_last_set(map) != test_bit)
-      goto error1;
-  }
-  return FALSE;
-error1:
-  diag("get_last_set error bitsize=%u, test_bit=%u, res: %u",
-       bitsize, test_bit, bitmap_get_last_set(map));
-  return TRUE;
-}
-
-
 my_bool test_get_next_bit(MY_BITMAP *map, uint bitsize)
 {
   uint i, j, test_bit;
@@ -449,7 +411,7 @@ my_bool test_compare(MY_BITMAP *map, uint bitsize)
   my_bitmap_map map2buf[MAX_TESTED_BITMAP_SIZE];
   uint i, test_bit;
   uint no_loops= bitsize > 128 ? 128 : bitsize;
-  if (my_bitmap_init(&map2, map2buf, bitsize))
+  if (my_bitmap_init(&map2, map2buf, bitsize, FALSE))
   {
     diag("init error for bitsize %d", bitsize);
     return TRUE;
@@ -508,7 +470,7 @@ my_bool test_intersect(MY_BITMAP *map, uint bitsize)
   MY_BITMAP map2;
   my_bitmap_map map2buf[MAX_TESTED_BITMAP_SIZE];
   uint i, test_bit1, test_bit2, test_bit3;
-  if (my_bitmap_init(&map2, map2buf, bitsize2))
+  if (my_bitmap_init(&map2, map2buf, bitsize2, FALSE))
   {
     diag("init error for bitsize %d", bitsize2);
     return TRUE;
@@ -558,8 +520,8 @@ my_bool test_copy(MY_BITMAP *map, uint bitsize)
   MY_BITMAP map2, map3;
   uint rnd_bit;
 
-  my_bitmap_init(&map2, buff, sizeof(buff)*8);
-  my_bitmap_init(&map3, buff2, sizeof(buff)*8);
+  my_bitmap_init(&map2, buff, sizeof(buff)*8, FALSE);
+  my_bitmap_init(&map3, buff2, sizeof(buff)*8, FALSE);
   bitmap_set_all(&map2);
   bitmap_set_all(&map3);
 
@@ -600,7 +562,7 @@ my_bool test_bitmap_exists_intersection(MY_BITMAP *map, uint bitsize)
   maps[0]= map;
   maps[1]= &map2;
 
-  my_bitmap_init(&map2, 0, bitsize);
+  my_bitmap_init(&map2, 0, bitsize, FALSE);
   bitmap_clear_all(map);
   bitmap_clear_all(&map2);
 
@@ -657,7 +619,7 @@ my_bool do_test(uint bitsize)
 {
   MY_BITMAP map;
   my_bitmap_map buf[MAX_TESTED_BITMAP_SIZE];
-  if (my_bitmap_init(&map, buf, bitsize))
+  if (my_bitmap_init(&map, buf, bitsize, FALSE))
   {
     diag("init error for bitsize %d", bitsize);
     goto error;
@@ -678,8 +640,6 @@ my_bool do_test(uint bitsize)
     goto error;
   bitmap_clear_all(&map);
   if (test_get_first_bit(&map,bitsize))
-    goto error;
-  if (test_get_last_bit(&map,bitsize))
     goto error;
   bitmap_clear_all(&map);
   if (test_get_next_bit(&map,bitsize))
@@ -714,7 +674,7 @@ int main(int argc __attribute__((unused)),char *argv[])
   plan((max_size - min_size)/7+1);
 
   /*
-    It's ok to do steps in 7, as i module 64 will go through all values 1..63.
+    It's ok to do steps in 7, as i module 64 will go trough all values 1..63.
     Any errors in the code should manifest as we are working with integers
     of size 16, 32, or 64 bits...
   */

@@ -1,7 +1,14 @@
+# Save the initial number of concurrent sessions
+--source include/count_sessions.inc
+
 #
 # Test for Bug#2385 CREATE TABLE LIKE lacks locking on source and destination
 #                   table
 #
+
+--disable_warnings
+DROP TABLE IF EXISTS t1,t2;
+--enable_warnings
 
 connect (con1,localhost,root,,);
 connect (con2,localhost,root,,);
@@ -37,4 +44,7 @@ connection default;
 disconnect con1;
 disconnect con2;
 
---echo # End of 4.1 tests
+# End of 4.1 tests
+
+# Wait till we reached the initial number of concurrent sessions
+--source include/wait_until_count_sessions.inc

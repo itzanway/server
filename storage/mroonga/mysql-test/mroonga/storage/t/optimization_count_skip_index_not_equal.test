@@ -20,7 +20,7 @@
 DROP TABLE IF EXISTS users;
 --enable_warnings
 
-FLUSH GLOBAL STATUS;
+FLUSH STATUS;
 
 CREATE TABLE users (
   age INT,
@@ -34,7 +34,6 @@ INSERT INTO users (age) VALUES (29);
 INSERT INTO users (age) VALUES (29);
 
 --disable_ps2_protocol
-explain SELECT COUNT(*) FROM users WHERE age <> 29;
 SELECT COUNT(*) FROM users WHERE age <> 29;
 --enable_ps2_protocol
 

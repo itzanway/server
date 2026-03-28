@@ -452,22 +452,15 @@ static const struct wordvalue doubles[] = {
 static int my_strnncoll_win1250ch(CHARSET_INFO *cs __attribute__((unused)), 
 				  const uchar *s1, size_t len1,
                                   const uchar *s2, size_t len2,
-                                  my_bool *s2_is_prefix)
+                                  my_bool s2_is_prefix)
 {
   int v1, v2;
   const uchar *p1, * p2;
   int pass1 = 0, pass2 = 0;
   int diff;
 
-  if (s2_is_prefix)
-  {
-    *s2_is_prefix= 0;
-    if (len1 > len2)
-    {
-      *s2_is_prefix= 1;
-      len1= len2;
-    }
-  }
+  if (s2_is_prefix && len1 > len2)
+    len1=len2;
 
   p1 = s1;	p2 = s2;
 
@@ -476,11 +469,7 @@ static int my_strnncoll_win1250ch(CHARSET_INFO *cs __attribute__((unused)),
     NEXT_CMP_VALUE(s1, p1, pass1, v1, (int)len1);
     NEXT_CMP_VALUE(s2, p2, pass2, v2, (int)len2);
     if ((diff = v1 - v2))
-    {
-      if (s2_is_prefix)
-        *s2_is_prefix= 0;
       return diff;
-    }
   } while (v1);
   return 0;
 }
@@ -501,13 +490,12 @@ int my_strnncollsp_win1250ch(CHARSET_INFO * cs,
 }
 
 
-static my_strnxfrm_ret_t
+static size_t
 my_strnxfrm_win1250ch(CHARSET_INFO *cs  __attribute__((unused)),
                       uchar *dest, size_t len,
                       uint nweights_arg __attribute__((unused)),
                       const uchar *src, size_t srclen, uint flags)
 {
-  uint warnings= 0;
   int value;
   const uchar *p;
   int pass = 0;
@@ -517,29 +505,20 @@ my_strnxfrm_win1250ch(CHARSET_INFO *cs  __attribute__((unused)),
   if (!(flags & 0x0F)) /* All levels by default */                              
     flags|= 0x0F;
 
-  for ( ; ; )
+  while (totlen < len)
   {
     NEXT_CMP_VALUE(src, p, pass, value, (int)srclen);
     if (!value)
       break;
     if ((1 << pass) & flags)
-    {
-      if (totlen < len)
-        dest[totlen++]= value;
-      else
-      {
-        warnings= MY_STRNXFRM_TRUNCATED_WEIGHT_REAL_CHAR;
-        break;
-      }
-    }
+      dest[totlen++] = value;
   }
   if ((flags & MY_STRXFRM_PAD_TO_MAXLEN) && len > totlen)
   {
     memset(dest + totlen, 0x00, len - totlen);
     totlen= len;
   }
-  DBUG_ASSERT(src <= p);
-  return my_strnxfrm_ret_construct(totlen, pass * srclen + p - src, warnings);
+  return totlen;
 }
 
 #undef IS_END
@@ -704,14 +683,12 @@ static MY_COLLATION_HANDLER my_collation_czech_cs_handler =
   my_strnxfrmlen_simple,
   my_like_range_win1250ch,
   my_wildcmp_8bit,
+  my_strcasecmp_8bit,
   my_instr_simple,
   my_hash_sort_simple,
   my_propagate_simple,
   my_min_str_8bit_simple,
-  my_max_str_8bit_simple,
-  my_ci_get_id_generic,
-  my_ci_get_collation_name_generic,
-  my_ci_eq_collation_generic
+  my_max_str_8bit_simple
 };
 
 
@@ -731,17 +708,19 @@ struct charset_info_st my_charset_cp1250_czech_cs =
   NULL,				/* uca          */
   tab_cp1250_uni,		/* tab_to_uni   */
   idx_uni_cp1250,		/* tab_from_uni */
-  NULL,                         /* casefold     */
+  &my_unicase_default,          /* caseinfo     */
   NULL,				/* state_map    */
   NULL,				/* ident_map    */
   2,				/* strxfrm_multiply */
+  1,                            /* caseup_multiply  */
+  1,                            /* casedn_multiply  */
   1,				/* mbminlen  */
   1,				/* mbmaxlen  */
   0,				/* min_sort_char */
   0xFF,                         /* max_sort_char */
   ' ',                          /* pad char      */
   0,                            /* escape_with_backslash_is_dangerous */
-  MY_CS_COLL_LEVELS_S2,
+  2,                            /* levels_for_order   */
   &my_charset_8bit_handler,
   &my_collation_czech_cs_handler
 };

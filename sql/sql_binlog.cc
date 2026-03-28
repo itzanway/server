@@ -1,6 +1,5 @@
 /*
    Copyright (c) 2005, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2022, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,7 +20,6 @@
 #include "sql_parse.h"
 #include "sql_acl.h"
 #include "rpl_rli.h"
-#include "rpl_mi.h"
 #include "slave.h"
 #include "log_event.h"
 
@@ -35,7 +33,7 @@
 static int check_event_type(int type, Relay_log_info *rli)
 {
   Format_description_log_event *fd_event=
-    rli->relay_log.description_event_for_sql_thread;
+    rli->relay_log.description_event_for_exec;
 
   /*
     Convert event type id of certain old versions (see comment in
@@ -57,7 +55,21 @@ static int check_event_type(int type, Relay_log_info *rli)
   {
   case START_EVENT_V3:
   case FORMAT_DESCRIPTION_EVENT:
-  case QUERY_EVENT:
+    /*
+      We need a preliminary FD event in order to parse the FD event,
+      if we don't already have one.
+    */
+    if (!fd_event)
+      if (!(rli->relay_log.description_event_for_exec=
+            new Format_description_log_event(4)))
+      {
+        my_error(ER_OUTOFMEMORY, MYF(0), 1);
+        return 1;
+      }
+
+    /* It is always allowed to execute FD events. */
+    return 0;
+    
   case TABLE_MAP_EVENT:
   case WRITE_ROWS_EVENT_V1:
   case UPDATE_ROWS_EVENT_V1:
@@ -68,8 +80,19 @@ static int check_event_type(int type, Relay_log_info *rli)
   case PRE_GA_WRITE_ROWS_EVENT:
   case PRE_GA_UPDATE_ROWS_EVENT:
   case PRE_GA_DELETE_ROWS_EVENT:
-  case PARTIAL_ROW_DATA_EVENT:
-    return 0;
+    /*
+      Row events are only allowed if a Format_description_event has
+      already been seen.
+    */
+    if (fd_event)
+      return 0;
+    else
+    {
+      my_error(ER_NO_FORMAT_DESCRIPTION_EVENT_BEFORE_BINLOG_STATEMENT,
+               MYF(0), Log_event::get_type_str((Log_event_type)type));
+      return 1;
+    }
+    break;
 
   default:
     /*
@@ -144,57 +167,6 @@ int binlog_defragment(THD *thd)
   return 0;
 }
 
-/**
-  Wraps Log_event::apply_event to save and restore
-  session context in case of Query_log_event.
-
-  @param ev   replication event
-  @param rgi  execution context for the event
-
-  @return
-    0         on success,
-    non-zero  otherwise.
-*/
-#if !defined(MYSQL_CLIENT) && defined(HAVE_REPLICATION)
-int save_restore_context_apply_event(Log_event *ev, rpl_group_info *rgi)
-{
-  if (ev->get_type_code() != QUERY_EVENT)
-    return ev->apply_event(rgi);
-
-  THD *thd= rgi->thd;
-  Relay_log_info *rli= thd->rli_fake;
-  DBUG_ASSERT(!rli->mi);
-  LEX_CSTRING connection_name= { STRING_WITH_LEN("BINLOG_BASE64_EVENT") };
-
-  if (!(rli->mi= new Master_info(&connection_name, false)))
-  {
-    my_error(ER_OUT_OF_RESOURCES, MYF(0));
-    return -1;
-  }
-
-  sql_digest_state *m_digest= thd->m_digest;
-  PSI_statement_locker *m_statement_psi= thd->m_statement_psi;;
-  LEX_CSTRING save_db= thd->db;
-  my_thread_id m_thread_id= thd->variables.pseudo_thread_id;
-
-  thd->system_thread_info.rpl_sql_info= NULL;
-  thd->reset_db(&null_clex_str);
-
-  thd->m_digest= NULL;
-  thd->m_statement_psi= NULL;
-
-  int err= ev->apply_event(rgi);
-
-  thd->m_digest= m_digest;
-  thd->m_statement_psi= m_statement_psi;
-  thd->variables.pseudo_thread_id= m_thread_id;
-  thd->reset_db(&save_db);
-  delete rli->mi;
-  rli->mi= NULL;
-
-  return err;
-}
-#endif
 
 /**
   Execute a BINLOG statement.
@@ -204,7 +176,7 @@ int save_restore_context_apply_event(Log_event *ev, rpl_group_info *rgi)
   BINLOG statement seen must be a base64 encoding of the
   Format_description_log_event, as outputted by mysqlbinlog.  This
   Format_description_log_event is cached in
-  rli->description_event_for_sql_thread.
+  rli->description_event_for_exec.
 
   @param thd Pointer to THD object for the client thread executing the
   statement.
@@ -244,10 +216,11 @@ void mysql_client_binlog_statement(THD* thd)
   if (!(rgi= thd->rgi_fake))
     rgi= thd->rgi_fake= new rpl_group_info(rli);
   rgi->thd= thd;
+
   const char *error= 0;
   Log_event *ev = 0;
   my_bool is_fragmented= FALSE;
-  my_bool keep_rgi= false;
+
   /*
     Out of memory check
   */
@@ -303,19 +276,6 @@ void mysql_client_binlog_statement(THD* thd)
     else if (bytes_decoded == 0)
       break; // If no bytes where read, the string contained only whitespace
 
-    /*
-      Create a default format description event.
-      This is used to read the real Format_description_log_event, or to read
-      all events if there is none (as happens with --binlog-storage-engine).
-    */
-    if (!rli->relay_log.description_event_for_sql_thread &&
-        !(rli->relay_log.description_event_for_sql_thread=
-          new Format_description_log_event(4)))
-    {
-      my_error(ER_OUT_OF_RESOURCES, MYF(0));
-      goto end;
-    }
-
     DBUG_ASSERT(bytes_decoded > 0);
     DBUG_ASSERT(endptr > strptr);
     coded_len-= endptr - strptr;
@@ -359,7 +319,7 @@ void mysql_client_binlog_statement(THD* thd)
         goto end;
 
       ev= Log_event::read_log_event(bufptr, event_len, &error,
-                                    rli->relay_log.description_event_for_sql_thread,
+                                    rli->relay_log.description_event_for_exec,
                                     0);
 
       DBUG_PRINT("info",("binlog base64 err=%s", error));
@@ -412,18 +372,8 @@ void mysql_client_binlog_statement(THD* thd)
         */
         LEX *backup_lex;
 
-        /*
-          If we are re-assembling a Rows_log_event from a group of
-          Partial_rows_log_events, the rgi houses the assembler, so we need
-          it around while we are re-constructing the event.
-        */
-        if (ev->get_type_code() == PARTIAL_ROW_DATA_EVENT &&
-            (((Partial_rows_log_event *) ev)->seq_no <
-             ((Partial_rows_log_event *) ev)->total_fragments))
-          keep_rgi= true;
-
         thd->backup_and_reset_current_lex(&backup_lex);
-        err= save_restore_context_apply_event(ev, rgi);
+        err= ev->apply_event(rgi);
         thd->restore_current_lex(backup_lex);
       }
       thd->variables.option_bits=
@@ -439,7 +389,7 @@ void mysql_client_binlog_statement(THD* thd)
         i.e. when this thread terminates.
       */
       if (ev->get_type_code() != FORMAT_DESCRIPTION_EVENT)
-        delete ev;
+        delete ev; 
       ev= 0;
       if (err)
       {
@@ -447,8 +397,7 @@ void mysql_client_binlog_statement(THD* thd)
           TODO: Maybe a better error message since the BINLOG statement
           now contains several events.
         */
-        if (!thd->is_error())
-          my_error(ER_UNKNOWN_ERROR, MYF(0));
+        my_error(ER_UNKNOWN_ERROR, MYF(0));
         goto end;
       }
     }
@@ -464,11 +413,5 @@ end:
   thd->variables.option_bits= thd_options;
   rgi->slave_close_thread_tables(thd);
   my_free(buf);
-
-  if (!keep_rgi)
-  {
-    delete rgi;
-    rgi= thd->rgi_fake= NULL;
-  }
   DBUG_VOID_RETURN;
 }

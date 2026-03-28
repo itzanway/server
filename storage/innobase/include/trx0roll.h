@@ -31,8 +31,7 @@ Created 3/26/1996 Heikki Tuuri
 #include "mtr0mtr.h"
 #include "trx0sys.h"
 
-extern tpool::task_group rollback_all_recovered_group;
-extern tpool::waitable_task rollback_all_recovered_task;
+extern bool		trx_rollback_is_active;
 extern const trx_t*	trx_roll_crash_recv_trx;
 
 /** Report progress when rolling back a row of a recovered transaction. */

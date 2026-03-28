@@ -14,8 +14,6 @@ create table t1 (id int primary key, data varchar(255));
 insert into t1 values (1, 'test'), (2, 'data');
 create table st1 (id int primary key, data varchar(255)) engine=spider
 comment='wrapper "mysql", srv "srv1", table "t1"';
-Warnings:
-Warning	138	Spider table params in COMMENT or CONNECTION strings have been deprecated and will be removed in a future release. Please use table options instead.
 set @`spider_lc_./test/st1` = concat('-', repeat('x', 900000), '-pid-tbl-');
 select * from st1 limit 1;
 id	data

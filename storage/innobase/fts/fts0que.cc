@@ -199,7 +199,7 @@ struct fts_proximity_t {
 					of the range */
 };
 
-/** The match positions and tokens to match */
+/** The match positions and tokesn to match */
 struct fts_phrase_t {
 	fts_phrase_t(const dict_table_t* table)
 		:
@@ -244,14 +244,14 @@ struct fts_phrase_t {
 	st_mysql_ftparser*	parser;
 };
 
-/** Parameter passed to fts phrase match by parser */
+/** Paramter passed to fts phrase match by parser */
 struct fts_phrase_param_t {
 	fts_phrase_t*	phrase;		/*!< Match phrase instance */
 	ulint		token_index;	/*!< Index of token to match next */
 	mem_heap_t*	heap;		/*!< Heap for word processing */
 };
 
-/** For storing the frequency of a word/term in a document */
+/** For storing the frequncy of a word/term in a document */
 struct fts_doc_freq_t {
 	doc_id_t	doc_id;		/*!< Document id */
 	ulint		freq;		/*!< Frequency of a word in a document */
@@ -433,7 +433,7 @@ fts_query_lcs(
 
 	/* Traverse the table backwards, from the last row to the first and
 	also from the last column to the first. We compute the smaller
-	common subsequences first, then use the calculated values to determine
+	common subsequeces first, then use the caluclated values to determine
 	the longest common subsequence. The result will be in TABLE[0][0]. */
 	for (i = r; i >= 0; --i) {
 		int	j;
@@ -762,7 +762,7 @@ fts_query_remove_doc_id(
 }
 
 /*******************************************************************//**
-Find the doc id in the query set but not in the deleted set, artificially
+Find the doc id in the query set but not in the deleted set, artificialy
 downgrade or upgrade its ranking by a value and make/initialize its ranking
 under or above its normal range 0 to 1. This is used for Boolean Search
 operator such as Negation operator, which makes word's contribution to the
@@ -822,7 +822,7 @@ fts_query_intersect_doc_id(
 	   2. 'a +b': docs match 'a' is in doc_ids, add doc into intersect
 	      if it matches 'b'. if the doc is also in  doc_ids, then change the
 	      doc's rank, and add 'a' in doc's words.
-	   3. '+a +b': docs matching '+a' is in doc_ids, add doc into intersect
+	   3. '+a +b': docs matching '+a' is in doc_ids, add doc into intsersect
 	      if it matches 'b' and it's in doc_ids.(multi_exist = true). */
 
 	/* Check if the doc id is deleted and it's in our set */
@@ -1105,6 +1105,15 @@ fts_query_difference(
 
 	ut_a(query->oper == FTS_IGNORE);
 
+#ifdef FTS_INTERNAL_DIAG_PRINT
+	{
+		ib::info	out;
+		out << "DIFFERENCE: Searching: '";
+		out.write(token->f_str, token->f_len);
+		out << "'";
+	}
+#endif
+
 	if (query->doc_ids) {
 		n_doc_ids = rbt_size(query->doc_ids);
 	}
@@ -1198,6 +1207,15 @@ fts_query_intersect(
 	dict_table_t*		table = query->index->table;
 
 	ut_a(query->oper == FTS_EXIST);
+
+#ifdef FTS_INTERNAL_DIAG_PRINT
+	{
+		ib::info	out;
+		out << "INTERSECT: Searching: '";
+		out.write(token->f_str, token->f_len);
+		out << "'";
+	}
+#endif
 
 	/* If the words set is not empty and multi exist is true,
 	we know the intersection set is empty in advance. */
@@ -1380,6 +1398,15 @@ fts_query_union(
 	ut_a(query->oper == FTS_NONE || query->oper == FTS_DECR_RATING ||
 	     query->oper == FTS_NEGATE || query->oper == FTS_INCR_RATING);
 
+#ifdef FTS_INTERNAL_DIAG_PRINT
+	{
+		ib::info	out;
+		out << "UNION: Searching: '";
+		out.write(token->f_str, token->f_len);
+		out << "'";
+	}
+#endif
+
 	if (query->doc_ids) {
 		n_doc_ids = rbt_size(query->doc_ids);
 	}
@@ -1412,7 +1439,7 @@ fts_query_union(
 		/* The size can't decrease. */
 		ut_a(rbt_size(query->doc_ids) >= n_doc_ids);
 
-		/* Calculate the number of doc ids that were added to
+		/* Calulate the number of doc ids that were added to
 		the current doc id set. */
 		if (query->doc_ids) {
 			n_doc_ids = rbt_size(query->doc_ids) - n_doc_ids;
@@ -1598,10 +1625,9 @@ fts_query_match_phrase_terms(
 			token = static_cast<const fts_string_t*>(
 				ib_vector_get_const(tokens, i));
 
-			cmp_str = fts_string_dup_casedn(phrase->charset,
-							match, heap);
+			fts_string_dup(&cmp_str, &match, heap);
 
-			result = innobase_fts_text_cmp(
+			result = innobase_fts_text_case_cmp(
 				phrase->charset, token, &cmp_str);
 
 			/* Skip the rest of the tokens if this one doesn't
@@ -1755,9 +1781,9 @@ fts_query_match_phrase_add_word_for_parser(
 		token = static_cast<const fts_string_t*>(
 			ib_vector_get_const(tokens, phrase_param->token_index));
 
-		cmp_str = fts_string_dup_casedn(phrase->charset, match, heap);
+		fts_string_dup(&cmp_str, &match, heap);
 
-		result = innobase_fts_text_cmp(
+		result = innobase_fts_text_case_cmp(
 			phrase->charset, token, &cmp_str);
 
 		if (result == 0) {
@@ -1896,10 +1922,9 @@ fts_query_match_phrase(
 				break;
 			}
 
-			cmp_str = fts_string_dup_casedn(phrase->charset,
-							match, heap);
+			fts_string_dup(&cmp_str, &match, heap);
 
-			if (innobase_fts_text_cmp(
+			if (innobase_fts_text_case_cmp(
 				phrase->charset, first, &cmp_str) == 0) {
 
 				/* This is the case for the single word
@@ -2524,6 +2549,10 @@ fts_query_search_phrase(
 
 	mysql_mutex_unlock(&cache->lock);
 
+#ifdef FTS_INTERNAL_DIAG_PRINT
+	ib::info() << "Start phrase search";
+#endif
+
 	/* Read the document from disk and do the actual
 	match, matching documents will be added to the current
 	doc id set. */
@@ -2657,7 +2686,7 @@ fts_query_phrase_split(
 			   cache->stopword_info.cached_stopword,
 			   query->fts_index_table.charset)) {
 			/* Add the word to the RB tree so that we can
-			calculate its frequency within a document. */
+			calculate it's frequencey within a document. */
 			fts_query_add_word_freq(query, token);
 		} else {
 			ib_vector_pop(tokens);
@@ -3354,7 +3383,7 @@ fts_query_read_node(
 	/* Start from 1 since the first column has been read by the caller.
 	Also, we rely on the order of the columns projected, to filter
 	out ilists that are out of range and we always want to read
-	the doc_count irrespective of the suitability of the row. */
+	the doc_count irrespective of the suitablility of the row. */
 
 	for (i = 1; exp && !skip; exp = que_node_get_next(exp), ++i) {
 
@@ -3862,6 +3891,10 @@ fts_query_parse(
 		fts_ast_state_free(&state);
 	} else {
 		query->root = state.root;
+
+		if (UNIV_UNLIKELY(fts_enable_diag_print) && query->root) {
+			fts_ast_node_print(query->root);
+		}
 	}
 
 	DBUG_RETURN(state.root);
@@ -3916,6 +3949,7 @@ fts_query(
 	bool		boolean_mode;
 	trx_t*		query_trx; /* FIXME: use provided trx */
 	CHARSET_INFO*	charset;
+	ulint		start_time_ms;
 	bool		will_be_ignored = false;
 
 	boolean_mode = flags & FTS_BOOL;
@@ -3924,6 +3958,8 @@ fts_query(
 	memset(&query, 0x0, sizeof(query));
 	query_trx = trx_create();
 	query_trx->op_info = "FTS query";
+
+	start_time_ms = ut_time_ms();
 
 	query.trx = query_trx;
 	query.index = index;
@@ -3993,7 +4029,7 @@ fts_query(
 	/* Convert the query string to lower case before parsing. We own
 	the ut_malloc'ed result and so remember to free it before return. */
 
-	lc_query_str_len = query_len * charset->casedn_multiply() + 1;
+	lc_query_str_len = query_len * charset->casedn_multiply + 1;
 	lc_query_str = static_cast<byte*>(ut_malloc_nokey(lc_query_str_len));
 
 	/* For binary collations, a case sensitive search is
@@ -4003,12 +4039,14 @@ fts_query(
 		lc_query_str[query_len]= 0;
 		result_len= query_len;
 	} else {
-		result_len = charset->casedn_z(
-				(const char*) query_str, query_len,
-				(char*) lc_query_str, lc_query_str_len);
+	result_len = innobase_fts_casedn_str(
+				charset, (char*)( query_str), query_len,
+				(char*)(lc_query_str), lc_query_str_len);
 	}
 
 	ut_ad(result_len < lc_query_str_len);
+
+	lc_query_str[result_len] = 0;
 
 	query.heap = mem_heap_create(128);
 
@@ -4079,6 +4117,25 @@ fts_query(
 
 	ut_free(lc_query_str);
 
+	if (UNIV_UNLIKELY(fts_enable_diag_print) && (*result)) {
+		ulint	diff_time = ut_time_ms() - start_time_ms;
+
+		ib::info() << "FTS Search Processing time: "
+			<< diff_time / 1000 << " secs: " << diff_time % 1000
+			<< " millisec: row(s) "
+			<< ((*result)->rankings_by_id
+			    ? lint(rbt_size((*result)->rankings_by_id))
+			    : -1);
+
+		/* Log memory consumption & result size */
+		ib::info() << "Full Search Memory: " << query.total_size
+			<< " (bytes),  Row: "
+			<< ((*result)->rankings_by_id
+			    ? rbt_size((*result)->rankings_by_id)
+			    : 0)
+			<< ".";
+	}
+
 func_exit:
 	fts_query_free(&query);
 
@@ -4146,6 +4203,34 @@ fts_query_sort_result_on_rank(
 	result->rankings_by_rank = ranked;
 }
 
+/*******************************************************************//**
+A debug function to print result doc_id set. */
+static
+void
+fts_print_doc_id(
+/*=============*/
+	fts_query_t*	query)	/*!< in : tree that stores doc_ids.*/
+{
+	const ib_rbt_node_t*	node;
+
+	/* Iterate each member of the doc_id set */
+	for (node = rbt_first(query->doc_ids);
+	     node;
+	     node = rbt_next(query->doc_ids, node)) {
+		fts_ranking_t*	ranking;
+		ranking = rbt_value(fts_ranking_t, node);
+
+		ib::info() << "doc_ids info, doc_id: " << ranking->doc_id;
+
+		ulint		pos = 0;
+		fts_string_t	word;
+
+		while (fts_ranking_words_get_next(query, ranking, &pos, &word)) {
+			ib::info() << "doc_ids info, value: " << word.f_str;
+		}
+	}
+}
+
 /*************************************************************//**
 This function implements a simple "blind" query expansion search:
 words in documents found in the first search pass will be used as
@@ -4187,6 +4272,10 @@ fts_expand_query(
 	result_doc.parser = index_cache->index->parser;
 
 	query->total_size += SIZEOF_RBT_CREATE;
+
+	if (UNIV_UNLIKELY(fts_enable_diag_print)) {
+		fts_print_doc_id(query);
+	}
 
 	for (node = rbt_first(query->doc_ids);
 	     node;

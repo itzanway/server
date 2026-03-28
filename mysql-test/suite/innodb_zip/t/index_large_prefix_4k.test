@@ -2,12 +2,15 @@
 
 --source include/have_innodb.inc
 --source include/have_innodb_4k.inc
---source include/test_db_charset_latin1.inc
 SET default_storage_engine=InnoDB;
 
 --disable_query_log
 call mtr.add_suppression("Cannot add field .* in table .* because after adding it, the row size is");
 --enable_query_log
+
+let $innodb_file_per_table_orig=`select @@innodb_file_per_table`;
+
+set global innodb_file_per_table=1;
 
 -- echo ### Test 1 ###
 # Create a table of DYNAMIC format, with a primary index of 768 bytes in
@@ -40,7 +43,7 @@ update worklog5743 set a = (repeat("x", 17000));
 # Start a new session to select the column to force it build
 # an earlier version of the clustered index through undo log. So it should
 # just see the result of repeat("b", 16000)
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 --connect (con1,localhost,root,,)
 select a = repeat("x", 17000) from worklog5743;
 select a = repeat("b", 16000) from worklog5743;
@@ -49,7 +52,7 @@ select a = repeat("b", 16000) from worklog5743;
 # should see the uncommitted update
 --connect (con2,localhost,root,,)
 SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 select a = repeat("x", 17000) from worklog5743;
 
 # Roll back the transaction
@@ -73,7 +76,7 @@ update worklog5743 set a1 = 1111;
 
 # Do a select from another connection that would use the secondary index
 --connection con1
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 explain select a1, a2 = repeat("a", 10000) from worklog5743 where a1 = 9;
 select a1, a2 = repeat("a", 10000) from worklog5743 where a1 = 9;
 
@@ -81,7 +84,7 @@ select a1, a2 = repeat("a", 10000) from worklog5743 where a1 = 9;
 # row with a1 = 9
 --connection con2
 SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 select a1, a2 = repeat("a", 10000) from worklog5743 where a1 = 9;
 
 --connection default
@@ -103,7 +106,7 @@ update worklog5743 set a1 = 2222;
 
 # Do a select from another connection that would use the secondary index
 --connection con1
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 explain select a1, a2 = repeat("a", 10000) from worklog5743 where a1 = 9;
 select a1, a2 = repeat("a", 10000) from worklog5743 where a1 = 9;
 
@@ -111,7 +114,7 @@ select a1, a2 = repeat("a", 10000) from worklog5743 where a1 = 9;
 # row with a1 = 9
 --connection con2
 SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 select a1, a2 = repeat("a", 10000) from worklog5743 where a1 = 9;
 
 --connection default
@@ -196,7 +199,7 @@ select a1, left(a2, 20) from worklog5743_4;
 
 # Do a select from another connection that would use the secondary index
 --connection con1
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 explain select a1, left(a2, 20) from worklog5743_1 where a1 = 9;
 explain select a1, left(a2, 20) from worklog5743_2 where a1 = 9;
 explain select a1, left(a2, 20) from worklog5743_4 where a1 = 9;
@@ -208,7 +211,7 @@ select a1, left(a2, 20) from worklog5743_4 where a1 = 9;
 # row with a1 = 9
 --connection con2
 SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 select a1, left(a2, 20) from worklog5743_1 where a1 = 9;
 select a1, left(a2, 20) from worklog5743_2 where a1 = 9;
 select a1, left(a2, 20) from worklog5743_4 where a1 = 9;
@@ -294,14 +297,14 @@ update worklog5743 set a1 = 4444;
 
 # Do a select from another connection that would use the secondary index
 --connection con1
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 explain select a1 from worklog5743 where a1 = 9;
 select a1 from worklog5743 where a1 = 9;
 
 # Do read uncommitted, it would show there is no row with a1 = 9
 --connection con2
 SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 select a1 from worklog5743 where a1 = 9;
 
 --connection default
@@ -331,14 +334,14 @@ update worklog5743 set a = (repeat("x", 25000));
 
 # Start a new session to select the table to force it build
 # an earlier version of the cluster index through undo log
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 --connection con1
 select a = repeat("a", 20000) from worklog5743;
 --disconnect con1
 
 --connection con2
 SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-select @@session.transaction_isolation;
+select @@session.tx_isolation;
 select a = repeat("x", 25000) from worklog5743;
 --disconnect con2
 
@@ -378,4 +381,5 @@ create index idx on worklog5743(a(768));
 create index idx2 on worklog5743(a(767));
 drop table worklog5743;
 
---source include/test_db_charset_restore.inc
+
+eval SET GLOBAL innodb_file_per_table=$innodb_file_per_table_orig;

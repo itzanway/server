@@ -103,14 +103,13 @@ Sprintfs a timestamp to a buffer, 13..14 chars plus terminating NUL. */
 void
 ut_sprintf_timestamp(
 /*=================*/
-	char*	buf, /*!< in: buffer where to sprintf */
-	size_t size) /*!< in: size of buf, in bytes */
+	char*	buf) /*!< in: buffer where to sprintf */
 {
 #ifdef _WIN32
 	SYSTEMTIME cal_tm;
 	GetLocalTime(&cal_tm);
 
-	snprintf(buf, size, "%02u%02u%02u %2u:%02u:%02u",
+	sprintf(buf, "%02u%02u%02u %2u:%02u:%02u",
 		cal_tm.wYear % 100,
 		cal_tm.wMonth,
 		cal_tm.wDay,
@@ -122,7 +121,7 @@ ut_sprintf_timestamp(
 	struct tm  cal_tm;
 	time(&tm);
 	localtime_r(&tm, &cal_tm);
-	snprintf(buf, size, "%02d%02d%02d %2d:%02d:%02d",
+	sprintf(buf, "%02d%02d%02d %2d:%02d:%02d",
 		cal_tm.tm_year % 100,
 		cal_tm.tm_mon + 1,
 		cal_tm.tm_mday,
@@ -398,7 +397,7 @@ ut_strerr(
 	case DB_TEMP_FILE_WRITE_FAIL:
 		return("Temp file write failure");
 	case DB_CANT_CREATE_GEOMETRY_OBJECT:
-		return("Can't create specified geometry data object");
+		return("Can't create specificed geometry data object");
 	case DB_CANNOT_OPEN_FILE:
 		return("Cannot open a file");
 	case DB_TABLE_CORRUPT:
@@ -406,7 +405,7 @@ ut_strerr(
 	case DB_FTS_TOO_MANY_WORDS_IN_PHRASE:
 		return("Too many words in a FTS phrase or proximity search");
 	case DB_DECRYPTION_FAILED:
-		return("Table is compressed or encrypted but uncompress or decrypt failed.");
+		return("Table is encrypted but decrypt failed.");
 	case DB_IO_PARTIAL_FAILED:
 		return("Partial IO failed");
 	case DB_COMPUTE_VALUE_FAILED:
@@ -433,18 +432,6 @@ ut_strerr(
 }
 
 namespace ib {
-
-std::ostream &operator<<(std::ostream &lhs, const bytes_iec &rhs)
-{
-  static const char *sizes[]= {"B", "KiB", "MiB", "GiB", "TiB", "PiB",
-                              "EiB", "ZiB", "YiB"};
-  size_t i= 0;
-  double d= rhs.get_double();
-  for (; d > 512.0 && i < array_elements(sizes); i++, d/= 1024.0);
-  lhs.precision(3);
-  lhs << std::fixed << d << sizes[i];
-  return lhs;
-}
 
 ATTRIBUTE_COLD logger& logger::operator<<(dberr_t err)
 {

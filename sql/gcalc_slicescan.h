@@ -253,7 +253,6 @@ public:
 #endif /*GCALC_CHECK_WITH_FLOAT*/
   double coord_extent;
   Gcalc_dyn_list::Item **get_cur_hook() { return m_hook; }
-  int get_n_points() const { return m_n_points; }
 
 private:
   Gcalc_dyn_list::Item *m_first;
@@ -416,7 +415,7 @@ public:
   };
 
   /* That class introduced mostly for the 'typecontrol' reason.      */
-  /* only difference from the point class is the get_next() function. */
+  /* only difference from the point classis the get_next() function. */
   class event_point : public point
   {
   public:

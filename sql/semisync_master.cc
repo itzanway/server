@@ -659,7 +659,7 @@ int Repl_semi_sync_master::report_reply_packet(uint32 server_id,
 l_end:
   {
     char buf[256];
-    octet2hex(buf, (const unsigned char*) packet,
+    octet2hex(buf, (const char*) packet,
               MY_MIN(sizeof(buf)-1, (size_t) packet_len));
     sql_print_information("First bytes of the packet from semisync slave "
                           "server-id %d: %s", server_id, buf);
@@ -704,7 +704,7 @@ int Repl_semi_sync_master::report_reply_binlog(uint32 server_id,
     /* If the requested position is behind the sending binlog position,
      * would not adjust sending binlog position.
      * We based on the assumption that there are multiple semi-sync slave,
-     * and at least one of them should be up to date.
+     * and at least one of them shou/ld be up to date.
      * If all semi-sync slaves are behind, at least initially, the primary
      * can find the situation after the waiting timeout.  After that, some
      * slaves should catch up quickly.
@@ -964,8 +964,7 @@ int Repl_semi_sync_master::commit_trx(const char *trx_wait_binlog_name,
          * semi-sync was turned off then on, so on debug builds, we track
          * the number of times semi-sync turned off at binlogging, and compare
          * to the current value. */
-        DBUG_ASSERT(rpl_semi_sync_master_off_times >
-                    thd->expected_semi_sync_offs);
+        DBUG_ASSERT(rpl_semi_sync_master_off_times > thd->expected_semi_sync_offs);
 
         break;
       }
@@ -1034,11 +1033,10 @@ int Repl_semi_sync_master::commit_trx(const char *trx_wait_binlog_name,
       if (wait_result != 0)
       {
         /* This is a real wait timeout. */
-        sql_print_warning("Timeout waiting for reply of binlog (file: %s, pos:"
-                          " %lu), last semi-sync at file %s, position %lu.",
+        sql_print_warning("Timeout waiting for reply of binlog (file: %s, pos: %lu), "
+                          "semi-sync up to file %s, position %lu.",
                           trx_wait_binlog_name, (ulong)trx_wait_binlog_pos,
-                          (m_reply_file_name[0] == '\0') ? "(none)" :
-                           m_reply_file_name, (ulong)m_reply_file_pos);
+                          m_reply_file_name, (ulong)m_reply_file_pos);
         rpl_semi_sync_master_wait_timeouts++;
 
         /* switch semi-sync off */
@@ -1485,22 +1483,6 @@ void Repl_semi_sync_master::set_export_stats()
   unlock();
 }
 
-void Repl_semi_sync_master::reset_stats()
-{
-  lock();
-  rpl_semi_sync_master_yes_transactions = 0;
-  rpl_semi_sync_master_no_transactions = 0;
-  rpl_semi_sync_master_off_times = 0;
-  rpl_semi_sync_master_timefunc_fails = 0;
-  rpl_semi_sync_master_wait_sessions = 0;
-  rpl_semi_sync_master_wait_pos_backtraverse = 0;
-  rpl_semi_sync_master_trx_wait_num = 0;
-  rpl_semi_sync_master_trx_wait_time = 0;
-  rpl_semi_sync_master_net_wait_num = 0;
-  rpl_semi_sync_master_net_wait_time = 0;
-  unlock();
-}
-
 void Repl_semi_sync_master::await_all_slave_replies(const char *msg)
 {
   struct timespec timeout;
@@ -1536,7 +1518,7 @@ void Repl_semi_sync_master::await_all_slave_replies(const char *msg)
 /* Get the waiting time given the wait's staring time.
  *
  * Return:
- *  >= 0: the waiting time in microseconds(us)
+ *  >= 0: the waiting time in microsecons(us)
  *   < 0: error in get time or time back traverse
  */
 static int get_wait_time(const struct timespec& start_ts)

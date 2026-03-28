@@ -78,7 +78,7 @@ my %debuggers = (
     options => '-f -o {log} {exe} {args}',
   },
   rr => {
-    options => '_RR_TRACE_DIR={log} rr record {exe} {args}',
+    options => '_RR_TRACE_DIR={log} rr record {exe} {args} --loose-skip-innodb-use-native-aio --loose-innodb-flush-method=fsync',
     run => 'env',
     pre => sub {
       push @::global_suppressions, qr/InnoDB: native AIO failed/;

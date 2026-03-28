@@ -2,7 +2,6 @@
 -- source include/not_embedded.inc
 
 --source include/have_csv.inc
---source include/have_innodb.inc
 
 SET SQL_MODE="";
 SET @old_log_output=       @@global.log_output;
@@ -207,7 +206,7 @@ alter table mysql.slow_log engine=myisam;
 show create table mysql.general_log;
 show create table mysql.slow_log;
 
-# enable log tables and check that new tables indeed work
+# enable log tables and chek that new tables indeed work
 set global general_log='ON';
 set global slow_query_log='ON';
 
@@ -244,7 +243,7 @@ set global slow_query_log='OFF';
 # check that alter table doesn't work for other engines
 set @save_storage_engine= @@session.default_storage_engine;
 set default_storage_engine= MEMORY;
-# After fixing bug#35765 the error behavior changed:
+# After fixing bug#35765 the error behaivor changed:
 # If compiled in/enabled ER_UNSUPORTED_LOG_ENGINE
 # If not (i.e. not existant) it will show a warning
 # and use the current one.
@@ -289,7 +288,7 @@ CREATE TABLE `general_log` (
   `server_id` int(10) unsigned NOT NULL,
   `command_type` varchar(64) NOT NULL,
   `argument` mediumtext NOT NULL
-) ENGINE=CSV DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci COMMENT='General log';
+) ENGINE=CSV DEFAULT CHARSET=utf8 COMMENT='General log';
 
 CREATE TABLE `slow_log` (
   `start_time` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -306,7 +305,7 @@ CREATE TABLE `slow_log` (
   `sql_text` mediumtext NOT NULL,
   `thread_id` BIGINT(21) UNSIGNED NOT NULL,
   `rows_affected` bigint(20) unsigned NOT NULL
-) ENGINE=CSV DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci COMMENT='Slow log';
+) ENGINE=CSV DEFAULT CHARSET=utf8 COMMENT='Slow log';
 
 set global general_log='ON';
 set global slow_query_log='ON';
@@ -1060,31 +1059,6 @@ select distinct sql_text from mysql.slow_log where sql_text like '%evil%';
 set global log_output=default;
 drop user u@localhost;
 --enable_cursor_protocol
-
---echo # End of 10.5 tests
-
---echo #
---echo # MDEV-34928 CREATE TABLE does not check valid engine for log tables
---echo #
-set global general_log='on';
-show create table mysql.general_log;
---error ER_UNSUPORTED_LOG_ENGINE
-create or replace table mysql.general_log (a int) engine=innodb;
---error ER_UNSUPORTED_LOG_ENGINE
-create or replace table mysql.slow_log (a int) engine=innodb;
-create temporary table t (c int) engine=innodb;
-insert into t values (1);
-set global log_output='table';
-set session autocommit=0;
-update t set c=0;
-truncate t;
---error ER_BAD_FIELD_ERROR
-select a;
-drop temporary table t;
-set @@global.log_output=       @old_log_output;
-set @@global.general_log=      @old_general_log;
-
---echo # End of 10.6 tests
 
 SET @@global.log_output=       @old_log_output;
 SET @@global.slow_query_log=   @old_slow_query_log;

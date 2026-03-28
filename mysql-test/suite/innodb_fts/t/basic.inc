@@ -1,7 +1,7 @@
 if ($basic_stage == create_table)
 {
 # Create FTS table
---error ER_NO_INDEX_ON_TEMPORARY
+--error ER_INNODB_NO_FT_TEMP_TABLE
 CREATE TEMPORARY TABLE articles (
 	id INT UNSIGNED AUTO_INCREMENT NOT NULL PRIMARY KEY,
 	title VARCHAR(200),

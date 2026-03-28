@@ -19,7 +19,11 @@
 /* subselect Item */
 
 #include "item.h"
-#include "sql_queue.h"
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface			/* gcc class implementation */
+#endif
+
+#include <queues.h>
 
 class st_select_lex;
 class st_select_lex_unit;
@@ -231,12 +235,11 @@ public:
 
   /*
     Used by max/min subquery to initialize value presence registration
-    mechanism. Engine call this method before reexecution query.
+    mechanism. Engine call this method before rexecution query.
   */
   virtual void reset_value_registration() {}
   enum_parsing_place place() { return parsing_place; }
-  bool walk(Item_processor processor, void *arg,
-            item_walk_flags flags) override;
+  bool walk(Item_processor processor, bool walk_subquery, void *arg) override;
   bool unknown_splocal_processor(void *arg) override;
   bool mark_as_eliminated_processor(void *arg) override;
   bool eliminate_subselect_processor(void *arg) override;
@@ -296,8 +299,7 @@ protected:
 /* single value subselect */
 
 class Item_cache;
-class Item_singlerow_subselect :public Item_subselect,
-                                public Type_extra_attributes
+class Item_singlerow_subselect :public Item_subselect
 {
 protected:
   Item_cache *value, **row;
@@ -322,14 +324,6 @@ public:
   bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate) override;
   const Type_handler *type_handler() const override;
   bool fix_length_and_dec() override;
-  Type_extra_attributes *type_extra_attributes_addr() override
-  {
-    return this;
-  }
-  const Type_extra_attributes type_extra_attributes() const override
-  {
-    return *this;
-  }
 
   uint cols() const override;
   Item* element_index(uint i) override
@@ -383,6 +377,7 @@ class Item_exists_subselect :public Item_subselect
 protected:
   Item_func_not *upper_not;
   bool value; /* value of this item (boolean: exists/not-exists) */
+  bool abort_on_null;
 
   void init_length_and_dec();
   bool select_prepare_to_be_in();
@@ -406,7 +401,7 @@ public:
 
   Item_exists_subselect(THD *thd_arg, st_select_lex *select_lex);
   Item_exists_subselect(THD *thd_arg):
-  Item_subselect(thd_arg), upper_not(NULL),
+    Item_subselect(thd_arg), upper_not(NULL), abort_on_null(0),
     emb_on_expr_nest(NULL), optimizer(0), exists_transformed(0)
   {}
 
@@ -433,6 +428,8 @@ public:
   bool fix_length_and_dec() override;
   void print(String *str, enum_query_type query_type) override;
   bool select_transformer(JOIN *join) override;
+  void top_level_item() override { abort_on_null=1; }
+  bool is_top_level_item() const override { return abort_on_null; }
   bool exists2in_processor(void *opt_arg) override;
 
   Item* expr_cache_insert_transformer(THD *thd, uchar *unused) override;
@@ -646,7 +643,6 @@ public:
     value= 0;
     null_value= 0;
     was_null= 0;
-    is_jtbm_const_tab= 0;
   }
   bool select_transformer(JOIN *join) override;
   bool create_in_to_exists_cond(JOIN *join_arg);
@@ -766,11 +762,10 @@ public:
     DBUG_VOID_RETURN;
   }
 
-  bool walk(Item_processor processor, void *arg,
-            item_walk_flags flags) override
+  bool walk(Item_processor processor, bool walk_subquery, void *arg) override
   {
-    return left_expr->walk(processor, arg, flags) ||
-           Item_subselect::walk(processor, arg, flags);
+    return left_expr->walk(processor, walk_subquery, arg) ||
+           Item_subselect::walk(processor, walk_subquery, arg);
   }
 
   bool exists2in_processor(void *opt_arg __attribute__((unused))) override
@@ -792,22 +787,6 @@ public:
   Subq_materialization_tracker *get_materialization_tracker() const
   { return materialization_tracker; }
 
-  bool ora_join_processor(void *arg) override
-  {
-    if (left_expr->with_ora_join() && left_expr->cols() > 1)
-    {
-      // used in ROW operaton
-      my_error(ER_INVALID_USE_OF_ORA_JOIN_WRONG_FUNC, MYF(0));
-      return TRUE;
-    }
-    return FALSE;
-  }
-  bool add_maybe_null_after_ora_join_processor(void *arg) override
-  {
-    if (!maybe_null() && left_expr->maybe_null())
-      set_maybe_null();
-    return 0;
-  }
   friend class Item_ref_null_helper;
   friend class Item_is_not_null_test;
   friend class Item_in_optimizer;
@@ -1294,7 +1273,7 @@ protected:
   /*
     Mapping from row numbers to row ids. The element row_num_to_rowid[i]
     contains a buffer with the rowid for the row numbered 'i'.
-    The memory for this member is not maintained by this class because
+    The memory for this member is not maintanined by this class because
     all Ordered_key indexes of the same table share the same mapping.
   */
   uchar *row_num_to_rowid;
@@ -1533,7 +1512,7 @@ protected:
     Priority queue of Ordered_key indexes, one per NULLable column.
     This queue is used by the partial match algorithm in method exec().
   */
-  Queue<Ordered_key> pq;
+  QUEUE pq;
 protected:
   /*
     Comparison function to compare keys in order of decreasing bitmap

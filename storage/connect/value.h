@@ -60,9 +60,6 @@ DllExport ulonglong CharToNumber(PCSZ, int, ulonglong, bool,
                                  bool *minus = NULL, bool *rc = NULL);
 DllExport BYTE OpBmp(PGLOBAL g, OPVAL opc);
 
-/* Type for date and timestamps */
-typedef longlong dtval_timestamp_t;
-
 /***********************************************************************/
 /*  Class VALUE represents a constant or variable of any valid type.   */
 /***********************************************************************/
@@ -410,24 +407,21 @@ public:
 /***********************************************************************/
 /*  Class DTVAL: represents a time stamp value.                        */
 /***********************************************************************/
-
-class DllExport DTVAL : public TYPVAL<dtval_timestamp_t> {
+class DllExport DTVAL : public TYPVAL<int> {
  public:
   // Constructors
   DTVAL(PGLOBAL g, int n, int p, PCSZ fmt);
   DTVAL(int n);
-  using TYPVAL<dtval_timestamp_t>::SetValue;
+  using TYPVAL<int>::SetValue;
 
   // Implementation
   bool   SetValue_pval(PVAL valp, bool chktype) override;
   bool   SetValue_char(const char *p, int n) override;
   void   SetValue_psz(PCSZ s) override;
   void   SetValue_pvblk(PVBLK blk, int n) override;
-  void   SetValue(dtval_timestamp_t n) override;
-  void   SetBinValue(void* p) override;
-  bool   GetBinValue(void *buf, int buflen, bool go) override;
+  void   SetValue(int n) override;
   PSZ    GetCharValue(void) override { return Sdate; }
-  char  *GetCharString(char *p) override;
+	char  *GetCharString(char *p) override;
   int    ShowValue(char *buf, int len) override;
   bool   FormatValue(PVAL vp, PCSZ fmt) override;
           bool   SetFormat(PGLOBAL g, PCSZ fmt, int len, int year = 0);
@@ -444,7 +438,7 @@ class DllExport DTVAL : public TYPVAL<dtval_timestamp_t> {
 
  protected:
   // Default constructor not to be used
-  DTVAL(void) : TYPVAL<dtval_timestamp_t>() {}
+  DTVAL(void) : TYPVAL<int>() {}
 
   // Members
   static int    Shift;        // Time zone shift in seconds

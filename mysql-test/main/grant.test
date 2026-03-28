@@ -2,13 +2,17 @@
 
 # Grant tests not performed with embedded server
 --source include/not_embedded.inc
---disable_service_connection
+
+# Save the initial number of concurrent sessions
+--source include/count_sessions.inc
 
 set GLOBAL sql_mode="";
 set LOCAL sql_mode="";
 SET @old_log_bin_trust_function_creators= @@global.log_bin_trust_function_creators;
 SET GLOBAL log_bin_trust_function_creators = 1;
+--disable_cursor_protocol
 select priv into @root_priv from mysql.global_priv where user='root' and host='localhost';
+--enable_cursor_protocol
 
 connect (master,localhost,root,,);
 connection master;
@@ -83,7 +87,7 @@ flush privileges;
 show grants for mysqltest_1@localhost;
 
 #
-# Test what happens when you have same table and column level grants
+# Test what happens when you have same table and colum level grants
 #
 
 create table t1 (a int);
@@ -325,7 +329,7 @@ grant update (a) on mysqltest_1.t1 to mysqltest_3@localhost;
 grant select (b) on mysqltest_1.t2 to mysqltest_3@localhost;
 grant select (c) on mysqltest_2.t1 to mysqltest_3@localhost;
 grant update (d) on mysqltest_2.t2 to mysqltest_3@localhost;
-connect (conn1,localhost,mysqltest_3,,"*NO-ONE*",);
+connect (conn1,localhost,mysqltest_3,,);
 connection conn1;
 SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES
  WHERE GRANTEE = '''mysqltest_3''@''localhost'''
@@ -590,11 +594,10 @@ create user mysqltest_8;
 --error ER_CANNOT_USER
 create user mysqltest_8@host8;
 
-select User, QUOTE(host) from mysql.user where user="mysqltest_8";
+select user, QUOTE(host) from mysql.user where user="mysqltest_8";
 
 --echo Schema privileges
 grant select on mysqltest.* to mysqltest_8@'';
-grant select on test.* to mysqltest_8@'';
 show grants for mysqltest_8@'';
 grant select on mysqltest.* to mysqltest_8@;
 show grants for mysqltest_8@;
@@ -722,7 +725,7 @@ GRANT SELECT           ON mysqltest2.v_yn TO 'mysqltest_1'@'localhost' IDENTIFIE
 GRANT SELECT           ON mysqltest2.*    TO 'mysqltest_1'@'localhost' IDENTIFIED BY 'mysqltest_1';
 GRANT SHOW VIEW,SELECT ON mysqltest2.v_yy TO 'mysqltest_1'@'localhost' IDENTIFIED BY 'mysqltest_1';
 
-connect (mysqltest_1, localhost, mysqltest_1, mysqltest_1,"*NO-ONE*");
+connect (mysqltest_1, localhost, mysqltest_1, mysqltest_1,);
 
 # fail because of missing SHOW VIEW (have generic SELECT)
 --error ER_TABLEACCESS_DENIED_ERROR
@@ -963,11 +966,13 @@ USE bug23556;
 TRUNCATE t1;
 
 connection default;
-disconnect bug23556;
+USE bug23556;
+DROP TABLE t1;
 USE test;
 DROP DATABASE bug23556;
 DROP USER bug23556@localhost;
 connection default;
+disconnect bug23556;
 
 
 #
@@ -1366,7 +1371,7 @@ grant execute on procedure mysqltest1.p1 to mysqluser1@localhost;
 --echo # in privilege tables and in in-memory structures.
 show grants for mysqluser1@localhost;
 select db, routine_name, routine_type, proc_priv from mysql.procs_priv where user='mysqluser1' and host='localhost';
---connect (bug36544_con1,localhost,mysqluser1,,"*NO-ONE*")
+--connect (bug36544_con1,localhost,mysqluser1,,)
 call mysqltest1.p1();
 select mysqltest1.f1();
 
@@ -1393,7 +1398,7 @@ select mysqltest1.f1();
 create user mysqluser1@localhost;
 show grants for mysqluser1@localhost;
 select db, routine_name, routine_type, proc_priv from mysql.procs_priv where user='mysqluser1' and host='localhost';
---connect (bug36544_con2,localhost,mysqluser1,,"*NO-ONE*")
+--connect (bug36544_con2,localhost,mysqluser1,,)
 --echo # Newly created user should not be able to access any of the routines.
 --error ER_PROCACCESS_DENIED_ERROR
 call mysqltest1.p1();
@@ -1460,7 +1465,7 @@ create user mysqluser1@localhost;
 show grants for mysqluser1@localhost;
 select db, routine_name, routine_type, proc_priv from mysql.procs_priv where user='mysqluser1' and host='localhost';
 select db, table_name, table_priv from mysql.tables_priv where user='mysqluser1' and host='localhost';
---connect (bug36544_con3,localhost,mysqluser1,,"*NO-ONE*")
+--connect (bug36544_con3,localhost,mysqluser1,,)
 --echo # Newly created user should not be able to access to any of the
 --echo # stored routines or tables.
 --error ER_PROCACCESS_DENIED_ERROR
@@ -1481,7 +1486,7 @@ select * from mysqltest1.t22;
 show grants for mysqluser10@localhost;
 select db, routine_name, routine_type, proc_priv from mysql.procs_priv where user='mysqluser10' and host='localhost';
 select db, table_name, table_priv from mysql.tables_priv where user='mysqluser10' and host='localhost';
---connect (bug36544_con4,localhost,mysqluser10,,"*NO-ONE*")
+--connect (bug36544_con4,localhost,mysqluser10,,)
 call mysqltest1.p1();
 select mysqltest1.f1();
 select * from mysqltest1.t11;
@@ -1525,7 +1530,7 @@ create table t4 (i INT);
 connection default;
 grant select, insert on mysqltest.t2 to mysqltest@localhost;
 grant         insert on mysqltest.t4 to mysqltest@localhost;
-# to specify ACLs for non-existent objects, must explicitly |CREATE
+# to specify ACLs for non-existent objects, must explictly |CREATE
 grant create, insert on mysqltest.t5 to mysqltest@localhost;
 grant create, insert on mysqltest.t6 to mysqltest@localhost;
 flush privileges;
@@ -1564,9 +1569,18 @@ create table t4 select * from t2;
 --error ER_TABLEACCESS_DENIED_ERROR
 create table t1 select * from t2;
 
+
 connection default;
-disconnect user1;
+drop table t1,t2,t4,t5,t6;
+
+revoke create         on mysqltest.*  from mysqltest@localhost;
+revoke select, insert on mysqltest.t2 from mysqltest@localhost;
+revoke insert         on mysqltest.t4 from mysqltest@localhost;
+revoke create, insert on mysqltest.t5 from mysqltest@localhost;
+revoke create, insert on mysqltest.t6 from mysqltest@localhost;
 drop user mysqltest@localhost;
+
+disconnect user1;
 drop database mysqltest;
 use test;
 
@@ -1665,7 +1679,7 @@ GRANT CREATE ON db1.* TO 'user2'@'%';
 GRANT CREATE ROUTINE ON db1.* TO 'user2'@'%';
 FLUSH PRIVILEGES;
 SHOW GRANTS FOR 'user1'@'localhost';
-connect (con1,localhost,user1,,"*NO-ONE*");
+connect (con1,localhost,user1,,);
 --echo ** Connect as user1 and create a procedure.
 --echo ** The creation will imply implicitly assigned
 --echo ** EXECUTE and ALTER ROUTINE privileges to
@@ -1681,7 +1695,7 @@ CREATE PROCEDURE db1.proc1(p1 INT)
  END ;||
 DELIMITER ;||
 
-connect (con2,localhost,user2,,"*NO-ONE*");
+connect (con2,localhost,user2,,);
 --echo ** Connect as user2 and create a procedure.
 --echo ** Implicitly assignment of privileges will
 --echo ** fail because the user2@localhost is an
@@ -1766,7 +1780,7 @@ DROP DATABASE db2;
 --echo #
 grant usage on Foo.* to myuser@Localhost identified by 'foo';
 grant select on Foo.* to myuser@localhost;
-select Host,User from mysql.user where User='myuser';
+select host,user from mysql.user where User='myuser';
 revoke select on Foo.* from myuser@localhost;
 delete from mysql.user where User='myuser';
 flush privileges;
@@ -2165,7 +2179,7 @@ DROP USER foo@'127.0.0.1';
 create user foo@localhost;
 create database foodb;
 grant create routine on foodb.* to foo@localhost;
-connect con1,localhost,foo,,foodb;
+connect con1,localhost,foo;
 create procedure fooproc() select 'i am fooproc';
 show grants;
 disconnect con1;
@@ -2178,7 +2192,7 @@ show grants for foo@localhost;
 flush privileges;
 show grants for foo@localhost;
 drop user foo@localhost;
-drop procedure foodb.fooproc;
+drop procedure fooproc;
 drop database foodb;
 
 
@@ -2195,7 +2209,7 @@ DROP DATABASE IF EXISTS no_such_db;
 CREATE DATABASE secret;
 GRANT USAGE ON *.* TO untrusted@localhost;
 
-connect (con1, localhost, untrusted,,"*NO-ONE*");
+connect (con1, localhost, untrusted);
 SHOW GRANTS;
 SHOW DATABASES;
 
@@ -2213,6 +2227,8 @@ DROP USER untrusted@localhost;
 DROP DATABASE secret;
 
 set GLOBAL sql_mode=default;
+# Wait till we reached the initial number of concurrent sessions
+--source include/wait_until_count_sessions.inc
 
 --echo #
 --echo # MDEV-22755 CREATE USER leads to indirect SIGABRT in __stack_chk_fail () from fill_schema_user_privileges + *** stack smashing detected *** (on optimized builds)
@@ -2258,7 +2274,7 @@ CREATE USER foo;
 CREATE DATABASE db;
 CREATE TABLE db.t (a INT);
 
---connect (con1,localhost,foo,,"*NO-ONE*")
+--connect (con1,localhost,foo,,)
 
 --error ER_TABLEACCESS_DENIED_ERROR
 GRANT ALL ON db.t TO foo;
@@ -2282,8 +2298,15 @@ CREATE USER bug33578113;
 GRANT DROP ON performance_schema.* TO bug33578113;
 REVOKE DROP ON performance_schema.* FROM bug33578113;
 DROP USER bug33578113;
+--source include/wait_until_count_sessions.inc
 
+--echo #
 --echo # End of 10.2 tests
+--echo #
+
+--echo #
+--echo # Start of 10.3 tests
+--echo #
 
 --echo #
 --echo # MDEV-19948 'show grants' return privileges individually
@@ -2306,7 +2329,9 @@ SHOW GRANTS FOR ten2;
 DROP USER ten2;
 source include/switch_to_mysql_global_priv.inc;
 
+--echo #
 --echo # End of 10.3 tests
+--echo #
 
 --echo #
 --echo # MDEV-17932 : Assertion upon double RENAME USER
@@ -2320,15 +2345,15 @@ DROP USER bar3@localhost;
 --echo #
 --echo # MDEV-17946 : Unsorted acl_dbs after RENAME USER
 --echo #
-CREATE USER a;
 CREATE USER foo;
 GRANT SELECT ON test.* TO foo;
-RENAME USER 'a' TO 'name';
+RENAME USER '' TO 'name';
 GRANT UPDATE ON test.* TO foo;
-RENAME USER 'name' to 'a';
+RENAME USER 'name' to '';
 DROP USER foo;
-DROP USER a;
 
+--echo #
 --echo # End of 10.4 tests
+--echo #
 
 update mysql.global_priv set priv=@root_priv where user='root' and host='localhost';

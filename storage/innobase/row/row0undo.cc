@@ -163,7 +163,7 @@ row_undo_search_clust_to_pcur(
 {
 	dict_index_t*	clust_index;
 	bool		found;
-	mtr_t		mtr{node->trx};
+	mtr_t		mtr;
 	row_ext_t**	ext;
 	const rec_t*	rec;
 	mem_heap_t*	heap		= NULL;
@@ -171,7 +171,7 @@ row_undo_search_clust_to_pcur(
 	rec_offs*	offsets		= offsets_;
 	rec_offs_init(offsets_);
 
-	ut_ad(node->table->skip_alter_undo != dict_table_t::NO_UNDO);
+	ut_ad(!node->table->skip_alter_undo);
 
 	mtr_start(&mtr);
 
@@ -264,7 +264,7 @@ static buf_block_t* row_undo_rec_get(undo_node_t* node)
 
 	if (trx->pages_undone) {
 		trx->pages_undone = 0;
-		trx_undo_try_truncate(trx);
+		trx_undo_try_truncate(*trx);
 	}
 
 	trx_undo_t*	undo	= NULL;
@@ -292,7 +292,7 @@ static buf_block_t* row_undo_rec_get(undo_node_t* node)
 	}
 
 	if (undo == NULL) {
-		trx_undo_try_truncate(trx);
+		trx_undo_try_truncate(*trx);
 		/* Mark any ROLLBACK TO SAVEPOINT completed, so that
 		if the transaction object is committed and reused
 		later, we will default to a full ROLLBACK. */
@@ -308,7 +308,7 @@ static buf_block_t* row_undo_rec_get(undo_node_t* node)
 		false, trx_sys.rseg_id(undo->rseg, !node->is_temp),
 		undo->top_page_no, undo->top_offset);
 
-	mtr_t mtr{trx};
+	mtr_t	mtr;
 	mtr.start();
 
 	buf_block_t* undo_page = buf_page_get(

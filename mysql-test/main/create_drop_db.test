@@ -1,4 +1,4 @@
-# Enable displaying rows affected
+# Enable diisplaying rows affected
 --enable_info
 
 CREATE DATABASE IF NOT EXISTS db1;

@@ -52,11 +52,6 @@ alter sequence s1 restart= 11;
 select * from s1;
 ERROR 42000: SELECT command denied to user 'only_alter'@'localhost' for table `mysqltest_1`.`s1`
 connection default;
-disconnect normal;
-disconnect read_only;
-disconnect read_write;
-disconnect alter;
-disconnect only_alter;
 drop user 'normal'@'%';
 drop user 'read_only'@'%';
 drop user 'read_write'@'%';
@@ -135,7 +130,6 @@ end|
 create user u1@localhost;
 grant select on db1.* to u1@localhost;
 grant execute on db1.* to u1@localhost;
-grant all privileges on test.* to u1@localhost;
 use test;
 create table t3 (id int unsigned default (20+nextval(db1.s1)), b int);
 insert t3 values ();

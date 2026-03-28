@@ -31,8 +31,6 @@
 /*
   _dig_vec arrays are public because they are used in several outer places.
 */
-const char _dig_vec_base62[] =
-  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const char _dig_vec_upper[] =
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const char _dig_vec_lower[] =
@@ -52,7 +50,7 @@ const char _dig_vec_lower[] =
   DESCRIPTION
     Converts the (long) integer value to its character form and moves it to 
     the destination buffer followed by a terminating NUL. 
-    If radix is -2..-62, val is taken to be SIGNED, if radix is  2..62, val is
+    If radix is -2..-36, val is taken to be SIGNED, if radix is  2..36, val is
     taken to be UNSIGNED. That is, val is signed if and only if radix is. 
     All other radixes treated as bad and nothing will be changed in this case.
 
@@ -70,17 +68,12 @@ int2str(register long int val, register char *dst, register int radix,
   char buffer[65];
   register char *p;
   long int new_val;
-  const char *dig_vec;
+  const char *dig_vec= upcase ? _dig_vec_upper : _dig_vec_lower;
   ulong uval= (ulong) val;
-
-  if (radix < -36 || radix > 36)
-    dig_vec= _dig_vec_base62;
-  else
-    dig_vec= upcase ? _dig_vec_upper : _dig_vec_lower;
 
   if (radix < 0)
   {
-    if (radix < -62 || radix > -2)
+    if (radix < -36 || radix > -2)
       return NullS;
     if (val < 0)
     {
@@ -90,7 +83,7 @@ int2str(register long int val, register char *dst, register int radix,
     }
     radix = -radix;
   }
-  else if (radix > 62 || radix < 2)
+  else if (radix > 36 || radix < 2)
     return NullS;
 
   /*

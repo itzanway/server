@@ -49,11 +49,6 @@ Created 3/26/1996 Heikki Tuuri
 mysql_pfs_key_t	trx_rollback_clean_thread_key;
 #endif
 
-tpool::task_group rollback_all_recovered_group(1);
-tpool::waitable_task rollback_all_recovered_task(trx_rollback_all_recovered,
-                                                 nullptr,
-                                                 &rollback_all_recovered_group);
-
 /** true if trx_rollback_all_recovered() thread is active */
 bool			trx_rollback_is_active;
 
@@ -62,11 +57,11 @@ const trx_t*		trx_roll_crash_recv_trx;
 
 bool trx_t::rollback_finish() noexcept
 {
+  mod_tables.clear();
   apply_online_log= false;
   if (UNIV_LIKELY(error_state == DB_SUCCESS))
   {
     commit();
-    commit_lsn= 0;
     return true;
   }
 
@@ -87,9 +82,8 @@ bool trx_t::rollback_finish() noexcept
     ut_free(undo);
     undo= nullptr;
   }
-  commit();
-  commit_lsn= 0;
-  return false;
+  commit_low();
+  return commit_cleanup();
 }
 
 dberr_t trx_t::rollback_low(const undo_no_t *savept) noexcept
@@ -145,12 +139,9 @@ dberr_t trx_t::rollback_low(const undo_no_t *savept) noexcept
       trx_mod_tables_t::iterator j= i++;
       ut_ad(j->second.valid());
       if (j->second.rollback(limit))
-      {
-        j->second.clear_bulk_buffer();
         mod_tables.erase(j);
-      }
       else if (!apply_online_log)
-        apply_online_log= j->first->is_native_online_ddl();
+        apply_online_log= j->first->is_active_ddl();
     }
     MONITOR_INC(MONITOR_TRX_ROLLBACK_SAVEPOINT);
   }
@@ -203,7 +194,7 @@ dberr_t trx_rollback_for_mysql(trx_t* trx)
 	case TRX_STATE_NOT_STARTED:
 		trx->will_lock = false;
 		ut_ad(trx->mysql_thd);
-		/* Galera transaction abort can be invoked from MDL acquisition
+		/* Galera transaction abort can be invoked from MDL acquision
 		code, so trx->lock.was_chosen_as_deadlock_victim can be set
 		even if trx->state is TRX_STATE_NOT_STARTED. */
 		ut_ad(!(trx->lock.was_chosen_as_deadlock_victim & 1));
@@ -240,10 +231,10 @@ dberr_t trx_rollback_for_mysql(trx_t* trx)
 			the actions already having been rolled back. */
 			ut_ad(trx->rsegs.m_redo.undo->rseg
 			      == trx->rsegs.m_redo.rseg);
-			mtr_t mtr{trx};
+			mtr_t		mtr;
 			mtr.start();
 			if (trx_undo_t* undo = trx->rsegs.m_redo.undo) {
-				trx_undo_set_state_at_prepare(undo, true,
+				trx_undo_set_state_at_prepare(trx, undo, true,
 							      &mtr);
 			}
 			/* Write the redo log for the XA ROLLBACK

@@ -77,6 +77,14 @@ ulong	fts_min_token_size;
 static time_t elapsed_time;
 static ulint n_nodes;
 
+#ifdef FTS_CACHE_SIZE_DEBUG
+/** The cache size permissible lower limit (1K) */
+static const ulint FTS_CACHE_SIZE_LOWER_LIMIT_IN_MB = 1;
+
+/** The cache size permissible upper limit (1G) */
+static const ulint FTS_CACHE_SIZE_UPPER_LIMIT_IN_MB = 1024;
+#endif
+
 /** Time to sleep after DEADLOCK error before retrying operation. */
 static const std::chrono::milliseconds FTS_DEADLOCK_RETRY_WAIT(100);
 
@@ -169,7 +177,7 @@ static const char* fts_config_table_insert_values_sql =
 		FTS_TABLE_STATE "', '0');\n"
 	"END;\n";
 
-/** FTS tokenize parameter for plugin parser */
+/** FTS tokenize parmameter for plugin parser */
 struct fts_tokenize_param_t {
 	fts_doc_t*	result_doc;	/*!< Result doc for tokens */
 	ulint		add_pos;	/*!< Added position for tokens */
@@ -196,6 +204,15 @@ fts_words_free(
 /*===========*/
 	ib_rbt_t*	words)		/*!< in: rb tree of words */
 	MY_ATTRIBUTE((nonnull));
+#ifdef FTS_CACHE_SIZE_DEBUG
+/****************************************************************//**
+Read the max cache size parameter from the config table. */
+static
+void
+fts_update_max_cache_size(
+/*======================*/
+	fts_sync_t*	sync);		/*!< in: sync state */
+#endif
 
 /*********************************************************************//**
 This function fetches the document just inserted right before
@@ -395,7 +412,7 @@ fts_read_stopword(
 			}
 		} else {
 			ut_ad(len == sizeof timestamp_max_bytes);
-			if (!IS_MAX_TIMESTAMP(data)) {
+			if (0 != memcmp(data, timestamp_max_bytes, len)) {
 				return true;
 			}
 		}
@@ -879,10 +896,37 @@ fts_index_get_charset(
 /*==================*/
 	dict_index_t*		index)		/*!< in: FTS index */
 {
-	dict_field_t* field = dict_index_get_nth_field(index, 0);
-	ulint prtype = field->col->prtype;
+	CHARSET_INFO*		charset = NULL;
+	dict_field_t*		field;
+	ulint			prtype;
 
-	return fts_get_charset(prtype);
+	field = dict_index_get_nth_field(index, 0);
+	prtype = field->col->prtype;
+
+	charset = fts_get_charset(prtype);
+
+#ifdef FTS_DEBUG
+	/* Set up charset info for this index. Please note all
+	field of the FTS index should have the same charset */
+	for (i = 1; i < index->n_fields; i++) {
+		CHARSET_INFO*   fld_charset;
+
+		field = dict_index_get_nth_field(index, i);
+		prtype = field->col->prtype;
+
+		fld_charset = fts_get_charset(prtype);
+
+		/* All FTS columns should have the same charset */
+		if (charset) {
+			ut_a(charset == fld_charset);
+		} else {
+			charset = fld_charset;
+		}
+	}
+#endif
+
+	return(charset);
+
 }
 /****************************************************************//**
 Create an FTS index cache.
@@ -1049,6 +1093,37 @@ fts_get_index_cache(
 
 	return(NULL);
 }
+
+#ifdef FTS_DEBUG
+/*********************************************************************//**
+Search the index cache for a get_doc structure.
+@return the fts_get_doc_t item else NULL */
+static
+fts_get_doc_t*
+fts_get_index_get_doc(
+/*==================*/
+	fts_cache_t*		cache,		/*!< in: cache to search */
+	const dict_index_t*	index)		/*!< in: index to search for */
+{
+	ulint			i;
+
+	mysql_mutex_assert_owner(&cache->init_lock);
+
+	for (i = 0; i < ib_vector_size(cache->get_docs); ++i) {
+		fts_get_doc_t*	get_doc;
+
+		get_doc = static_cast<fts_get_doc_t*>(
+			ib_vector_get(cache->get_docs, i));
+
+		if (get_doc->index_cache->index == index) {
+
+			return(get_doc);
+		}
+	}
+
+	return(NULL);
+}
+#endif
 
 /**********************************************************************//**
 Find an existing word, or if not found, create one and return it.
@@ -1426,6 +1501,10 @@ fts_rename_aux_tables(
 
 			err = fts_rename_one_aux_table(
 				new_name, old_table_name, trx);
+
+			DBUG_EXECUTE_IF("fts_rename_failure",
+					err = DB_DEADLOCK;
+					fts_sql_rollback(trx););
 
 			if (err != DB_SUCCESS) {
 				return(err);
@@ -1877,16 +1956,14 @@ fts_create_common_tables(
 	}
 
 	if (table->versioned()) {
-		index = dict_mem_index_create(table,
-					      FTS_DOC_ID_INDEX.str,
+		index = dict_mem_index_create(table, FTS_DOC_ID_INDEX_NAME,
 					      DICT_UNIQUE, 2);
-		dict_mem_index_add_field(index, FTS_DOC_ID.str, 0);
-		dict_mem_index_add_field(index, table->cols[table->vers_end].name(*table).str, 0);
+		dict_mem_index_add_field(index, FTS_DOC_ID_COL_NAME, 0);
+		dict_mem_index_add_field(index, table->cols[table->vers_end].name(*table), 0);
 	} else {
-		index = dict_mem_index_create(table,
-					      FTS_DOC_ID_INDEX.str,
+		index = dict_mem_index_create(table, FTS_DOC_ID_INDEX_NAME,
 					      DICT_UNIQUE, 1);
-		dict_mem_index_add_field(index, FTS_DOC_ID.str, 0);
+		dict_mem_index_add_field(index, FTS_DOC_ID_COL_NAME, 0);
 	}
 
 	error =	row_create_index_for_mysql(index, trx, NULL,
@@ -1951,7 +2028,7 @@ fts_create_one_index_table(
 			       FTS_INDEX_DOC_COUNT_LEN);
 
 	/* The precise type calculation is as follows:
-	least significant byte: MySQL type code (not applicable for sys cols)
+	least signficiant byte: MySQL type code (not applicable for sys cols)
 	second least : DATA_NOT_NULL | DATA_BINARY_TYPE
 	third least  : the MySQL charset-collation code (DATA_MTYPE_MAX) */
 
@@ -2394,6 +2471,76 @@ fts_fetch_store_doc_id(
 	return(FALSE);
 }
 
+#ifdef FTS_CACHE_SIZE_DEBUG
+/******************************************************************//**
+Get the max cache size in bytes. If there is an error reading the
+value we simply print an error message here and return the default
+value to the caller.
+@return max cache size in bytes */
+static
+ulint
+fts_get_max_cache_size(
+/*===================*/
+	trx_t*		trx,			/*!< in: transaction */
+	fts_table_t*	fts_table)		/*!< in: table instance */
+{
+	dberr_t		error;
+	fts_string_t	value;
+	ulong		cache_size_in_mb;
+
+	/* Set to the default value. */
+	cache_size_in_mb = FTS_CACHE_SIZE_LOWER_LIMIT_IN_MB;
+
+	/* We set the length of value to the max bytes it can hold. This
+	information is used by the callback that reads the value. */
+	value.f_n_char = 0;
+	value.f_len = FTS_MAX_CONFIG_VALUE_LEN;
+	value.f_str = ut_malloc_nokey(value.f_len + 1);
+
+	error = fts_config_get_value(
+		trx, fts_table, FTS_MAX_CACHE_SIZE_IN_MB, &value);
+
+	if (UNIV_LIKELY(error == DB_SUCCESS)) {
+		value.f_str[value.f_len] = 0;
+		cache_size_in_mb = strtoul((char*) value.f_str, NULL, 10);
+
+		if (cache_size_in_mb > FTS_CACHE_SIZE_UPPER_LIMIT_IN_MB) {
+
+			ib::warn() << "FTS max cache size ("
+				<< cache_size_in_mb << ") out of range."
+				" Minimum value is "
+				<< FTS_CACHE_SIZE_LOWER_LIMIT_IN_MB
+				<< "MB and the maximum value is "
+				<< FTS_CACHE_SIZE_UPPER_LIMIT_IN_MB
+				<< "MB, setting cache size to upper limit";
+
+			cache_size_in_mb = FTS_CACHE_SIZE_UPPER_LIMIT_IN_MB;
+
+		} else if  (cache_size_in_mb
+			    < FTS_CACHE_SIZE_LOWER_LIMIT_IN_MB) {
+
+			ib::warn() << "FTS max cache size ("
+				<< cache_size_in_mb << ") out of range."
+				" Minimum value is "
+				<< FTS_CACHE_SIZE_LOWER_LIMIT_IN_MB
+				<< "MB and the maximum value is"
+				<< FTS_CACHE_SIZE_UPPER_LIMIT_IN_MB
+				<< "MB, setting cache size to lower limit";
+
+			cache_size_in_mb = FTS_CACHE_SIZE_LOWER_LIMIT_IN_MB;
+		}
+	} else {
+		ib::error() << "(" << error << ") reading max"
+			" cache config value from config table "
+			<< fts_table->table->name;
+	}
+
+	ut_free(value.f_str);
+
+	return(cache_size_in_mb * 1024 * 1024);
+}
+#endif
+
 /*********************************************************************//**
 Get the next available document id.
 @return DB_SUCCESS if OK */
@@ -2552,7 +2699,7 @@ func_exit:
 		}
 	}
 
-	trx->clear_and_free();
+	trx->free();
 
 	return(error);
 }
@@ -2628,7 +2775,7 @@ fts_update_sync_doc_id(
 
 			fts_sql_rollback(trx);
 		}
-		trx->clear_and_free();
+		trx->free();
 	}
 
 	return(error);
@@ -2848,7 +2995,7 @@ fts_commit_table(
 
 	fts_sql_commit(trx);
 
-	trx->clear_and_free();
+	trx->free();
 
 	return(error);
 }
@@ -3156,7 +3303,7 @@ fts_add_doc_from_tuple(
        doc_id_t        doc_id,
        const dtuple_t* tuple)
 {
-       mtr_t mtr{ftt->fts_trx->trx};
+       mtr_t           mtr;
        fts_cache_t*    cache = ftt->table->fts->cache;
 
        ut_ad(cache->get_docs);
@@ -3225,7 +3372,7 @@ fts_add_doc_by_id(
 	fts_trx_table_t*ftt,		/*!< in: FTS trx table */
 	doc_id_t	doc_id)		/*!< in: doc id */
 {
-	mtr_t		mtr{ftt->fts_trx->trx};
+	mtr_t		mtr;
 	mem_heap_t*	heap;
 	btr_pcur_t	pcur;
 	dict_table_t*	table;
@@ -3266,7 +3413,7 @@ fts_add_doc_by_id(
 
 	/* Search based on Doc ID. Here, we'll need to consider the case
 	when there is no primary index on Doc ID */
-	const auto n_uniq = table->fts_n_uniq();
+	const ulint n_uniq = table->fts_n_uniq();
 	tuple = dtuple_create(heap, n_uniq);
 	dfield = dtuple_get_nth_field(tuple, 0);
 	dfield->type.mtype = DATA_INT;
@@ -3317,7 +3464,9 @@ fts_add_doc_by_id(
 			doc_pcur = &pcur;
 		} else {
 			dtuple_t*	clust_ref;
-			auto n_fields = dict_index_get_n_unique(clust_index);
+			ulint		n_fields;
+
+			n_fields = dict_index_get_n_unique(clust_index);
 
 			clust_ref = dtuple_create(heap, n_fields);
 			dict_index_copy_types(clust_ref, clust_index, n_fields);
@@ -3473,7 +3622,7 @@ fts_get_max_doc_id(
 	dict_index_t*	index;
 	dict_field_t*	dfield MY_ATTRIBUTE((unused)) = NULL;
 	doc_id_t	doc_id = 0;
-	mtr_t		mtr{nullptr};
+	mtr_t		mtr;
 	btr_pcur_t	pcur;
 
 	index = table->fts_doc_id_index;
@@ -3485,6 +3634,10 @@ fts_get_max_doc_id(
 	ut_ad(!index->is_instant());
 
 	dfield = dict_index_get_nth_field(index, 0);
+
+#if 0 /* This can fail when renaming a column to FTS_DOC_ID_COL_NAME. */
+	ut_ad(innobase_strcasecmp(FTS_DOC_ID_COL_NAME, dfield->name) == 0);
+#endif
 
 	mtr.start();
 
@@ -3515,7 +3668,8 @@ fts_get_max_doc_id(
 					break;
 				}
 			} else {
-                                if (IS_MAX_TIMESTAMP(data)) {
+				if (0 == memcmp(data, timestamp_max_bytes,
+						sizeof timestamp_max_bytes)) {
 					break;
 				}
 			}
@@ -3598,8 +3752,7 @@ fts_doc_fetch_by_doc_id(
 					"  END IF;\n"
 					"END LOOP;\n"
 					"CLOSE c;",
-					select_str,
-					FTS_DOC_ID.str));
+					select_str, FTS_DOC_ID_COL_NAME));
 		} else {
 			ut_ad(option == FTS_FETCH_DOC_BY_ID_LARGE);
 
@@ -3635,9 +3788,8 @@ fts_doc_fetch_by_doc_id(
 					"  END IF;\n"
 					"END LOOP;\n"
 					"CLOSE c;",
-					FTS_DOC_ID.str,
-					select_str,
-					FTS_DOC_ID.str));
+					FTS_DOC_ID_COL_NAME,
+					select_str, FTS_DOC_ID_COL_NAME));
 		}
 		if (get_doc) {
 			get_doc->get_document_graph = graph;
@@ -3805,6 +3957,8 @@ fts_sync_write_words(
 	bool			unlock_cache)
 {
 	fts_table_t	fts_table;
+	ulint		n_nodes = 0;
+	ulint		n_words = 0;
 	const ib_rbt_node_t* rbt_node;
 	dberr_t		error = DB_SUCCESS;
 	ibool		print_error = FALSE;
@@ -3812,6 +3966,8 @@ fts_sync_write_words(
 
 	FTS_INIT_INDEX_TABLE(
 		&fts_table, NULL, FTS_INDEX_TABLE, index_cache->index);
+
+	n_words = rbt_size(index_cache->words);
 
 	/* We iterate over the entire tree, even if there is an error,
 	since we want to free the memory used during caching. */
@@ -3886,6 +4042,11 @@ fts_sync_write_words(
 		}
 	}
 
+	if (UNIV_UNLIKELY(fts_enable_diag_print)) {
+		printf("Avg number of nodes: %lf\n",
+		       (double) n_nodes / (double) (n_words > 1 ? n_words : 1));
+	}
+
 	return(error);
 }
 
@@ -3897,8 +4058,22 @@ fts_sync_begin(
 /*===========*/
 	fts_sync_t*	sync)			/*!< in: sync state */
 {
+	fts_cache_t*	cache = sync->table->fts->cache;
+
+	n_nodes = 0;
+	elapsed_time = 0;
+
+	sync->start_time = time(NULL);
+
 	sync->trx = trx_create();
 	trx_start_internal(sync->trx);
+
+	if (UNIV_UNLIKELY(fts_enable_diag_print)) {
+		ib::info() << "FTS SYNC for table " << sync->table->name
+			<< ", deleted count: "
+			<< ib_vector_size(cache->deleted_doc_ids)
+			<< " size: " << cache->total_size << " bytes";
+	}
 }
 
 /*********************************************************************//**
@@ -3915,6 +4090,10 @@ fts_sync_index(
 	trx_t*		trx = sync->trx;
 
 	trx->op_info = "doing SYNC index";
+
+	if (UNIV_UNLIKELY(fts_enable_diag_print)) {
+		ib::info() << "SYNC words: " << rbt_size(index_cache->words);
+	}
 
 	ut_ad(rbt_validate(index_cache->words));
 
@@ -4018,9 +4197,19 @@ fts_sync_commit(
 			"table " << sync->table->name;
 	}
 
+	if (UNIV_UNLIKELY(fts_enable_diag_print) && elapsed_time) {
+		ib::info() << "SYNC for table " << sync->table->name
+			<< ": SYNC time: "
+			<< (time(NULL) - sync->start_time)
+			<< " secs: elapsed "
+			<< static_cast<double>(n_nodes)
+			/ static_cast<double>(elapsed_time)
+			<< " ins/sec";
+	}
+
 	/* Avoid assertion in trx_t::free(). */
 	trx->dict_operation_lock_mode = false;
-	trx->clear_and_free();
+	trx->free();
 
 	return(error);
 }
@@ -4070,7 +4259,7 @@ fts_sync_rollback(
 
 	/* Avoid assertion in trx_t::free(). */
 	trx->dict_operation_lock_mode = false;
-	trx->clear_and_free();
+	trx->free();
 }
 
 /** Run SYNC on the table, i.e., write out data from the cache to the
@@ -4230,7 +4419,7 @@ or greater than fts_max_token_size.
 @param[in]	stopwords	stopwords rb tree
 @param[in]	cs		token charset
 @retval	true	if it is not stopword and length in range
-@retval	false	if it is stopword or length not in range */
+@retval	false	if it is stopword or lenght not in range */
 bool
 fts_check_token(
 	const fts_string_t*		token,
@@ -4267,12 +4456,13 @@ fts_add_token(
 		fts_string_t	t_str;
 		fts_token_t*	token;
 		ib_rbt_bound_t	parent;
+		ulint		newlen;
 
 		heap = static_cast<mem_heap_t*>(result_doc->self_heap->arg);
 
 		t_str.f_n_char = str.f_n_char;
 
-		t_str.f_len = str.f_len * result_doc->charset->casedn_multiply() + 1;
+		t_str.f_len = str.f_len * result_doc->charset->casedn_multiply + 1;
 
 		t_str.f_str = static_cast<byte*>(
 			mem_heap_alloc(heap, t_str.f_len));
@@ -4282,19 +4472,24 @@ fts_add_token(
 		if (my_binary_compare(result_doc->charset)) {
 			memcpy(t_str.f_str, str.f_str, str.f_len);
 			t_str.f_str[str.f_len]= 0;
-			t_str.f_len= str.f_len;
+			newlen= str.f_len;
 		} else {
-			t_str.f_len= result_doc->charset->casedn_z(
-					(const char*) str.f_str, str.f_len,
-					(char *) t_str.f_str, t_str.f_len);
+			newlen = innobase_fts_casedn_str(
+				result_doc->charset, (char*) str.f_str, str.f_len,
+				(char*) t_str.f_str, t_str.f_len);
 		}
+
+		t_str.f_len = newlen;
+		t_str.f_str[newlen] = 0;
 
 		/* Add the word to the document statistics. If the word
 		hasn't been seen before we create a new entry for it. */
 		if (rbt_search(result_doc->tokens, &parent, &t_str) != 0) {
 			fts_token_t	new_token;
 
-			new_token.text = t_str;
+			new_token.text.f_len = newlen;
+			new_token.text.f_str = t_str.f_str;
+			new_token.text.f_n_char = t_str.f_n_char;
 
 			new_token.positions = ib_vector_create(
 				result_doc->self_heap, sizeof(ulint), 32);
@@ -4676,6 +4871,38 @@ fts_init_doc_id(
 	return(max_doc_id);
 }
 
+#ifdef FTS_MULT_INDEX
+/*********************************************************************//**
+Check if the index is in the affected set.
+@return TRUE if index is updated */
+static
+ibool
+fts_is_index_updated(
+/*=================*/
+	const ib_vector_t*	fts_indexes,	/*!< in: affected FTS indexes */
+	const fts_get_doc_t*	get_doc)	/*!< in: info for reading
+						document */
+{
+	ulint		i;
+	dict_index_t*	index = get_doc->index_cache->index;
+
+	for (i = 0; i < ib_vector_size(fts_indexes); ++i) {
+		const dict_index_t*	updated_fts_index;
+
+		updated_fts_index = static_cast<const dict_index_t*>(
+			ib_vector_getp_const(fts_indexes, i));
+
+		ut_a(updated_fts_index != NULL);
+
+		if (updated_fts_index == index) {
+			return(TRUE);
+		}
+	}
+
+	return(FALSE);
+}
+#endif
+
 /*********************************************************************//**
 Fetch COUNT(*) from specified table.
 @return the number of rows in the table */
@@ -4750,6 +4977,31 @@ fts_get_rows_count(
 
 	return(count);
 }
+
+#ifdef FTS_CACHE_SIZE_DEBUG
+/*********************************************************************//**
+Read the max cache size parameter from the config table. */
+static
+void
+fts_update_max_cache_size(
+/*======================*/
+	fts_sync_t*	sync)			/*!< in: sync state */
+{
+	trx_t*		trx;
+	fts_table_t	fts_table;
+
+	trx = trx_create();
+
+	FTS_INIT_FTS_TABLE(&fts_table, "CONFIG", FTS_COMMON_TABLE, sync->table);
+
+	/* The size returned is in bytes. */
+	sync->max_cache_size = fts_get_max_cache_size(trx, &fts_table);
+
+	fts_sql_commit(trx);
+
+	trx->free();
+}
+#endif /* FTS_CACHE_SIZE_DEBUG */
 
 /*********************************************************************//**
 Free the modified rows of a table. */
@@ -4991,7 +5243,7 @@ fts_add_doc_id_column(
 {
 	dict_mem_table_add_col(
 		table, heap,
-		FTS_DOC_ID.str,
+		FTS_DOC_ID_COL_NAME,
 		DATA_INT,
 		dtype_form_prtype(
 			DATA_NOT_NULL | DATA_UNSIGNED
@@ -5535,7 +5787,7 @@ fts_valid_stopword_table(
 
 		return(NULL);
 	} else {
-		if (strcmp(dict_table_get_col_name(table, 0).str, "value")) {
+		if (strcmp(dict_table_get_col_name(table, 0), "value")) {
 			ib::error() << "Invalid column name for stopword"
 				" table " << stopword_table_name << ". Its"
 				" first column must be named as 'value'.";
@@ -5560,7 +5812,7 @@ fts_valid_stopword_table(
 
 	if (row_end) {
 		*row_end = table->versioned()
-			? dict_table_get_col_name(table, table->vers_end).str
+			? dict_table_get_col_name(table, table->vers_end)
 			: "value"; /* for fts_load_user_stopword() */
 	}
 
@@ -5683,7 +5935,7 @@ cleanup:
 			fts_sql_rollback(trx);
 		}
 
-		trx->clear_and_free();
+		trx->free();
 	}
 
 	if (!cache->stopword_info.cached_stopword) {
@@ -5741,7 +5993,7 @@ fts_init_get_doc_id(
 				}
 			} else {
 				ut_ad(len == sizeof timestamp_max_bytes);
-				if (!IS_MAX_TIMESTAMP(data)) {
+				if (0 != memcmp(data, timestamp_max_bytes, len)) {
 					return true;
 				}
 			}

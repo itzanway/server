@@ -32,8 +32,6 @@ BEGIN {
         $script      = 'MySQLAccess' unless $script;
 	$script_conf = "$script.conf";
 	$script_log  = $ENV{'HOME'}."/$script.log";
-        warn "$0: Deprecated program name. It will be removed in a future release, use 'mariadb-access' instead\n"
-          if $0 =~ m/mysqlaccess$/;
 
 	# ****************************
 	# information on MariaDB
@@ -121,7 +119,7 @@ Usage: $script [host [user [db]]] OPTIONS
   Note:
     At least the user and the db must be given (even with wildcards)
     If no host is given, `localhost' is assumed
-    Wildcards (*,?,%,_) are allowed for host, user and db, but be sure
+    Wilcards (*,?,%,_) are allowed for host, user and db, but be sure 
     to escape them from your shell!! (ie type \\* or '*')
 _OPTIONS
 
@@ -163,7 +161,7 @@ Release Notes:
   - bugfix: the user-field should not be treated as a sql-regexpr,
             but as a plain string.
   - bugfix: the host-table should not be used if the host isn't empty in db
-                                          or  if the host isn't empty in user
+                                          or  if the host isn't emty in user
             (Monty)
  
   1.0-beta4: (1997-03-14)
@@ -331,7 +329,7 @@ $TODO = <<_TODO;
  -----
   -a full where clause is use now.  How can we handle older servers?
   -add some more functionality for DNS.
-  -select the warnings more carefully.
+  -select the warnings more carefuly.
   >>  I think that the warnings should either be enhanced to _really_
   >>  understand and report real problems accurately, or restricted to
   >>  only printing things that it knows with 100% certainty. <psmith)
@@ -443,7 +441,7 @@ use IPC::Open3;
 	$DEBUG   = 0;
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++>8
-#  Normally nothing should be changed beneath this line
+#  Normally nothing should be changed beneeth this line
 
 
 # ****************************
@@ -611,7 +609,7 @@ if (@MySQLaccess::Grant::Error) {
 }
 
 #-----------------------
-# get info/help if necessary.
+# get info/help if necc.
 $print_usage=1;
 if ( defined($Param{'version'}) ) {
    MySQLaccess::Report::Print_Version();

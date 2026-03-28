@@ -15,11 +15,11 @@
 
 # Charsets and collations
 IF(NOT DEFAULT_CHARSET)
-  SET(DEFAULT_CHARSET "utf8mb4")
+  SET(DEFAULT_CHARSET "latin1")
 ENDIF()
 
 IF(NOT DEFAULT_COLLATION)
-  SET(DEFAULT_COLLATION "utf8mb4_uca1400_ai_ci")
+  SET(DEFAULT_COLLATION "latin1_swedish_ci")
 ENDIF()
 
 SET(CHARSETS ${DEFAULT_CHARSET} latin1 utf8mb3 utf8mb4)

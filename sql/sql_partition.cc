@@ -67,9 +67,9 @@
 #include "opt_range.h"                  // store_key_image_to_rec
 #include "sql_alter.h"                  // Alter_table_ctx
 #include "sql_select.h"
+#include "sql_tablespace.h"             // check_tablespace_name
 #include "ddl_log.h"
 #include "tztime.h"                     // my_tz_OFFSET0
-#include "create_options.h"             // engine_option_value
 
 #include <algorithm>
 using std::max;
@@ -77,6 +77,11 @@ using std::min;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
+
+#define ERROR_INJECT_CRASH(code) \
+  DBUG_EVALUATE_IF(code, (DBUG_SUICIDE(), 0), 0)
+#define ERROR_INJECT_ERROR(code) \
+  DBUG_EVALUATE_IF(code, (my_error(ER_UNKNOWN_ERROR, MYF(0)), TRUE), 0)
 
 /*
   Partition related functions declarations and some static constants;
@@ -156,12 +161,12 @@ Item* convert_charset_partition_constant(Item *item, CHARSET_INFO *cs)
   @param name        String searched for
   @param list_names  A list of names searched in
 
-  @retval true   String found
-  @retval false  String not found
+  @return True if if the name is in the list.
+    @retval true   String found
+    @retval false  String not found
 */
 
-static bool is_name_in_list(const Lex_ident_partition &name,
-                            List<const char> list_names)
+static bool is_name_in_list(const char *name, List<const char> list_names)
 {
   List_iterator<const char> names_it(list_names);
   uint num_names= list_names.elements;
@@ -170,7 +175,7 @@ static bool is_name_in_list(const Lex_ident_partition &name,
   do
   {
     const char *list_name= names_it++;
-    if (name.streq(Lex_cstring_strlen(list_name)))
+    if (!(my_strcasecmp(system_charset_info, name, list_name)))
       return TRUE;
   } while (++i < num_names);
   return FALSE;
@@ -321,10 +326,12 @@ err:
     function.
 */
 
-static bool set_up_field_array(THD *thd, TABLE *table, bool is_sub_part)
+static bool set_up_field_array(THD *thd, TABLE *table,
+                              bool is_sub_part)
 {
   Field **ptr, *field, **field_array;
   uint num_fields= 0;
+  uint size_field_array;
   uint i= 0;
   uint inx;
   partition_info *part_info= table->part_info;
@@ -363,7 +370,8 @@ static bool set_up_field_array(THD *thd, TABLE *table, bool is_sub_part)
     DBUG_ASSERT(!is_sub_part);
     DBUG_RETURN(FALSE);
   }
-  field_array= thd->calloc<Field*>(num_fields + 1);
+  size_field_array= (num_fields+1)*sizeof(Field*);
+  field_array= (Field**) thd->calloc(size_field_array);
   if (unlikely(!field_array))
     DBUG_RETURN(TRUE);
 
@@ -386,7 +394,9 @@ static bool set_up_field_array(THD *thd, TABLE *table, bool is_sub_part)
           do
           {
             field_name= it++;
-            if (field->field_name.streq(Lex_cstring_strlen(field_name)))
+            if (!my_strcasecmp(system_charset_info,
+                               field_name,
+                               field->field_name.str))
               break;
           } while (++inx < num_fields);
           if (inx == num_fields)
@@ -476,14 +486,15 @@ static bool create_full_part_field_array(THD *thd, TABLE *table,
   else
   {
     Field *field, **field_array;
-    uint num_part_fields=0;
+    uint num_part_fields=0, size_field_array;
     ptr= table->field;
     while ((field= *(ptr++)))
     {
       if (field->flags & FIELD_IN_PART_FUNC_FLAG)
         num_part_fields++;
     }
-    field_array= thd->calloc<Field*>(num_part_fields + 1);
+    size_field_array= (num_part_fields+1)*sizeof(Field*);
+    field_array= (Field**) thd->calloc(size_field_array);
     if (unlikely(!field_array))
     {
       result= TRUE;
@@ -514,7 +525,7 @@ static bool create_full_part_field_array(THD *thd, TABLE *table,
     goto end;
   }
   if (unlikely(my_bitmap_init(&part_info->full_part_field_set, bitmap_buf,
-                              table->s->fields)))
+                              table->s->fields, FALSE)))
   {
     result= TRUE;
     goto end;
@@ -683,7 +694,7 @@ static bool handle_list_of_fields(THD *thd, List_iterator<const char> it,
   while ((field_name= it++))
   {
     is_list_empty= FALSE;
-    field= find_field_in_table_sef(table, Lex_cstring_strlen(field_name));
+    field= find_field_in_table_sef(table, field_name);
     if (likely(field != 0))
       field->flags|= GET_FIXED_FIELDS_FLAG;
     else
@@ -830,8 +841,8 @@ static bool fix_fields_part_func(THD *thd, Item* func_expr, TABLE *table,
     goto end;
   table->get_fields_in_item_tree= true;
 
-  func_expr->walk(&Item::change_context_processor,
-                  &lex.first_select_lex()->context, 0);
+  func_expr->walk(&Item::change_context_processor, 0,
+                  &lex.first_select_lex()->context);
   thd->where= THD_WHERE::PARTITION_FUNCTION;
   /*
     In execution we must avoid the use of thd->change_item_tree since
@@ -856,7 +867,7 @@ static bool fix_fields_part_func(THD *thd, Item* func_expr, TABLE *table,
     thd->lex->allow_sum_func.clear_all();
 
     if (likely(!(error= func_expr->fix_fields_if_needed(thd, (Item**)&func_expr))))
-      func_expr->walk(&Item::post_fix_fields_part_expr_processor, 0, 0);
+      func_expr->walk(&Item::post_fix_fields_part_expr_processor, 0, NULL);
 
     /*
       Restore agg_field/agg_func  and allow_sum_func,
@@ -886,7 +897,7 @@ static bool fix_fields_part_func(THD *thd, Item* func_expr, TABLE *table,
     easier maintenance. This exception should be deprecated at some point
     in future so that we always throw an error.
   */
-  if (func_expr->walk(&Item::check_valid_arguments_processor, 0, 0))
+  if (func_expr->walk(&Item::check_valid_arguments_processor, 0, NULL))
   {
     if (is_create_table_ind)
     {
@@ -1091,11 +1102,11 @@ static bool set_up_partition_bitmaps(THD *thd, partition_info *part_info)
                                              bitmap_bytes * 2))))
     DBUG_RETURN(TRUE);
 
-  my_bitmap_init(&part_info->read_partitions, bitmap_buf, bitmap_bits);
+  my_bitmap_init(&part_info->read_partitions, bitmap_buf, bitmap_bits, FALSE);
   /* Use the second half of the allocated buffer for lock_partitions */
   my_bitmap_init(&part_info->lock_partitions,
                  (my_bitmap_map*) (((char*) bitmap_buf) + bitmap_bytes),
-                 bitmap_bits);
+                 bitmap_bits, FALSE);
   part_info->bitmaps_are_initialized= TRUE;
   part_info->set_partition_bitmaps(NULL);
   DBUG_RETURN(FALSE);
@@ -1287,8 +1298,8 @@ static bool check_range_constants(THD *thd, partition_info *part_info)
     part_column_list_val *UNINIT_VAR(current_largest_col_val);
     uint num_column_values= part_info->part_field_list.elements;
     uint size_entries= sizeof(part_column_list_val) * num_column_values;
-    part_info->range_col_array= thd->calloc<part_column_list_val>
-                                  (part_info->num_parts * num_column_values);
+    part_info->range_col_array= (part_column_list_val*)
+      thd->calloc(part_info->num_parts * size_entries);
     if (unlikely(part_info->range_col_array == NULL))
       goto end;
 
@@ -1323,7 +1334,8 @@ static bool check_range_constants(THD *thd, partition_info *part_info)
     longlong part_range_value;
     bool signed_flag= !part_info->part_expr->unsigned_flag;
 
-    part_info->range_int_array= thd->alloc<longlong>(part_info->num_parts);
+    part_info->range_int_array= (longlong*)
+      thd->alloc(part_info->num_parts * sizeof(longlong));
     if (unlikely(part_info->range_int_array == NULL))
       goto end;
 
@@ -1550,7 +1562,8 @@ static bool check_vers_constants(THD *thd, partition_info *part_info)
   if (!vers_info->interval.is_set())
     return 0;
 
-  part_info->range_int_array= thd->alloc<longlong>(part_info->num_parts);
+  part_info->range_int_array=
+    (longlong*) thd->alloc(part_info->num_parts * sizeof(longlong));
 
   MYSQL_TIME ltime;
   List_iterator<partition_element> it(part_info->partitions);
@@ -1565,22 +1578,8 @@ static bool check_vers_constants(THD *thd, partition_info *part_info)
     part_info->range_int_array[el->id]= el->range_value=
       my_tz_OFFSET0->TIME_to_gmt_sec(&ltime, &error);
     if (error)
-    {
-      if (error == ER_WARN_DATA_OUT_OF_RANGE)
-      {
-        /* Partial interval partition must be last history partition */
-        if (el->id < hist_parts - 1)
-          goto err;
-        /* range_value is open endpoint (less than TIMESTAMP_MAX_VALUE) */
-        part_info->range_int_array[el->id]= el->range_value= TIMESTAMP_MAX_VALUE;
-        vers_info->hist_part= el;
-        el= it++;
-        break;
-      }
-      else
-        goto err;
-    }
-    if (vers_info->hist_part->range_value <= (longlong) thd->query_start())
+      goto err;
+    if (vers_info->hist_part->range_value <= thd->query_start())
       vers_info->hist_part= el;
   }
   DBUG_ASSERT(el == vers_info->now_part);
@@ -1922,7 +1921,7 @@ bool check_part_func_fields(Field **ptr, bool ok_with_charsets)
 NOTES
     This function is called as part of opening the table by opening the .frm
     file. It is a part of CREATE TABLE to do this so it is quite permissible
-    that errors due to erroneous syntax isn't found until we come here.
+    that errors due to erroneus syntax isn't found until we come here.
     If the user has used a non-existing field in the table is one such example
     of an error that is not discovered until here.
 */
@@ -2142,10 +2141,10 @@ static int add_keyword_string(String *str, const char *keyword,
 
 
 /**
-  @brief  Truncate the partition file name from a path it exists.
+  @brief  Truncate the partition file name from a path it it exists.
 
-  @note  A partition file name will contain one or more '#' characters.
-One of the occurrences of '#' will be either "#P#" or "#p#" depending
+  @note  A partition file name will contian one or more '#' characters.
+One of the occurances of '#' will be either "#P#" or "#p#" depending
 on whether the storage engine has converted the filename to lower case.
 */
 void truncate_partition_filename(char *path)
@@ -2217,10 +2216,12 @@ static int add_keyword_int(String *str, const char *keyword, longlong num)
   return err + str->append_longlong(num);
 }
 
-static int add_server_part_options(String *str, partition_element *p_elem)
+static int add_partition_options(String *str, partition_element *p_elem)
 {
   int err= 0;
 
+  if (p_elem->tablespace_name)
+    err+= add_keyword_string(str,"TABLESPACE", false, p_elem->tablespace_name);
   if (p_elem->nodegroup_id != UNDEF_NODEGROUP)
     err+= add_keyword_int(str,"NODEGROUP",(longlong)p_elem->nodegroup_id);
   if (p_elem->part_max_rows)
@@ -2236,6 +2237,9 @@ static int add_server_part_options(String *str, partition_element *p_elem)
   }
   if (p_elem->part_comment)
     err+= add_keyword_string(str, "COMMENT", true, p_elem->part_comment);
+  if (p_elem->connect_string.length)
+    err+= add_keyword_string(str, "CONNECTION", true,
+                             p_elem->connect_string.str);
   err += add_keyword_string(str, "ENGINE", false,
                          ha_resolve_storage_engine_name(p_elem->engine_type));
   return err;
@@ -2255,7 +2259,7 @@ static int add_server_part_options(String *str, partition_element *p_elem)
     NULL                         No field found
 */
 
-static Create_field* get_sql_field(const LEX_CSTRING &field_name,
+static Create_field* get_sql_field(const char *field_name,
                                    Alter_info *alter_info)
 {
   List_iterator<Create_field> it(alter_info->create_list);
@@ -2264,7 +2268,9 @@ static Create_field* get_sql_field(const LEX_CSTRING &field_name,
 
   while ((sql_field= it++))
   {
-    if (sql_field->field_name.streq(field_name))
+    if (!(my_strcasecmp(system_charset_info,
+                        sql_field->field_name.str,
+                        field_name)))
     {
       DBUG_RETURN(sql_field);
     }
@@ -2317,7 +2323,7 @@ static int add_column_list_values(String *str, partition_info *part_info,
             derived_attr(create_info->default_table_charset);
           Create_field *sql_field;
 
-          if (!(sql_field= get_sql_field(Lex_cstring_strlen(field_name),
+          if (!(sql_field= get_sql_field(field_name,
                                          alter_info)))
           {
             my_error(ER_FIELD_NOT_FOUND_PART_ERROR, MYF(0));
@@ -2452,7 +2458,7 @@ end:
 
 
 /**
-  Add 'KEY' word, with optional 'ALGORITHM = N'.
+  Add 'KEY' word, with optional 'ALGORTIHM = N'.
 
   @param str                    String to write to.
   @param part_info              partition_info holding the used key_algorithm
@@ -2462,35 +2468,15 @@ end:
     @retval != 0 Failure
 */
 
-static int add_key_with_algorithm(String *str, const partition_info *part_info)
+static int add_key_with_algorithm(String *str, partition_info *part_info)
 {
   int err= 0;
   err+= str->append(STRING_WITH_LEN("KEY "));
 
-  if (part_info->key_algorithm != partition_info::KEY_ALGORITHM_NONE &&
-      part_info->key_algorithm != partition_info::KEY_ALGORITHM_55)
+  if (part_info->key_algorithm == partition_info::KEY_ALGORITHM_51)
   {
     err+= str->append(STRING_WITH_LEN("ALGORITHM = "));
-    switch (part_info->key_algorithm)
-    {
-      case partition_info::KEY_ALGORITHM_51:
-        err+= str->append(STRING_WITH_LEN("MYSQL51"));
-        break;
-      case partition_info::KEY_ALGORITHM_BASE31:
-        err+= str->append(STRING_WITH_LEN("BASE31"));
-        break;
-      case partition_info::KEY_ALGORITHM_CRC32C:
-        err+= str->append(STRING_WITH_LEN("CRC32C"));
-        break;
-      case partition_info::KEY_ALGORITHM_XXH32:
-        err+= str->append(STRING_WITH_LEN("XXH32"));
-        break;
-      case partition_info::KEY_ALGORITHM_XXH3:
-        err+= str->append(STRING_WITH_LEN("XXH3"));
-        break;
-      default:
-        DBUG_ASSERT(0 && "wrong part_info->key_algorithm");
-    }
+    err+= str->append_longlong(part_info->key_algorithm);
     err+= str->append(' ');
   }
   return err;
@@ -2510,78 +2496,6 @@ char *generate_partition_syntax_for_frm(THD *thd, partition_info *part_info,
                                              system_charset_info).ptr()););
   return res;
 }
-
-
-/*
-  Generate the partition type syntax from the partition data structure.
-
-  @return Operation status.
-    @retval 0    Success
-    @retval > 0  Failure
-    @retval -1   Fatal error
-*/
-
-int partition_info::gen_part_type(THD *thd, String *str) const
-{
-  int err= 0;
-  switch (part_type)
-  {
-    case RANGE_PARTITION:
-      err+= str->append(STRING_WITH_LEN("RANGE "));
-      break;
-    case LIST_PARTITION:
-      err+= str->append(STRING_WITH_LEN("LIST "));
-      break;
-    case HASH_PARTITION:
-      if (linear_hash_ind)
-        err+= str->append(STRING_WITH_LEN("LINEAR "));
-      if (list_of_part_fields)
-      {
-        err+= add_key_with_algorithm(str, this);
-        err+= add_part_field_list(thd, str, part_field_list);
-      }
-      else
-        err+= str->append(STRING_WITH_LEN("HASH "));
-      break;
-    case VERSIONING_PARTITION:
-      err+= str->append(STRING_WITH_LEN("SYSTEM_TIME "));
-      break;
-    default:
-      DBUG_ASSERT(0);
-      /* We really shouldn't get here, no use in continuing from here */
-      my_error(ER_OUT_OF_RESOURCES, MYF(ME_FATAL));
-      return -1;
-  }
-  return err;
-}
-
-
-void part_type_error(THD *thd, partition_info *work_part_info,
-                     const char *part_type,
-                     partition_info *tab_part_info)
-{
-  StringBuffer<256> tab_part_type;
-  if (tab_part_info->gen_part_type(thd, &tab_part_type) < 0)
-    return;
-  tab_part_type.length(tab_part_type.length() - 1);
-  if (work_part_info)
-  {
-    DBUG_ASSERT(!part_type);
-    StringBuffer<256> work_part_type;
-    if (work_part_info->gen_part_type(thd, &work_part_type) < 0)
-      return;
-    work_part_type.length(work_part_type.length() - 1);
-    my_error(ER_PARTITION_WRONG_TYPE, MYF(0), work_part_type.c_ptr(),
-             tab_part_type.c_ptr());
-  }
-  else
-  {
-    DBUG_ASSERT(part_type);
-    my_error(ER_PARTITION_WRONG_TYPE, MYF(0), part_type,
-             tab_part_type.c_ptr());
-  }
-}
-
 
 /*
   Generate the partition syntax from the partition data structure.
@@ -2626,10 +2540,34 @@ char *generate_partition_syntax(THD *thd, partition_info *part_info,
   DBUG_ENTER("generate_partition_syntax");
 
   err+= str.append(STRING_WITH_LEN(" PARTITION BY "));
-  int err2= part_info->gen_part_type(thd, &str);
-  if (err2 < 0)
-    DBUG_RETURN(NULL);
-  err+= err2;
+  switch (part_info->part_type)
+  {
+    case RANGE_PARTITION:
+      err+= str.append(STRING_WITH_LEN("RANGE "));
+      break;
+    case LIST_PARTITION:
+      err+= str.append(STRING_WITH_LEN("LIST "));
+      break;
+    case HASH_PARTITION:
+      if (part_info->linear_hash_ind)
+        err+= str.append(STRING_WITH_LEN("LINEAR "));
+      if (part_info->list_of_part_fields)
+      {
+        err+= add_key_with_algorithm(&str, part_info);
+        err+= add_part_field_list(thd, &str, part_info->part_field_list);
+      }
+      else
+        err+= str.append(STRING_WITH_LEN("HASH "));
+      break;
+    case VERSIONING_PARTITION:
+      err+= str.append(STRING_WITH_LEN("SYSTEM_TIME "));
+      break;
+    default:
+      DBUG_ASSERT(0);
+      /* We really shouldn't get here, no use in continuing from here */
+      my_error(ER_OUT_OF_RESOURCES, MYF(ME_FATAL));
+      DBUG_RETURN(NULL);
+  }
   if (part_info->part_type == VERSIONING_PARTITION)
   {
     Vers_part_info *vers_info= part_info->vers_info;
@@ -2655,16 +2593,10 @@ char *generate_partition_syntax(THD *thd, partition_info *part_info,
         err+= str.append('\'');
       }
     }
-    else if (vers_info->limit)
+    if (vers_info->limit)
     {
       err+= str.append(STRING_WITH_LEN("LIMIT "));
       err+= str.append_ulonglong(vers_info->limit);
-    }
-    if (vers_info->auto_hist)
-    {
-      DBUG_ASSERT(vers_info->interval.is_set() ||
-                  vers_info->limit);
-      err+= str.append(STRING_WITH_LEN(" AUTO"));
     }
   }
   else if (part_info->part_expr)
@@ -2715,7 +2647,6 @@ char *generate_partition_syntax(THD *thd, partition_info *part_info,
 
   if (!part_info->use_default_partitions)
   {
-    bool allow_bad= thd->variables.sql_mode & MODE_IGNORE_BAD_TABLE_OPTIONS;
     bool first= TRUE;
     err+= str.append(STRING_WITH_LEN("\n("));
     i= 0;
@@ -2729,18 +2660,15 @@ char *generate_partition_syntax(THD *thd, partition_info *part_info,
           err+= str.append(STRING_WITH_LEN(",\n "));
         first= FALSE;
         err+= str.append(STRING_WITH_LEN("PARTITION "));
-        err+= append_identifier(thd, &str, &part_elem->partition_name);
+        err+= append_identifier(thd, &str, part_elem->partition_name,
+                                           strlen(part_elem->partition_name));
         err+= add_partition_values(&str, part_info, part_elem,
                                    create_info, alter_info);
         if (!part_info->is_sub_partitioned() ||
             part_info->use_default_subpartitions)
         {
           if (show_partition_options)
-          {
-            err+= add_server_part_options(&str, part_elem);
-            append_create_options(thd, &str, part_elem->option_list,
-                            !allow_bad, part_elem->engine_type->table_options);
-          }
+            err+= add_partition_options(&str, part_elem);
         }
         else
         {
@@ -2751,9 +2679,10 @@ char *generate_partition_syntax(THD *thd, partition_info *part_info,
           {
             part_elem= sub_it++;
             err+= str.append(STRING_WITH_LEN("SUBPARTITION "));
-            err+= append_identifier(thd, &str, &part_elem->partition_name);
+            err+= append_identifier(thd, &str, part_elem->partition_name,
+                                               strlen(part_elem->partition_name));
             if (show_partition_options)
-              err+= add_server_part_options(&str, part_elem);
+              err+= add_partition_options(&str, part_elem);
             if (j != (num_subparts-1))
               err+= str.append(STRING_WITH_LEN(",\n  "));
             else
@@ -2975,9 +2904,8 @@ static uint32 get_part_id_key(handler *file,
                               longlong *func_value)
 {
   DBUG_ENTER("get_part_id_key");
-  uint64 hash= ha_partition::calculate_key_hash_value(field_array);
-  *func_value= (longlong) hash;
-  DBUG_RETURN((uint32) (hash % num_parts));
+  *func_value= ha_partition::calculate_key_hash_value(field_array);
+  DBUG_RETURN((uint32) (*func_value % num_parts));
 }
 
 
@@ -3003,7 +2931,7 @@ static uint32 get_part_id_linear_key(partition_info *part_info,
 {
   DBUG_ENTER("get_part_id_linear_key");
 
-  *func_value= (longlong) ha_partition::calculate_key_hash_value(field_array);
+  *func_value= ha_partition::calculate_key_hash_value(field_array);
   DBUG_RETURN(get_part_id_from_linear_hash(*func_value,
                                            part_info->linear_hash_mask,
                                            num_parts));
@@ -3423,7 +3351,7 @@ uint32 get_list_array_idx_for_endpoint(partition_info *part_info,
       '2000-00-00' can be compared to '2000-01-01' but TO_DAYS('2000-00-00')
       returns NULL which cannot be compared used <, >, <=, >= etc.
 
-      Otherwise, just return the first index (lowest value).
+      Otherwise, just return the the first index (lowest value).
     */
     enum_monotonicity_info monotonic;
     monotonic= part_info->part_expr->get_monotonicity_info();
@@ -3520,15 +3448,14 @@ int vers_get_partition_id(partition_info *part_info, uint32 *part_id,
       goto done; // fastpath
 
     ts= row_end->get_timestamp(&unused);
-    if ((loc_hist_id == 0 || range_value[loc_hist_id - 1] <= (longlong) ts) &&
-        (loc_hist_id == max_hist_id || (longlong) ts < range_value[loc_hist_id]))
+    if ((loc_hist_id == 0 || range_value[loc_hist_id - 1] < ts) &&
+        (loc_hist_id == max_hist_id || range_value[loc_hist_id] >= ts))
       goto done; // fastpath
 
     while (max_hist_id > min_hist_id)
     {
       loc_hist_id= (max_hist_id + min_hist_id) / 2;
-      /* Left boundary is closed */
-      if (range_value[loc_hist_id] <= (longlong) ts)
+      if (range_value[loc_hist_id] <= ts)
         min_hist_id= loc_hist_id + 1;
       else
         max_hist_id= loc_hist_id;
@@ -4120,19 +4047,8 @@ bool verify_data_with_partition(TABLE *table, TABLE *part_table,
   uchar *old_rec;
   partition_info *part_info;
   DBUG_ENTER("verify_data_with_partition");
-  DBUG_ASSERT(table);
-  DBUG_ASSERT(table->file);
-  DBUG_ASSERT(part_table);
-  DBUG_ASSERT(part_table->file);
-  DBUG_ASSERT(part_table->part_info);
-
-  if (table->in_use->lex->without_validation)
-  {
-    sql_print_warning("Table %sQ.%sQ was altered WITHOUT VALIDATION: "
-                      "the table might be corrupted",
-                      part_table->s->db.str, part_table->s->table_name.str);
-    DBUG_RETURN(false);
-  }
+  DBUG_ASSERT(table && table->file && part_table && part_table->part_info &&
+              part_table->file);
 
   /*
     Verify all table rows.
@@ -4469,7 +4385,7 @@ void get_partition_set(const TABLE *table, uchar *buf, const uint index,
 
    RETURN VALUE
      TRUE                          Error
-     FALSE                         Success
+     FALSE                         Sucess
 
    DESCRIPTION
      Read the partition syntax from the current position in the frm file.
@@ -4759,7 +4675,7 @@ bool set_part_state(Alter_info *alter_info, partition_info *tab_part_info,
       num_parts_found++;
       part_elem->part_state= part_state;
       DBUG_PRINT("info", ("Setting part_state to %u for partition %s",
-                          part_state, part_elem->partition_name.str));
+                          part_state, part_elem->partition_name));
     }
     else
       part_elem->part_state= PART_NORMAL;
@@ -4790,7 +4706,7 @@ bool set_part_state(Alter_info *alter_info, partition_info *tab_part_info,
 
   @retval FALSE if they are equal, otherwise TRUE.
 
-  @note Any differences that would cause a change in the frm file is prohibited.
+  @note Any differens that would cause a change in the frm file is prohibited.
   Such options as data_file_name, index_file_name, min_rows, max_rows etc. are
   not allowed to differ. But comment is allowed to differ.
 */
@@ -4806,6 +4722,8 @@ bool compare_partition_options(HA_CREATE_INFO *table_create_info,
     Note that there are not yet any engine supporting tablespace together
     with partitioning. TODO: when there are, add compare.
   */
+  if (part_elem->tablespace_name || table_create_info->tablespace)
+    option_diffs[errors++]= "TABLESPACE";
   if (part_elem->part_max_rows != table_create_info->max_rows)
     option_diffs[errors++]= "MAX_ROWS";
   if (part_elem->part_min_rows != table_create_info->min_rows)
@@ -4881,14 +4799,15 @@ static void check_datadir_altered_for_innodb(THD *thd,
 }
 
 
-static bool check_name_in_fields(const Field * const *fields, Lex_ident_column &name)
+static bool check_name_in_fields(const Field * const *fields, const char *name)
 {
   if (!fields)
     return FALSE;
 
   for (; *fields; fields++)
   {
-    if ((*fields)->field_name.streq(name))
+    if (my_strcasecmp(system_charset_info,
+                      (*fields)->field_name.str, name) == 0)
       return TRUE;
   }
 
@@ -4999,17 +4918,18 @@ uint prep_alter_part_table(THD *thd, TABLE *table, Alter_info *alter_info,
       !(thd->work_part_info= thd->work_part_info->get_clone(thd)))
     DBUG_RETURN(TRUE);
 
+  /* ALTER_PARTITION_ADMIN is handled in mysql_admin_table */
+  DBUG_ASSERT(!(alter_info->partition_flags & ALTER_PARTITION_ADMIN));
+
   partition_info *saved_part_info= NULL;
 
   if (alter_info->partition_flags &
       (ALTER_PARTITION_ADD |
        ALTER_PARTITION_DROP |
-       ALTER_PARTITION_CONVERT_OUT |
        ALTER_PARTITION_COALESCE |
        ALTER_PARTITION_REORGANIZE |
        ALTER_PARTITION_TABLE_REORG |
-       ALTER_PARTITION_REBUILD |
-       ALTER_PARTITION_CONVERT_IN))
+       ALTER_PARTITION_REBUILD))
   {
     /*
       You can't add column when we are doing alter related to partition
@@ -5145,13 +5065,6 @@ uint prep_alter_part_table(THD *thd, TABLE *table, Alter_info *alter_info,
     if ((alter_info->partition_flags & ALTER_PARTITION_ADD) ||
         (alter_info->partition_flags & ALTER_PARTITION_REORGANIZE))
     {
-      if ((alter_info->partition_flags & ALTER_PARTITION_CONVERT_IN) &&
-          !(tab_part_info->part_type == RANGE_PARTITION ||
-            tab_part_info->part_type == LIST_PARTITION))
-      {
-        my_error(ER_ONLY_ON_RANGE_LIST_PARTITION, MYF(0), "CONVERT TABLE TO");
-        goto err;
-      }
       if (thd->work_part_info->part_type != tab_part_info->part_type)
       {
         if (thd->work_part_info->part_type == NOT_A_PARTITION)
@@ -5184,14 +5097,10 @@ uint prep_alter_part_table(THD *thd, TABLE *table, Alter_info *alter_info,
             my_error(ER_PARTITION_WRONG_VALUES_ERROR, MYF(0),
                      "LIST", "IN");
           }
-          /*
-            Adding history partitions to non-history partitioning or
-            non-history partitions to history partitioning is prohibited.
-          */
           else if (thd->work_part_info->part_type == VERSIONING_PARTITION ||
                    tab_part_info->part_type == VERSIONING_PARTITION)
           {
-            part_type_error(thd, thd->work_part_info, NULL, tab_part_info);
+            my_error(ER_PARTITION_WRONG_TYPE, MYF(0), "SYSTEM_TIME");
           }
           else
           {
@@ -5463,17 +5372,14 @@ that are reorganised.
           {
             if (el->type == partition_element::CURRENT)
             {
-              /* now_part is always last partition, we add it to the end of partitions list. */
               it.remove();
               now_part= el;
             }
           }
-          if (*fast_alter_table &&
-              !(alter_info->partition_flags & ALTER_PARTITION_AUTO_HIST) &&
-              tab_part_info->vers_info->interval.is_set())
+          if (*fast_alter_table && tab_part_info->vers_info->interval.is_set())
           {
             partition_element *hist_part= tab_part_info->vers_info->hist_part;
-            if (hist_part->range_value <= (longlong) thd->query_start())
+            if (hist_part->range_value <= thd->query_start())
               hist_part->part_state= PART_CHANGED;
           }
         }
@@ -5484,15 +5390,16 @@ that are reorganised.
           partition_element *part_elem= alt_it++;
           if (*fast_alter_table)
             part_elem->part_state= PART_TO_BE_ADDED;
-          part_elem->id= tab_part_info->partitions.elements;
-          if (tab_part_info->partitions.push_back(part_elem, thd->mem_root))
+          if (unlikely(tab_part_info->partitions.push_back(part_elem,
+                                                           thd->mem_root)))
             goto err;
         } while (++part_count < num_new_partitions);
         tab_part_info->num_parts+= num_new_partitions;
         if (tab_part_info->part_type == VERSIONING_PARTITION)
         {
           DBUG_ASSERT(now_part);
-          if (tab_part_info->partitions.push_back(now_part, thd->mem_root))
+          if (unlikely(tab_part_info->partitions.push_back(now_part,
+                                                           thd->mem_root)))
             goto err;
         }
       }
@@ -5513,12 +5420,8 @@ that are reorganised.
         tab_part_info->is_auto_partitioned= FALSE;
       }
     }
-    else if ((alter_info->partition_flags & ALTER_PARTITION_DROP) |
-             (alter_info->partition_flags & ALTER_PARTITION_CONVERT_OUT))
+    else if (alter_info->partition_flags & ALTER_PARTITION_DROP)
     {
-      const char * const cmd=
-        (alter_info->partition_flags & ALTER_PARTITION_CONVERT_OUT) ?
-          "CONVERT" : "DROP";
       /*
         Drop a partition from a range partition and list partitioning is
         always safe and can be made more or less immediate. It is necessary
@@ -5547,7 +5450,7 @@ that are reorganised.
         if (!(tab_part_info->part_type == RANGE_PARTITION ||
               tab_part_info->part_type == LIST_PARTITION))
         {
-          my_error(ER_ONLY_ON_RANGE_LIST_PARTITION, MYF(0), cmd);
+          my_error(ER_ONLY_ON_RANGE_LIST_PARTITION, MYF(0), "DROP");
           goto err;
         }
         if (num_parts_dropped >= tab_part_info->num_parts)
@@ -5589,23 +5492,12 @@ that are reorganised.
       } while (++part_count < tab_part_info->num_parts);
       if (num_parts_found != num_parts_dropped)
       {
-        my_error(ER_PARTITION_DOES_NOT_EXIST, MYF(0));
+        my_error(ER_DROP_PARTITION_NON_EXISTENT, MYF(0), "DROP");
         goto err;
       }
       if (table->file->is_fk_defined_on_table_or_index(MAX_KEY))
       {
         my_error(ER_ROW_IS_REFERENCED, MYF(0));
-        goto err;
-      }
-      DBUG_ASSERT(!(alter_info->partition_flags & ALTER_PARTITION_CONVERT_OUT) ||
-                  num_parts_dropped == 1);
-      /* NOTE: num_parts is used in generate_partition_syntax() */
-      tab_part_info->num_parts-= num_parts_dropped;
-      if ((alter_info->partition_flags & ALTER_PARTITION_CONVERT_OUT) &&
-          tab_part_info->is_sub_partitioned())
-      {
-        // TODO technically this can be converted to a *partitioned* table
-        my_error(ER_PARTITION_CONVERT_SUBPARTITIONED, MYF(0));
         goto err;
       }
     }
@@ -5615,7 +5507,7 @@ that are reorganised.
                                 tab_part_info->default_engine_type);
       if (set_part_state(alter_info, tab_part_info, PART_CHANGED))
       {
-        my_error(ER_PARTITION_DOES_NOT_EXIST, MYF(0));
+        my_error(ER_DROP_PARTITION_NON_EXISTENT, MYF(0), "REBUILD");
         goto err;
       }
       if (!(*fast_alter_table))
@@ -5891,7 +5783,7 @@ the generated partition syntax in a correct manner.
         } while (++part_count < tab_part_info->num_parts);
         if (drop_count != num_parts_reorged)
         {
-          my_error(ER_PARTITION_DOES_NOT_EXIST, MYF(0));
+          my_error(ER_DROP_PARTITION_NON_EXISTENT, MYF(0), "REORGANIZE");
           goto err;
         }
         tab_part_info->num_parts= check_total_partitions;
@@ -5951,7 +5843,7 @@ the generated partition syntax in a correct manner.
         goto err;
       }
     }
-  } // ADD, DROP, COALESCE, REORGANIZE, TABLE_REORG, REBUILD, CONVERT
+  } // ADD, DROP, COALESCE, REORGANIZE, TABLE_REORG, REBUILD
   else
   {
     /*
@@ -6074,12 +5966,13 @@ the generated partition syntax in a correct manner.
         {
           KEY *primary_key= table->key_info + table->s->primary_key;
           List_iterator_fast<Alter_drop> drop_it(alter_info->drop_list);
+          const char *primary_name= primary_key->name.str;
           const Alter_drop *drop;
           drop_it.rewind();
           while ((drop= drop_it++))
           {
             if (drop->type == Alter_drop::KEY &&
-                drop->name.streq(primary_key->name))
+                0 == my_strcasecmp(system_charset_info, primary_name, drop->name))
               break;
           }
           if (drop)
@@ -6091,33 +5984,11 @@ the generated partition syntax in a correct manner.
     {
       partition_info *part_info= thd->work_part_info;
       bool is_native_partitioned= FALSE;
-      if (tab_part_info && tab_part_info->part_type == VERSIONING_PARTITION &&
-          tab_part_info != part_info && part_info->part_type == VERSIONING_PARTITION &&
-          part_info->num_parts == 0)
-      {
-        if (part_info->vers_info->interval.is_set() && (
-            !tab_part_info->vers_info->interval.is_set() ||
-            part_info->vers_info->interval == tab_part_info->vers_info->interval))
-        {
-          /* If interval is changed we can not do fast alter */
-          tab_part_info= tab_part_info->get_clone(thd);
-        }
-        else
-        {
-          /* NOTE: fast_alter_partition_table() works on existing TABLE data. */
-          *fast_alter_table= true;
-          table->mark_table_for_reopen();
-        }
-        *tab_part_info->vers_info= *part_info->vers_info;
-        thd->work_part_info= part_info= tab_part_info;
-        *partition_changed= true;
-      }
-
       /*
         Need to cater for engine types that can handle partition without
         using the partition handler.
       */
-      else if (part_info != tab_part_info)
+      if (part_info != tab_part_info)
       {
         if (part_info->fix_parser_data(thd))
         {
@@ -6202,7 +6073,7 @@ err:
                                records are added
 */
 
-static bool mysql_change_partitions(ALTER_PARTITION_PARAM_TYPE *lpt, bool copy_data)
+static bool mysql_change_partitions(ALTER_PARTITION_PARAM_TYPE *lpt)
 {
   char path[FN_REFLEN+1];
   int error;
@@ -6213,7 +6084,7 @@ static bool mysql_change_partitions(ALTER_PARTITION_PARAM_TYPE *lpt, bool copy_d
   build_table_filename(path, sizeof(path) - 1, lpt->alter_info->db.str,
                        lpt->alter_info->table_name.str, "", 0);
 
-  if(copy_data && mysql_trans_prepare_alter_copy_data(thd))
+  if(mysql_trans_prepare_alter_copy_data(thd))
     DBUG_RETURN(TRUE);
 
   /* TODO: test if bulk_insert would increase the performance */
@@ -6227,9 +6098,7 @@ static bool mysql_change_partitions(ALTER_PARTITION_PARAM_TYPE *lpt, bool copy_d
     file->print_error(error, MYF(error != ER_OUTOFMEMORY ? 0 : ME_FATAL));
   }
 
-  DBUG_ASSERT(copy_data || (!lpt->copied && !lpt->deleted));
-
-  if (copy_data && mysql_trans_commit_alter_copy_data(thd))
+  if (mysql_trans_commit_alter_copy_data(thd))
     error= 1;                                /* The error has been reported */
 
   DBUG_RETURN(MY_TEST(error));
@@ -6318,64 +6187,19 @@ static bool mysql_drop_partitions(ALTER_PARTITION_PARAM_TYPE *lpt)
 
 
 /*
-  Convert partition to a table in an ALTER TABLE of partitions
-
+  Insert log entry into list
   SYNOPSIS
-    alter_partition_convert_out()
-    lpt                        Struct containing parameters
-
+    insert_part_info_log_entry_list()
+    log_entry
   RETURN VALUES
-    TRUE                          Failure
-    FALSE                         Success
-
-  DESCRIPTION
-    Rename partition table marked with PART_TO_BE_DROPPED into a separate table
-    under the name lpt->alter_ctx->(new_db, new_name).
-
-    This is ddl-logged by write_log_convert_out_partition().
+    NONE
 */
 
-static bool alter_partition_convert_out(ALTER_PARTITION_PARAM_TYPE *lpt)
+static void insert_part_info_log_entry_list(partition_info *part_info,
+                                            DDL_LOG_MEMORY_ENTRY *log_entry)
 {
-  partition_info *part_info= lpt->table->part_info;
-  THD *thd= lpt->thd;
-  int error;
-  handler *file= get_new_handler(NULL, thd->mem_root, part_info->default_engine_type);
-
-  DBUG_ASSERT(lpt->thd->mdl_context.is_lock_owner(MDL_key::TABLE,
-                                                  lpt->table->s->db.str,
-                                                  lpt->table->s->table_name.str,
-                                                  MDL_EXCLUSIVE));
-
-  char from_name[FN_REFLEN + 1], to_name[FN_REFLEN + 1];
-  const char *path= lpt->table->s->path.str;
-
-  build_table_filename(to_name, sizeof(to_name) - 1, lpt->alter_ctx->new_db.str,
-                       lpt->alter_ctx->new_name.str, "", 0);
-
-  for (const partition_element &e: part_info->partitions)
-  {
-    if (e.part_state != PART_TO_BE_DROPPED)
-      continue;
-
-    if (unlikely((error= create_partition_name(from_name, sizeof(from_name),
-                                                path, e.partition_name,
-                                                NORMAL_PART_NAME, FALSE))))
-    {
-      DBUG_ASSERT(thd->is_error());
-      return true;
-    }
-    if (DBUG_IF("error_convert_partition_00") ||
-        unlikely(error= file->ha_rename_table(from_name, to_name)))
-    {
-      my_error(ER_ERROR_ON_RENAME, MYF(0), from_name, to_name, my_errno);
-      lpt->table->file->print_error(error, MYF(0));
-      return true;
-    }
-    break;
-  }
-
-  return false;
+  log_entry->next_active_log_entry= part_info->first_log_entry;
+  part_info->first_log_entry= log_entry;
 }
 
 
@@ -6403,44 +6227,50 @@ static void release_part_info_log_entries(DDL_LOG_MEMORY_ENTRY *log_entry)
 
 
 /*
-  Log an rename frm file
+  Log an delete/rename frm file
   SYNOPSIS
-    write_log_replace_frm()
+    write_log_replace_delete_frm()
     lpt                            Struct for parameters
     next_entry                     Next reference to use in log record
     from_path                      Name to rename from
     to_path                        Name to rename to
+    replace_flag                   TRUE if replace, else delete
   RETURN VALUES
     TRUE                           Error
     FALSE                          Success
   DESCRIPTION
-    Support routine that writes a replace of an frm file into the
+    Support routine that writes a replace or delete of an frm file into the
     ddl log. It also inserts an entry that keeps track of used space into
     the partition info object
 */
 
-bool write_log_replace_frm(ALTER_PARTITION_PARAM_TYPE *lpt,
-                                  uint next_entry,
-                                  const char *from_path,
-                                  const char *to_path)
+static bool write_log_replace_delete_frm(ALTER_PARTITION_PARAM_TYPE *lpt,
+                                         uint next_entry,
+                                         const char *from_path,
+                                         const char *to_path,
+                                         bool replace_flag)
 {
   DDL_LOG_ENTRY ddl_log_entry;
   DDL_LOG_MEMORY_ENTRY *log_entry;
-  DBUG_ENTER("write_log_replace_frm");
+  DBUG_ENTER("write_log_replace_delete_frm");
 
   bzero(&ddl_log_entry, sizeof(ddl_log_entry));
-  ddl_log_entry.action_type= DDL_LOG_REPLACE_ACTION;
+  if (replace_flag)
+    ddl_log_entry.action_type= DDL_LOG_REPLACE_ACTION;
+  else
+    ddl_log_entry.action_type= DDL_LOG_DELETE_ACTION;
   ddl_log_entry.next_entry= next_entry;
   lex_string_set(&ddl_log_entry.handler_name, reg_ext);
   lex_string_set(&ddl_log_entry.name, to_path);
-  lex_string_set(&ddl_log_entry.from_name, from_path);
 
+  if (replace_flag)
+    lex_string_set(&ddl_log_entry.from_name, from_path);
   if (ddl_log_write_entry(&ddl_log_entry, &log_entry))
   {
-    DBUG_RETURN(true);
+    DBUG_RETURN(TRUE);
   }
-  ddl_log_add_entry(lpt->part_info, log_entry);
-  DBUG_RETURN(false);
+  insert_part_info_log_entry_list(lpt->part_info, log_entry);
+  DBUG_RETURN(FALSE);
 }
 
 
@@ -6519,7 +6349,7 @@ static bool write_log_changed_partitions(ALTER_PARTITION_PARAM_TYPE *lpt,
 
           *next_entry= log_entry->entry_pos;
           sub_elem->log_entry= log_entry;
-          ddl_log_add_entry(part_info, log_entry);
+          insert_part_info_log_entry_list(part_info, log_entry);
         } while (++j < num_subparts);
       }
       else
@@ -6546,7 +6376,7 @@ static bool write_log_changed_partitions(ALTER_PARTITION_PARAM_TYPE *lpt,
         }
         *next_entry= log_entry->entry_pos;
         part_elem->log_entry= log_entry;
-        ddl_log_add_entry(part_info, log_entry);
+        insert_part_info_log_entry_list(part_info, log_entry);
       }
     }
   } while (++i < num_elements);
@@ -6555,29 +6385,21 @@ static bool write_log_changed_partitions(ALTER_PARTITION_PARAM_TYPE *lpt,
 
 
 /*
-  Log dropped or converted partitions
+  Log dropped partitions
   SYNOPSIS
-    log_drop_or_convert_action()
+    write_log_dropped_partitions()
     lpt                      Struct containing parameters
   RETURN VALUES
     TRUE                     Error
     FALSE                    Success
 */
 
-enum log_action_enum
-{
-  ACT_DROP = 0,
-  ACT_CONVERT_IN,
-  ACT_CONVERT_OUT
-};
-
-static bool log_drop_or_convert_action(ALTER_PARTITION_PARAM_TYPE *lpt,
-                                       uint *next_entry, const char *path,
-                                       const char *from_name, bool temp_list,
-                                       const log_action_enum convert_action)
+static bool write_log_dropped_partitions(ALTER_PARTITION_PARAM_TYPE *lpt,
+                                         uint *next_entry,
+                                         const char *path,
+                                         bool temp_list)
 {
   DDL_LOG_ENTRY ddl_log_entry;
-  DBUG_ASSERT(convert_action == ACT_DROP || (from_name != NULL));
   partition_info *part_info= lpt->part_info;
   DDL_LOG_MEMORY_ENTRY *log_entry;
   char tmp_path[FN_REFLEN + 1];
@@ -6585,13 +6407,10 @@ static bool log_drop_or_convert_action(ALTER_PARTITION_PARAM_TYPE *lpt,
   List_iterator<partition_element> temp_it(part_info->temp_partitions);
   uint num_temp_partitions= part_info->temp_partitions.elements;
   uint num_elements= part_info->partitions.elements;
-  DBUG_ENTER("log_drop_or_convert_action");
+  DBUG_ENTER("write_log_dropped_partitions");
 
   bzero(&ddl_log_entry, sizeof(ddl_log_entry));
-
-  ddl_log_entry.action_type= convert_action ?
-                              DDL_LOG_RENAME_ACTION :
-                              DDL_LOG_DELETE_ACTION;
+  ddl_log_entry.action_type= DDL_LOG_DELETE_ACTION;
   if (temp_list)
     num_elements= num_temp_partitions;
   while (num_elements--)
@@ -6612,13 +6431,8 @@ static bool log_drop_or_convert_action(ALTER_PARTITION_PARAM_TYPE *lpt,
         name_variant= TEMP_PART_NAME;
       else
         name_variant= NORMAL_PART_NAME;
-      DBUG_ASSERT(convert_action != ACT_CONVERT_IN ||
-                  part_elem->part_state == PART_TO_BE_ADDED);
-      DBUG_ASSERT(convert_action != ACT_CONVERT_OUT ||
-                  part_elem->part_state == PART_TO_BE_DROPPED);
       if (part_info->is_sub_partitioned())
       {
-        DBUG_ASSERT(!convert_action);
         List_iterator<partition_element> sub_it(part_elem->subpartitions);
         uint num_subparts= part_info->num_subparts;
         uint j= 0;
@@ -6640,7 +6454,7 @@ static bool log_drop_or_convert_action(ALTER_PARTITION_PARAM_TYPE *lpt,
           }
           *next_entry= log_entry->entry_pos;
           sub_elem->log_entry= log_entry;
-          ddl_log_add_entry(part_info, log_entry);
+          insert_part_info_log_entry_list(part_info, log_entry);
         } while (++j < num_subparts);
       }
       else
@@ -6652,25 +6466,14 @@ static bool log_drop_or_convert_action(ALTER_PARTITION_PARAM_TYPE *lpt,
                                   part_elem->partition_name, name_variant,
                                   TRUE))
           DBUG_RETURN(TRUE);
-        switch (convert_action)
-        {
-          case ACT_CONVERT_OUT:
-            ddl_log_entry.from_name= { from_name, strlen(from_name) };
-            /* fall through */
-          case ACT_DROP:
-            ddl_log_entry.name= { tmp_path, strlen(tmp_path) };
-            break;
-          case ACT_CONVERT_IN:
-            ddl_log_entry.name= { from_name, strlen(from_name) };
-            ddl_log_entry.from_name= { tmp_path, strlen(tmp_path) };
-        }
+        lex_string_set(&ddl_log_entry.name, tmp_path);
         if (ddl_log_write_entry(&ddl_log_entry, &log_entry))
         {
           DBUG_RETURN(TRUE);
         }
         *next_entry= log_entry->entry_pos;
         part_elem->log_entry= log_entry;
-        ddl_log_add_entry(part_info, log_entry);
+        insert_part_info_log_entry_list(part_info, log_entry);
       }
     }
   }
@@ -6678,37 +6481,21 @@ static bool log_drop_or_convert_action(ALTER_PARTITION_PARAM_TYPE *lpt,
 }
 
 
-inline
-static bool write_log_dropped_partitions(ALTER_PARTITION_PARAM_TYPE *lpt,
-                                         uint *next_entry, const char *path,
-                                         bool temp_list)
-{
-  return log_drop_or_convert_action(lpt, next_entry, path, NULL, temp_list,
-                                    ACT_DROP);
-}
+/*
+  Set execute log entry in ddl log for this partitioned table
+  SYNOPSIS
+    set_part_info_exec_log_entry()
+    part_info                      Partition info object
+    exec_log_entry                 Log entry
+  RETURN VALUES
+    NONE
+*/
 
-inline
-static bool write_log_convert_partition(ALTER_PARTITION_PARAM_TYPE *lpt,
-                                        uint *next_entry, const char *path)
+static void set_part_info_exec_log_entry(partition_info *part_info,
+                                         DDL_LOG_MEMORY_ENTRY *exec_log_entry)
 {
-  char other_table[FN_REFLEN + 1];
-  const ulong f= lpt->alter_info->partition_flags;
-  DBUG_ASSERT((f & ALTER_PARTITION_CONVERT_IN) || (f & ALTER_PARTITION_CONVERT_OUT));
-  const log_action_enum convert_action= (f & ALTER_PARTITION_CONVERT_IN)
-                                         ? ACT_CONVERT_IN : ACT_CONVERT_OUT;
-  build_table_filename(other_table, sizeof(other_table) - 1, lpt->alter_ctx->new_db.str,
-                       lpt->alter_ctx->new_name.str, "", 0);
-  DDL_LOG_MEMORY_ENTRY *main_entry= lpt->part_info->main_entry;
-  bool res= log_drop_or_convert_action(lpt, next_entry, path, other_table,
-                                       false, convert_action);
-  /*
-    NOTE: main_entry is "drop shadow frm", we have to keep it like this
-    because partitioning crash-safety disables it at install shadow FRM phase.
-    This is needed to avoid spurious drop action when the shadow frm is replaced
-    by the backup frm and there is nothing to drop.
-  */
-  lpt->part_info->main_entry= main_entry;
-  return res;
+  part_info->exec_log_entry= exec_log_entry;
+  exec_log_entry->next_active_log_entry= NULL;
 }
 
 
@@ -6716,9 +6503,10 @@ static bool write_log_convert_partition(ALTER_PARTITION_PARAM_TYPE *lpt,
   Write the log entry to ensure that the shadow frm file is removed at
   crash.
   SYNOPSIS
-    write_log_drop_frm()
+    write_log_drop_shadow_frm()
     lpt                      Struct containing parameters
-
+    install_frm              Should we log action to install shadow frm or should
+                             the action be to remove the shadow frm file.
   RETURN VALUES
     TRUE                     Error
     FALSE                    Success
@@ -6727,50 +6515,33 @@ static bool write_log_convert_partition(ALTER_PARTITION_PARAM_TYPE *lpt,
     file and its corresponding handler file.
 */
 
-static bool write_log_drop_frm(ALTER_PARTITION_PARAM_TYPE *lpt,
-                               DDL_LOG_STATE *drop_chain)
+static bool write_log_drop_shadow_frm(ALTER_PARTITION_PARAM_TYPE *lpt)
 {
-  char path[FN_REFLEN + 1];
-  DBUG_ENTER("write_log_drop_frm");
-  const DDL_LOG_STATE *main_chain= lpt->part_info;
-  const bool drop_backup= (drop_chain != main_chain);
+  partition_info *part_info= lpt->part_info;
+  DDL_LOG_MEMORY_ENTRY *log_entry;
+  DDL_LOG_MEMORY_ENTRY *exec_log_entry= NULL;
+  char shadow_path[FN_REFLEN + 1];
+  DBUG_ENTER("write_log_drop_shadow_frm");
 
-  build_table_shadow_filename(path, sizeof(path) - 1, lpt, drop_backup);
+  build_table_shadow_filename(shadow_path, sizeof(shadow_path) - 1, lpt);
   mysql_mutex_lock(&LOCK_gdl);
-  if (ddl_log_delete_frm(drop_chain, (const char*)path))
+  if (write_log_replace_delete_frm(lpt, 0UL, NULL,
+                                  (const char*)shadow_path, FALSE))
     goto error;
-
-  if (drop_backup && (lpt->alter_info->partition_flags & ALTER_PARTITION_CONVERT_IN))
-  {
-    TABLE_LIST *table_from= lpt->table_list->next_local;
-    build_table_filename(path, sizeof(path) - 1, table_from->db.str,
-                         table_from->table_name.str, "", 0);
-
-    if (ddl_log_delete_frm(drop_chain, (const char*) path))
-      goto error;
-  }
-
-  if (ddl_log_write_execute_entry(drop_chain->list->entry_pos,
-                                  drop_backup ?
-                                    main_chain->execute_entry->entry_pos : 0,
-                                  &drop_chain->execute_entry))
+  log_entry= part_info->first_log_entry;
+  if (ddl_log_write_execute_entry(log_entry->entry_pos,
+                                  &exec_log_entry))
     goto error;
   mysql_mutex_unlock(&LOCK_gdl);
+  set_part_info_exec_log_entry(part_info, exec_log_entry);
   DBUG_RETURN(FALSE);
 
 error:
-  release_part_info_log_entries(drop_chain->list);
+  release_part_info_log_entries(part_info->first_log_entry);
   mysql_mutex_unlock(&LOCK_gdl);
-  drop_chain->list= NULL;
+  part_info->first_log_entry= NULL;
   my_error(ER_DDL_LOG_ERROR, MYF(0));
   DBUG_RETURN(TRUE);
-}
-
-
-static inline
-bool write_log_drop_shadow_frm(ALTER_PARTITION_PARAM_TYPE *lpt)
-{
-  return write_log_drop_frm(lpt, lpt->part_info);
 }
 
 
@@ -6791,22 +6562,22 @@ static bool write_log_rename_frm(ALTER_PARTITION_PARAM_TYPE *lpt)
 {
   partition_info *part_info= lpt->part_info;
   DDL_LOG_MEMORY_ENTRY *log_entry;
-  DDL_LOG_MEMORY_ENTRY *exec_log_entry= part_info->execute_entry;
+  DDL_LOG_MEMORY_ENTRY *exec_log_entry= part_info->exec_log_entry;
   char path[FN_REFLEN + 1];
   char shadow_path[FN_REFLEN + 1];
-  DDL_LOG_MEMORY_ENTRY *old_first_log_entry= part_info->list;
+  DDL_LOG_MEMORY_ENTRY *old_first_log_entry= part_info->first_log_entry;
   DBUG_ENTER("write_log_rename_frm");
 
-  part_info->list= NULL;
+  part_info->first_log_entry= NULL;
   build_table_filename(path, sizeof(path) - 1, lpt->alter_info->db.str,
                        lpt->alter_info->table_name.str, "", 0);
   build_table_shadow_filename(shadow_path, sizeof(shadow_path) - 1, lpt);
   mysql_mutex_lock(&LOCK_gdl);
-  if (write_log_replace_frm(lpt, 0UL, shadow_path, path))
+  if (write_log_replace_delete_frm(lpt, 0UL, shadow_path, path, TRUE))
     goto error;
-  log_entry= part_info->list;
-  part_info->main_entry= log_entry;
-  if (ddl_log_write_execute_entry(log_entry->entry_pos, 0,
+  log_entry= part_info->first_log_entry;
+  part_info->frm_log_entry= log_entry;
+  if (ddl_log_write_execute_entry(log_entry->entry_pos,
                                   &exec_log_entry))
     goto error;
   release_part_info_log_entries(old_first_log_entry);
@@ -6814,10 +6585,10 @@ static bool write_log_rename_frm(ALTER_PARTITION_PARAM_TYPE *lpt)
   DBUG_RETURN(FALSE);
 
 error:
-  release_part_info_log_entries(part_info->list);
+  release_part_info_log_entries(part_info->first_log_entry);
   mysql_mutex_unlock(&LOCK_gdl);
-  part_info->list= old_first_log_entry;
-  part_info->main_entry= NULL;
+  part_info->first_log_entry= old_first_log_entry;
+  part_info->frm_log_entry= NULL;
   my_error(ER_DDL_LOG_ERROR, MYF(0));
   DBUG_RETURN(TRUE);
 }
@@ -6842,14 +6613,14 @@ static bool write_log_drop_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
 {
   partition_info *part_info= lpt->part_info;
   DDL_LOG_MEMORY_ENTRY *log_entry;
-  DDL_LOG_MEMORY_ENTRY *exec_log_entry= part_info->execute_entry;
+  DDL_LOG_MEMORY_ENTRY *exec_log_entry= part_info->exec_log_entry;
   char tmp_path[FN_REFLEN + 1];
   char path[FN_REFLEN + 1];
   uint next_entry= 0;
-  DDL_LOG_MEMORY_ENTRY *old_first_log_entry= part_info->list;
+  DDL_LOG_MEMORY_ENTRY *old_first_log_entry= part_info->first_log_entry;
   DBUG_ENTER("write_log_drop_partition");
 
-  part_info->list= NULL;
+  part_info->first_log_entry= NULL;
   build_table_filename(path, sizeof(path) - 1, lpt->alter_info->db.str,
                        lpt->alter_info->table_name.str, "", 0);
   build_table_shadow_filename(tmp_path, sizeof(tmp_path) - 1, lpt);
@@ -6857,12 +6628,12 @@ static bool write_log_drop_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
   if (write_log_dropped_partitions(lpt, &next_entry, (const char*)path,
                                    FALSE))
     goto error;
-  if (write_log_replace_frm(lpt, next_entry, (const char*)tmp_path,
-                            (const char*)path))
+  if (write_log_replace_delete_frm(lpt, next_entry, (const char*)tmp_path,
+                                  (const char*)path, TRUE))
     goto error;
-  log_entry= part_info->list;
-  part_info->main_entry= log_entry;
-  if (ddl_log_write_execute_entry(log_entry->entry_pos, 0,
+  log_entry= part_info->first_log_entry;
+  part_info->frm_log_entry= log_entry;
+  if (ddl_log_write_execute_entry(log_entry->entry_pos,
                                   &exec_log_entry))
     goto error;
   release_part_info_log_entries(old_first_log_entry);
@@ -6870,43 +6641,12 @@ static bool write_log_drop_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
   DBUG_RETURN(FALSE);
 
 error:
-  release_part_info_log_entries(part_info->list);
+  release_part_info_log_entries(part_info->first_log_entry);
   mysql_mutex_unlock(&LOCK_gdl);
-  part_info->list= old_first_log_entry;
-  part_info->main_entry= NULL;
+  part_info->first_log_entry= old_first_log_entry;
+  part_info->frm_log_entry= NULL;
   my_error(ER_DDL_LOG_ERROR, MYF(0));
   DBUG_RETURN(TRUE);
-}
-
-
-static bool write_log_convert_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
-{
-  partition_info *part_info= lpt->part_info;
-  char tmp_path[FN_REFLEN + 1];
-  char path[FN_REFLEN + 1];
-  uint next_entry= part_info->list ? part_info->list->entry_pos : 0;
-
-  build_table_filename(path, sizeof(path) - 1,
-                       lpt->alter_info->db.str,
-                       lpt->alter_info->table_name.str, "", 0);
-  build_table_shadow_filename(tmp_path, sizeof(tmp_path) - 1, lpt);
-
-  mysql_mutex_lock(&LOCK_gdl);
-
-  if (write_log_convert_partition(lpt, &next_entry, (const char*)path))
-    goto error;
-  DBUG_ASSERT(next_entry == part_info->list->entry_pos);
-  if (ddl_log_write_execute_entry(part_info->list->entry_pos, 0,
-                                  &part_info->execute_entry))
-    goto error;
-  mysql_mutex_unlock(&LOCK_gdl);
-  return false;
-
-error:
-  mysql_mutex_unlock(&LOCK_gdl);
-  part_info->main_entry= NULL;
-  my_error(ER_DDL_LOG_ERROR, MYF(0));
-  return true;
 }
 
 
@@ -6931,10 +6671,11 @@ static bool write_log_add_change_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
 {
   partition_info *part_info= lpt->part_info;
   DDL_LOG_MEMORY_ENTRY *log_entry;
+  DDL_LOG_MEMORY_ENTRY *exec_log_entry= part_info->exec_log_entry;
   char tmp_path[FN_REFLEN + 1];
   char path[FN_REFLEN + 1];
   uint next_entry= 0;
-  DDL_LOG_MEMORY_ENTRY *old_first_log_entry= part_info->list;
+  DDL_LOG_MEMORY_ENTRY *old_first_log_entry= part_info->first_log_entry;
   /* write_log_drop_shadow_frm(lpt) must have been run first */
   DBUG_ASSERT(old_first_log_entry);
   DBUG_ENTER("write_log_add_change_partition");
@@ -6950,18 +6691,20 @@ static bool write_log_add_change_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
   if (write_log_dropped_partitions(lpt, &next_entry, (const char*)path,
                                    FALSE))
     goto error;
-  log_entry= part_info->list;
+  log_entry= part_info->first_log_entry;
 
-  if (ddl_log_write_execute_entry(log_entry->entry_pos, 0,
-                                  &part_info->execute_entry))
+  if (ddl_log_write_execute_entry(log_entry->entry_pos,
+                                  /* Reuse the old execute ddl_log_entry */
+                                  &exec_log_entry))
     goto error;
   mysql_mutex_unlock(&LOCK_gdl);
+  set_part_info_exec_log_entry(part_info, exec_log_entry);
   DBUG_RETURN(FALSE);
 
 error:
-  release_part_info_log_entries(part_info->list);
+  release_part_info_log_entries(part_info->first_log_entry);
   mysql_mutex_unlock(&LOCK_gdl);
-  part_info->list= old_first_log_entry;
+  part_info->first_log_entry= old_first_log_entry;
   my_error(ER_DDL_LOG_ERROR, MYF(0));
   DBUG_RETURN(TRUE);
 }
@@ -6993,10 +6736,10 @@ static bool write_log_final_change_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
 {
   partition_info *part_info= lpt->part_info;
   DDL_LOG_MEMORY_ENTRY *log_entry;
-  DDL_LOG_MEMORY_ENTRY *exec_log_entry= part_info->execute_entry;
+  DDL_LOG_MEMORY_ENTRY *exec_log_entry= part_info->exec_log_entry;
   char path[FN_REFLEN + 1];
   char shadow_path[FN_REFLEN + 1];
-  DDL_LOG_MEMORY_ENTRY *old_first_log_entry= part_info->list;
+  DDL_LOG_MEMORY_ENTRY *old_first_log_entry= part_info->first_log_entry;
   uint next_entry= 0;
   DBUG_ENTER("write_log_final_change_partition");
 
@@ -7004,7 +6747,7 @@ static bool write_log_final_change_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
     Do not link any previous log entry.
     Replace the revert operations with forced retry operations.
   */
-  part_info->list= NULL;
+  part_info->first_log_entry= NULL;
   build_table_filename(path, sizeof(path) - 1, lpt->alter_info->db.str,
                        lpt->alter_info->table_name.str, "", 0);
   build_table_shadow_filename(shadow_path, sizeof(shadow_path) - 1, lpt);
@@ -7015,12 +6758,12 @@ static bool write_log_final_change_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
                                    lpt->alter_info->partition_flags &
                                    ALTER_PARTITION_REORGANIZE))
     goto error;
-  if (write_log_replace_frm(lpt, next_entry, shadow_path, path))
+  if (write_log_replace_delete_frm(lpt, next_entry, shadow_path, path, TRUE))
     goto error;
-  log_entry= part_info->list;
-  part_info->main_entry= log_entry;
+  log_entry= part_info->first_log_entry;
+  part_info->frm_log_entry= log_entry;
   /* Overwrite the revert execute log entry with this retry execute entry */
-  if (ddl_log_write_execute_entry(log_entry->entry_pos, 0,
+  if (ddl_log_write_execute_entry(log_entry->entry_pos,
                                   &exec_log_entry))
     goto error;
   release_part_info_log_entries(old_first_log_entry);
@@ -7028,10 +6771,10 @@ static bool write_log_final_change_partition(ALTER_PARTITION_PARAM_TYPE *lpt)
   DBUG_RETURN(FALSE);
 
 error:
-  release_part_info_log_entries(part_info->list);
+  release_part_info_log_entries(part_info->first_log_entry);
   mysql_mutex_unlock(&LOCK_gdl);
-  part_info->list= old_first_log_entry;
-  part_info->main_entry= NULL;
+  part_info->first_log_entry= old_first_log_entry;
+  part_info->frm_log_entry= NULL;
   my_error(ER_DDL_LOG_ERROR, MYF(0));
   DBUG_RETURN(TRUE);
 }
@@ -7048,15 +6791,11 @@ error:
     FALSE                    Success
 */
 
-/*
-  TODO: Partitioning atomic DDL refactoring: this should be replaced with
-        ddl_log_complete().
-*/
 static void write_log_completed(ALTER_PARTITION_PARAM_TYPE *lpt,
                                 bool dont_crash)
 {
   partition_info *part_info= lpt->part_info;
-  DDL_LOG_MEMORY_ENTRY *log_entry= part_info->execute_entry;
+  DDL_LOG_MEMORY_ENTRY *log_entry= part_info->exec_log_entry;
   DBUG_ENTER("write_log_completed");
 
   DBUG_ASSERT(log_entry);
@@ -7072,11 +6811,11 @@ static void write_log_completed(ALTER_PARTITION_PARAM_TYPE *lpt,
     */
     ;
   }
-  release_part_info_log_entries(part_info->list);
-  release_part_info_log_entries(part_info->execute_entry);
+  release_part_info_log_entries(part_info->first_log_entry);
+  release_part_info_log_entries(part_info->exec_log_entry);
   mysql_mutex_unlock(&LOCK_gdl);
-  part_info->execute_entry= NULL;
-  part_info->list= NULL;
+  part_info->exec_log_entry= NULL;
+  part_info->first_log_entry= NULL;
   DBUG_VOID_RETURN;
 }
 
@@ -7090,18 +6829,14 @@ static void write_log_completed(ALTER_PARTITION_PARAM_TYPE *lpt,
      NONE
 */
 
-/*
-  TODO: Partitioning atomic DDL refactoring: this should be replaced with
-        ddl_log_release_entries().
-*/
 static void release_log_entries(partition_info *part_info)
 {
   mysql_mutex_lock(&LOCK_gdl);
-  release_part_info_log_entries(part_info->list);
-  release_part_info_log_entries(part_info->execute_entry);
+  release_part_info_log_entries(part_info->first_log_entry);
+  release_part_info_log_entries(part_info->exec_log_entry);
   mysql_mutex_unlock(&LOCK_gdl);
-  part_info->list= NULL;
-  part_info->execute_entry= NULL;
+  part_info->first_log_entry= NULL;
+  part_info->exec_log_entry= NULL;
 }
 
 
@@ -7184,15 +6919,10 @@ static int alter_close_table(ALTER_PARTITION_PARAM_TYPE *lpt)
   @param close_table        Table is still open, close it before reverting
 */
 
-/*
-  TODO: Partitioning atomic DDL refactoring: this should be replaced with
-        correct combination of ddl_log_revert() / ddl_log_complete()
-*/
 static void handle_alter_part_error(ALTER_PARTITION_PARAM_TYPE *lpt,
                                     bool action_completed,
                                     bool drop_partition,
-                                    bool frm_install,
-                                    bool reopen)
+                                    bool frm_install)
 {
   THD *thd= lpt->thd;
   partition_info *part_info= lpt->part_info->get_clone(thd);
@@ -7236,11 +6966,8 @@ static void handle_alter_part_error(ALTER_PARTITION_PARAM_TYPE *lpt,
     close_all_tables_for_name(thd, table->s, HA_EXTRA_NOT_USED, NULL);
   }
 
-  if (!reopen)
-    DBUG_VOID_RETURN;
-
-  if (part_info->list &&
-      ddl_log_execute_entry(thd, part_info->list->entry_pos))
+  if (part_info->first_log_entry &&
+      ddl_log_execute_entry(thd, part_info->first_log_entry->entry_pos))
   {
     /*
       We couldn't recover from error, most likely manual interaction
@@ -7402,65 +7129,6 @@ bool log_partition_alter_to_ddl_log(ALTER_PARTITION_PARAM_TYPE *lpt)
 }
 
 
-extern bool alter_partition_convert_in(ALTER_PARTITION_PARAM_TYPE *lpt);
-
-/**
-  Check that definition of source table fits definition of partition being
-  added and every row stored in the table conforms partition's expression.
-
-  @param lpt  Structure containing parameters required for checking
-  @param[in,out] part_file_name_buf  Buffer for storing a partition name
-  @param part_file_name_buf_sz  Size of buffer for storing a partition name
-  @param part_file_name_len  Length of partition prefix stored in the buffer
-                             on invocation of function
-
-  @return false on success, true on error
-*/
-
-static bool check_table_data(ALTER_PARTITION_PARAM_TYPE *lpt)
-{
-  /*
-     TODO: if destination is partitioned by range(X) and source is indexed by X
-     then just get min(X) and max(X) from index.
-  */
-  THD *thd= lpt->thd;
-  TABLE *table_to= lpt->table_list->table;
-  TABLE *table_from= lpt->table_list->next_local->table;
-
-  DBUG_ASSERT(thd->mdl_context.is_lock_owner(MDL_key::TABLE,
-                                             table_to->s->db.str,
-                                             table_to->s->table_name.str,
-                                             MDL_EXCLUSIVE));
-
-  DBUG_ASSERT(thd->mdl_context.is_lock_owner(MDL_key::TABLE,
-                                             table_from->s->db.str,
-                                             table_from->s->table_name.str,
-                                             MDL_EXCLUSIVE));
-
-  uint32 new_part_id;
-  partition_element *part_elem;
-  const Lex_ident_partition &partition_name=
-    thd->lex->part_info->curr_part_elem->partition_name;
-  part_elem= table_to->part_info->get_part_elem(partition_name,
-                                                nullptr, 0, &new_part_id);
-  if (unlikely(!part_elem))
-    return true;
-
-  if (unlikely(new_part_id == NOT_A_PARTITION_ID))
-  {
-    DBUG_ASSERT(table_to->part_info->is_sub_partitioned());
-    my_error(ER_PARTITION_INSTEAD_OF_SUBPARTITION, MYF(0));
-    return true;
-  }
-
-  if (verify_data_with_partition(table_from, table_to, new_part_id))
-  {
-    return true;
-  }
-
-  return false;
-}
-
 
 /**
   Actually perform the change requested by ALTER TABLE of partitions
@@ -7485,23 +7153,9 @@ static bool check_table_data(ALTER_PARTITION_PARAM_TYPE *lpt)
 
 uint fast_alter_partition_table(THD *thd, TABLE *table,
                                 Alter_info *alter_info,
-                                Alter_table_ctx *alter_ctx,
                                 HA_CREATE_INFO *create_info,
                                 TABLE_LIST *table_list)
 {
-  /*
-    TODO: Partitioning atomic DDL refactoring.
-
-    DDL log chain state is stored in partition_info:
-
-    struct st_ddl_log_memory_entry *first_log_entry;
-    struct st_ddl_log_memory_entry *exec_log_entry;
-    struct st_ddl_log_memory_entry *frm_log_entry;
-
-    Make it stored and used in DDL_LOG_STATE like it was done in MDEV-17567.
-    This requires mysql_write_frm() refactoring (see comment there).
-  */
-
   /* Set-up struct used to write frm files */
   partition_info *part_info;
   ALTER_PARTITION_PARAM_TYPE lpt_obj, *lpt= &lpt_obj;
@@ -7518,7 +7172,6 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
   lpt->table_list= table_list;
   lpt->part_info= part_info;
   lpt->alter_info= alter_info;
-  lpt->alter_ctx= alter_ctx;
   lpt->create_info= create_info;
   lpt->db_options= create_info->table_options_with_row_type();
   lpt->table= table;
@@ -7535,8 +7188,7 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
     thd->variables.option_bits|= OPTION_IF_EXISTS;
 
   if (table->file->alter_table_flags(alter_info->flags) &
-        HA_PARTITION_ONE_PHASE &&
-      !(alter_info->partition_flags & ALTER_PARTITION_AUTO_HIST))
+        HA_PARTITION_ONE_PHASE)
   {
     /*
       In the case where the engine supports one phase online partition
@@ -7578,7 +7230,7 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
       2) Perform the change within the handler
     */
     if (mysql_write_frm(lpt, WFRM_WRITE_SHADOW) ||
-        mysql_change_partitions(lpt, true))
+        mysql_change_partitions(lpt))
     {
       goto err;
     }
@@ -7644,143 +7296,49 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
       to test if recovery is properly done.
     */
     if (write_log_drop_shadow_frm(lpt) ||
-        ERROR_INJECT("drop_partition_1") ||
+        ERROR_INJECT_CRASH("crash_drop_partition_1") ||
+        ERROR_INJECT_ERROR("fail_drop_partition_1") ||
         mysql_write_frm(lpt, WFRM_WRITE_SHADOW) ||
-        ERROR_INJECT("drop_partition_2") ||
+        ERROR_INJECT_CRASH("crash_drop_partition_2") ||
+        ERROR_INJECT_ERROR("fail_drop_partition_2") ||
         wait_while_table_is_used(thd, table, HA_EXTRA_NOT_USED) ||
-        ERROR_INJECT("drop_partition_3") ||
+        ERROR_INJECT_CRASH("crash_drop_partition_3") ||
+        ERROR_INJECT_ERROR("fail_drop_partition_3") ||
         write_log_drop_partition(lpt) ||
         (action_completed= TRUE, FALSE) ||
-        ERROR_INJECT("drop_partition_4") ||
+        ERROR_INJECT_CRASH("crash_drop_partition_4") ||
+        ERROR_INJECT_ERROR("fail_drop_partition_4") ||
         alter_close_table(lpt) ||
-        ERROR_INJECT("drop_partition_5") ||
-        ERROR_INJECT("drop_partition_6") ||
+        ERROR_INJECT_CRASH("crash_drop_partition_5") ||
+        ERROR_INJECT_ERROR("fail_drop_partition_5") ||
+        ERROR_INJECT_CRASH("crash_drop_partition_6") ||
+        ERROR_INJECT_ERROR("fail_drop_partition_6") ||
         (frm_install= TRUE, FALSE) ||
         mysql_write_frm(lpt, WFRM_INSTALL_SHADOW) ||
         log_partition_alter_to_ddl_log(lpt) ||
         (frm_install= FALSE, FALSE) ||
-        ERROR_INJECT("drop_partition_7") ||
+        ERROR_INJECT_CRASH("crash_drop_partition_7") ||
+        ERROR_INJECT_ERROR("fail_drop_partition_7") ||
         mysql_drop_partitions(lpt) ||
-        ERROR_INJECT("drop_partition_8") ||
+        ERROR_INJECT_CRASH("crash_drop_partition_8") ||
+        ERROR_INJECT_ERROR("fail_drop_partition_8") ||
         (write_log_completed(lpt, FALSE), FALSE) ||
         ((!thd->lex->no_write_to_binlog) &&
          (write_bin_log(thd, FALSE,
                         thd->query(), thd->query_length()), FALSE)) ||
-        ERROR_INJECT("drop_partition_9"))
+        ERROR_INJECT_CRASH("crash_drop_partition_9") ||
+        ERROR_INJECT_ERROR("fail_drop_partition_9"))
     {
-      handle_alter_part_error(lpt, action_completed, TRUE, frm_install, true);
+      handle_alter_part_error(lpt, action_completed, TRUE, frm_install);
       goto err;
     }
     if (alter_partition_lock_handling(lpt))
       goto err;
   }
-  else if (alter_info->partition_flags & ALTER_PARTITION_CONVERT_OUT)
-  {
-    DDL_LOG_STATE chain_drop_backup;
-    bzero(&chain_drop_backup, sizeof(chain_drop_backup));
-
-    if (mysql_write_frm(lpt, WFRM_WRITE_CONVERTED_TO) ||
-        ERROR_INJECT("convert_partition_1") ||
-        write_log_drop_shadow_frm(lpt) ||
-        ERROR_INJECT("convert_partition_2") ||
-        mysql_write_frm(lpt, WFRM_WRITE_SHADOW|WFRM_ALTER_INFO_PREPARED) ||
-        ERROR_INJECT("convert_partition_3") ||
-        wait_while_table_is_used(thd, table, HA_EXTRA_NOT_USED) ||
-        ERROR_INJECT("convert_partition_4") ||
-        write_log_convert_partition(lpt) ||
-        ERROR_INJECT("convert_partition_5") ||
-        alter_close_table(lpt) ||
-        ERROR_INJECT("convert_partition_6") ||
-        alter_partition_convert_out(lpt) ||
-        ERROR_INJECT("convert_partition_7") ||
-        write_log_drop_frm(lpt, &chain_drop_backup) ||
-        mysql_write_frm(lpt, WFRM_INSTALL_SHADOW|WFRM_BACKUP_ORIGINAL) ||
-        log_partition_alter_to_ddl_log(lpt) ||
-        ERROR_INJECT("convert_partition_8") ||
-        ((!thd->lex->no_write_to_binlog) &&
-          ((thd->binlog_xid= thd->query_id),
-           ddl_log_update_xid(lpt->part_info, thd->binlog_xid),
-           write_bin_log(thd, false, thd->query(), thd->query_length()),
-           (thd->binlog_xid= 0))) ||
-        ERROR_INJECT("convert_partition_9"))
-    {
-      DDL_LOG_STATE main_state= *lpt->part_info;
-      handle_alter_part_error(lpt, true, true, false, false);
-      ddl_log_complete(&chain_drop_backup);
-      (void) ddl_log_revert(thd, &main_state);
-      if (thd->locked_tables_mode)
-        thd->locked_tables_list.reopen_tables(thd, false);
-      goto err;
-    }
-    ddl_log_complete(lpt->part_info);
-    ERROR_INJECT("convert_partition_10");
-    (void) ddl_log_revert(thd, &chain_drop_backup);
-    if (alter_partition_lock_handling(lpt) ||
-        ERROR_INJECT("convert_partition_11"))
-      goto err;
-  }
-  else if ((alter_info->partition_flags & ALTER_PARTITION_CONVERT_IN))
-  {
-    DDL_LOG_STATE chain_drop_backup;
-    bzero(&chain_drop_backup, sizeof(chain_drop_backup));
-    TABLE *table_from= table_list->next_local->table;
-
-    if (wait_while_table_is_used(thd, table, HA_EXTRA_NOT_USED) ||
-        wait_while_table_is_used(thd, table_from, HA_EXTRA_PREPARE_FOR_RENAME) ||
-        ERROR_INJECT("convert_partition_1") ||
-        compare_table_with_partition(thd, table_from, table, NULL, 0) ||
-        ERROR_INJECT("convert_partition_2") ||
-        check_table_data(lpt))
-      goto err;
-
-    if (write_log_drop_shadow_frm(lpt) ||
-        ERROR_INJECT("convert_partition_3") ||
-        mysql_write_frm(lpt, WFRM_WRITE_SHADOW) ||
-        ERROR_INJECT("convert_partition_4") ||
-        alter_close_table(lpt) ||
-        ERROR_INJECT("convert_partition_5") ||
-        write_log_convert_partition(lpt) ||
-        ERROR_INJECT("convert_partition_6") ||
-        alter_partition_convert_in(lpt) ||
-        ERROR_INJECT("convert_partition_7") ||
-        (frm_install= true, false) ||
-        write_log_drop_frm(lpt, &chain_drop_backup) ||
-        mysql_write_frm(lpt, WFRM_INSTALL_SHADOW|WFRM_BACKUP_ORIGINAL) ||
-        log_partition_alter_to_ddl_log(lpt) ||
-        (frm_install= false, false) ||
-        ERROR_INJECT("convert_partition_8") ||
-        ((!thd->lex->no_write_to_binlog) &&
-          ((thd->binlog_xid= thd->query_id),
-           ddl_log_update_xid(lpt->part_info, thd->binlog_xid),
-           write_bin_log(thd, false, thd->query(), thd->query_length()),
-           (thd->binlog_xid= 0))) ||
-        ERROR_INJECT("convert_partition_9"))
-    {
-      DDL_LOG_STATE main_state= *lpt->part_info;
-      handle_alter_part_error(lpt, true, true, false, false);
-      ddl_log_complete(&chain_drop_backup);
-      (void) ddl_log_revert(thd, &main_state);
-      if (thd->locked_tables_mode)
-        thd->locked_tables_list.reopen_tables(thd, false);
-      goto err;
-    }
-    ddl_log_complete(lpt->part_info);
-    ERROR_INJECT("convert_partition_10");
-    (void) ddl_log_revert(thd, &chain_drop_backup);
-    if (alter_partition_lock_handling(lpt) ||
-        ERROR_INJECT("convert_partition_11"))
-      goto err;
-  }
-  /*
-    TODO: would be good if adding new empty VERSIONING partitions would always
-    go this way, auto or not.
-  */
   else if ((alter_info->partition_flags & ALTER_PARTITION_ADD) &&
            (part_info->part_type == RANGE_PARTITION ||
-            part_info->part_type == LIST_PARTITION ||
-            alter_info->partition_flags & ALTER_PARTITION_AUTO_HIST))
+            part_info->part_type == LIST_PARTITION))
   {
-    DBUG_ASSERT(!(alter_info->partition_flags & ALTER_PARTITION_CONVERT_IN));
     /*
       ADD RANGE/LIST PARTITIONS
       In this case there are no tuples removed and no tuples are added.
@@ -7797,7 +7355,7 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
          can release all other locks on the table and since no one can open
          the table, there can be no new threads accessing the table. They
          will be hanging on this exclusive lock.
-      3) Write an entry to remove the new partitions if crash occurs
+      3) Write an entry to remove the new parttions if crash occurs
       4) Add the new partitions.
       5) Close all instances of the table and remove them from the table cache.
       6) Old place for write binlog
@@ -7812,33 +7370,43 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
       12)Complete query
     */
     if (write_log_drop_shadow_frm(lpt) ||
-        ERROR_INJECT("add_partition_1") ||
+        ERROR_INJECT_CRASH("crash_add_partition_1") ||
+        ERROR_INJECT_ERROR("fail_add_partition_1") ||
         mysql_write_frm(lpt, WFRM_WRITE_SHADOW) ||
-        ERROR_INJECT("add_partition_2") ||
-        wait_while_table_is_used(thd, table, HA_EXTRA_PREPARE_FOR_RENAME) ||
-        ERROR_INJECT("add_partition_3") ||
+        ERROR_INJECT_CRASH("crash_add_partition_2") ||
+        ERROR_INJECT_ERROR("fail_add_partition_2") ||
+        wait_while_table_is_used(thd, table, HA_EXTRA_NOT_USED) ||
+        ERROR_INJECT_CRASH("crash_add_partition_3") ||
+        ERROR_INJECT_ERROR("fail_add_partition_3") ||
         write_log_add_change_partition(lpt) ||
-        ERROR_INJECT("add_partition_4") ||
-        mysql_change_partitions(lpt, false) ||
-        ERROR_INJECT("add_partition_5") ||
+        ERROR_INJECT_CRASH("crash_add_partition_4") ||
+        ERROR_INJECT_ERROR("fail_add_partition_4") ||
+        mysql_change_partitions(lpt) ||
+        ERROR_INJECT_CRASH("crash_add_partition_5") ||
+        ERROR_INJECT_ERROR("fail_add_partition_5") ||
         alter_close_table(lpt) ||
-        ERROR_INJECT("add_partition_6") ||
-        ERROR_INJECT("add_partition_7") ||
+        ERROR_INJECT_CRASH("crash_add_partition_6") ||
+        ERROR_INJECT_ERROR("fail_add_partition_6") ||
+        ERROR_INJECT_CRASH("crash_add_partition_7") ||
+        ERROR_INJECT_ERROR("fail_add_partition_7") ||
         write_log_rename_frm(lpt) ||
         (action_completed= TRUE, FALSE) ||
-        ERROR_INJECT("add_partition_8") ||
+        ERROR_INJECT_CRASH("crash_add_partition_8") ||
+        ERROR_INJECT_ERROR("fail_add_partition_8") ||
         (frm_install= TRUE, FALSE) ||
         mysql_write_frm(lpt, WFRM_INSTALL_SHADOW) ||
         log_partition_alter_to_ddl_log(lpt) ||
         (frm_install= FALSE, FALSE) ||
-        ERROR_INJECT("add_partition_9") ||
+        ERROR_INJECT_CRASH("crash_add_partition_9") ||
+        ERROR_INJECT_ERROR("fail_add_partition_9") ||
         (write_log_completed(lpt, FALSE), FALSE) ||
         ((!thd->lex->no_write_to_binlog) &&
          (write_bin_log(thd, FALSE,
                         thd->query(), thd->query_length()), FALSE)) ||
-        ERROR_INJECT("add_partition_10"))
+        ERROR_INJECT_CRASH("crash_add_partition_10") ||
+        ERROR_INJECT_ERROR("fail_add_partition_10"))
     {
-      handle_alter_part_error(lpt, action_completed, FALSE, frm_install, true);
+      handle_alter_part_error(lpt, action_completed, FALSE, frm_install);
       goto err;
     }
     if (alter_partition_lock_handling(lpt))
@@ -7901,37 +7469,49 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
       13) Complete query.
     */
     if (write_log_drop_shadow_frm(lpt) ||
-        ERROR_INJECT("change_partition_1") ||
+        ERROR_INJECT_CRASH("crash_change_partition_1") ||
+        ERROR_INJECT_ERROR("fail_change_partition_1") ||
         mysql_write_frm(lpt, WFRM_WRITE_SHADOW) ||
-        ERROR_INJECT("change_partition_2") ||
+        ERROR_INJECT_CRASH("crash_change_partition_2") ||
+        ERROR_INJECT_ERROR("fail_change_partition_2") ||
         write_log_add_change_partition(lpt) ||
-        ERROR_INJECT("change_partition_3") ||
-        mysql_change_partitions(lpt, true) ||
-        ERROR_INJECT("change_partition_4") ||
+        ERROR_INJECT_CRASH("crash_change_partition_3") ||
+        ERROR_INJECT_ERROR("fail_change_partition_3") ||
+        mysql_change_partitions(lpt) ||
+        ERROR_INJECT_CRASH("crash_change_partition_4") ||
+        ERROR_INJECT_ERROR("fail_change_partition_4") ||
         wait_while_table_is_used(thd, table, HA_EXTRA_NOT_USED) ||
-        ERROR_INJECT("change_partition_5") ||
+        ERROR_INJECT_CRASH("crash_change_partition_5") ||
+        ERROR_INJECT_ERROR("fail_change_partition_5") ||
         alter_close_table(lpt) ||
-        ERROR_INJECT("change_partition_6") ||
+        ERROR_INJECT_CRASH("crash_change_partition_6") ||
+        ERROR_INJECT_ERROR("fail_change_partition_6") ||
         write_log_final_change_partition(lpt) ||
         (action_completed= TRUE, FALSE) ||
-        ERROR_INJECT("change_partition_7") ||
-        ERROR_INJECT("change_partition_8") ||
+        ERROR_INJECT_CRASH("crash_change_partition_7") ||
+        ERROR_INJECT_ERROR("fail_change_partition_7") ||
+        ERROR_INJECT_CRASH("crash_change_partition_8") ||
+        ERROR_INJECT_ERROR("fail_change_partition_8") ||
         ((frm_install= TRUE), FALSE) ||
         mysql_write_frm(lpt, WFRM_INSTALL_SHADOW) ||
         log_partition_alter_to_ddl_log(lpt) ||
         (frm_install= FALSE, FALSE) ||
-        ERROR_INJECT("change_partition_9") ||
+        ERROR_INJECT_CRASH("crash_change_partition_9") ||
+        ERROR_INJECT_ERROR("fail_change_partition_9") ||
         mysql_drop_partitions(lpt) ||
-        ERROR_INJECT("change_partition_10") ||
+        ERROR_INJECT_CRASH("crash_change_partition_10") ||
+        ERROR_INJECT_ERROR("fail_change_partition_10") ||
         mysql_rename_partitions(lpt) ||
-        ERROR_INJECT("change_partition_11") ||
+        ERROR_INJECT_CRASH("crash_change_partition_11") ||
+        ERROR_INJECT_ERROR("fail_change_partition_11") ||
         (write_log_completed(lpt, FALSE), FALSE) ||
         ((!thd->lex->no_write_to_binlog) &&
          (write_bin_log(thd, FALSE,
                         thd->query(), thd->query_length()), FALSE)) ||
-        ERROR_INJECT("change_partition_12"))
+        ERROR_INJECT_CRASH("crash_change_partition_12") ||
+        ERROR_INJECT_ERROR("fail_change_partition_12"))
     {
-      handle_alter_part_error(lpt, action_completed, FALSE, frm_install, true);
+      handle_alter_part_error(lpt, action_completed, FALSE, frm_install);
       goto err;
     }
     if (alter_partition_lock_handling(lpt))
@@ -8119,10 +7699,12 @@ void make_used_partitions_str(MEM_ROOT *alloc,
             parts_str->append(',');
           uint index= parts_str->length();
           parts_str->append(head_pe->partition_name,
-                            head_pe->partition_name.charset_info());
+                           strlen(head_pe->partition_name),
+                           system_charset_info);
           parts_str->append('_');
           parts_str->append(pe->partition_name,
-                            pe->partition_name.charset_info());
+                           strlen(pe->partition_name),
+                           system_charset_info);
           used_partitions_list.append_str(alloc, parts_str->ptr() + index);
         }
         partition_id++;
@@ -8137,9 +7719,9 @@ void make_used_partitions_str(MEM_ROOT *alloc,
       {
         if (parts_str->length())
           parts_str->append(',');
-        used_partitions_list.append_str(alloc, pe->partition_name.str);
-        parts_str->append(pe->partition_name,
-                          pe->partition_name.charset_info());
+        used_partitions_list.append_str(alloc, pe->partition_name);
+        parts_str->append(pe->partition_name, strlen(pe->partition_name),
+                         system_charset_info);
       }
       partition_id++;
     }
@@ -9164,8 +8746,7 @@ static const char *longest_str(const char *s1, const char *s2,
 */
 
 int create_partition_name(char *out, size_t outlen, const char *in1,
-                          const char *in2,
-                          uint name_variant, bool translate)
+                          const char *in2, uint name_variant, bool translate)
 {
   char transl_part_name[FN_REFLEN];
   const char *transl_part, *end;
@@ -9211,15 +8792,15 @@ int create_partition_name(char *out, size_t outlen, const char *in1,
     @retval false             Success.
 */
 
-int create_subpartition_name(char *out, size_t outlen, const char *in1,
-                             const Lex_ident_partition &in2,
-                             const Lex_ident_partition &in3, uint name_variant)
+int create_subpartition_name(char *out, size_t outlen,
+                             const char *in1, const char *in2,
+                             const char *in3, uint name_variant)
 {
   char transl_part_name[FN_REFLEN], transl_subpart_name[FN_REFLEN], *end;
   DBUG_ASSERT(outlen >= FN_REFLEN + 1); // consistency! same limit everywhere
 
-  tablename_to_filename(in2.str, transl_part_name, FN_REFLEN);
-  tablename_to_filename(in3.str, transl_subpart_name, FN_REFLEN);
+  tablename_to_filename(in2, transl_part_name, FN_REFLEN);
+  tablename_to_filename(in3, transl_subpart_name, FN_REFLEN);
 
   if (name_variant == NORMAL_PART_NAME)
     end= strxnmov(out, outlen-1, in1, "#P#", transl_part_name,

@@ -47,12 +47,12 @@ VIEW io_global_by_file_by_latency (
 ) AS
 SELECT sys.format_path(file_name) AS file, 
        count_star AS total, 
-       format_pico_time(sum_timer_wait) AS total_latency,
+       sys.format_time(sum_timer_wait) AS total_latency,
        count_read,
-       format_pico_time(sum_timer_read) AS read_latency,
+       sys.format_time(sum_timer_read) AS read_latency,
        count_write,
-       format_pico_time(sum_timer_write) AS write_latency,
+       sys.format_time(sum_timer_write) AS write_latency,
        count_misc,
-       format_pico_time(sum_timer_misc) AS misc_latency
+       sys.format_time(sum_timer_misc) AS misc_latency
   FROM performance_schema.file_summary_by_instance
  ORDER BY sum_timer_wait DESC;

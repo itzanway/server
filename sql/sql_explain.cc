@@ -14,6 +14,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335 USA */
 
+#ifdef USE_PRAGMA_IMPLEMENTATION
+#pragma implementation				// gcc: Class implementation
+#endif
+
 #include "mariadb.h"
 #include "sql_priv.h"
 #include "sql_select.h"
@@ -21,8 +25,6 @@
 #include "opt_range.h"
 #include "sql_expression_cache.h"
 #include "item_subselect.h"
-
-#include <stack>
 
 const char * STR_DELETING_ALL_ROWS= "Deleting all rows";
 const char * STR_IMPOSSIBLE_WHERE= "Impossible WHERE";
@@ -33,26 +35,17 @@ const char *unit_operation_text[4]=
    "UNIT RESULT","UNION RESULT","INTERSECT RESULT","EXCEPT RESULT"
 };
 
-const char *pushed_unit_operation_text[4]=
-{
-  "PUSHED UNIT", "PUSHED UNION", "PUSHED INTERSECT", "PUSHED EXCEPT"
-};
-
 const char *pushed_derived_text= "PUSHED DERIVED";
 const char *pushed_select_text= "PUSHED SELECT";
-/* See enum ha_parititon::partition_index_scan_method */
-const char *partitions_index_scan_method_str[]=
-  {NULL, "merge_ordered_scans", "iterate_over_partitions", "both"};
 
 static void write_item(Json_writer *writer, Item *item);
 static void append_item_to_str(String *out, Item *item);
 
 Explain_query::Explain_query(THD *thd_arg, MEM_ROOT *root) : 
-  mem_root(root), upd_del_plan(nullptr),  insert_plan(nullptr),
-  unions(root), selects(root), stmt_thd(thd_arg), apc_enabled(false),
+  mem_root(root), upd_del_plan(NULL),  insert_plan(NULL),
+  unions(root), selects(root),  thd(thd_arg), apc_enabled(false),
   operations(0)
 {
-  optimization_time_tracker.start_tracking(stmt_thd);
 }
 
 static void print_json_array(Json_writer *writer,
@@ -71,7 +64,7 @@ static void print_json_array(Json_writer *writer,
 Explain_query::~Explain_query()
 {
   if (apc_enabled)
-    stmt_thd->apc_target.disable();
+    thd->apc_target.disable();
 
   delete upd_del_plan;
   delete insert_plan;
@@ -160,34 +153,10 @@ void Explain_query::add_upd_del_plan(Explain_update *upd_del_plan_arg)
 
 void Explain_query::query_plan_ready()
 {
-  optimization_time_tracker.stop_tracking(stmt_thd);
-
   if (!apc_enabled)
-    stmt_thd->apc_target.enable();
+    thd->apc_target.enable();
   apc_enabled= true;
-#ifndef DBUG_OFF
-  can_print_json= true;
-#endif
 }
-
-
-void Explain_query::notify_tables_are_closed()
-{
-  /*
-    Disable processing of SHOW EXPLAIN|ANALYZE. The query is about to close
-    the tables it is using, which will make it impossible to print Item*
-    values. See sql_explain.h:ExplainDataStructureLifetime for details.
-  */
-  if (apc_enabled)
-  {
-    stmt_thd->apc_target.disable();
-    apc_enabled= false;
-#ifndef DBUG_OFF
-    can_print_json= false;
-#endif
-  }
-}
-
 
 /*
   Send EXPLAIN output to the client.
@@ -263,82 +232,36 @@ int Explain_query::print_explain(select_result_sink *output,
 }
 
 
-int Explain_query::print_explain_json(select_result_sink *output,
-                                      bool is_analyze,
-                                      ulonglong query_time_in_progress_ms)
+void Explain_query::print_explain_json(select_result_sink *output,
+                                       bool is_analyze)
 {
   Json_writer writer;
-
-#ifndef DBUG_OFF
-  DBUG_ASSERT(can_print_json);
-#endif
-
   writer.start_object();
 
-  if (is_analyze)
-  {
-    if (query_time_in_progress_ms > 0){
-      writer.add_member("r_query_time_in_progress_ms").
-            add_ull(query_time_in_progress_ms);
-    }
-
-    print_query_optimization_json(&writer);
-  }
-
-  bool plan_found = print_query_blocks_json(&writer, is_analyze);
-  writer.end_object();
-
-  if( plan_found )
-  {
-    send_explain_json_to_output(&writer, output);
-  }
-  
-  return 0;
-}
-
-void Explain_query::print_query_optimization_json(Json_writer *writer)
-{
-  if (optimization_time_tracker.has_timed_statistics())
-  {
-    // if more timers are added, move the query_optimization member 
-    // outside the if statement
-    writer->add_member("query_optimization").start_object();
-    writer->add_member("r_total_time_ms").
-            add_double(optimization_time_tracker.get_time_ms());
-    writer->end_object(); 
-  }
-}
-
-bool Explain_query::print_query_blocks_json(Json_writer *writer, const bool is_analyze)
-{
   if (upd_del_plan)
-    upd_del_plan->print_explain_json(this, writer, is_analyze);
+    upd_del_plan->print_explain_json(this, &writer, is_analyze);
   else if (insert_plan)
-    insert_plan->print_explain_json(this, writer, is_analyze);
+    insert_plan->print_explain_json(this, &writer, is_analyze);
   else
   {
-    /* Start printing from root node with id=1 */
+    /* Start printing from node with id=1 */
     Explain_node *node= get_node(1);
     if (!node)
-      return false; /* No query plan */
-    node->print_explain_json(this, writer, is_analyze);
+      return; /* No query plan */
+    node->print_explain_json(this, &writer, is_analyze);
   }
 
-  return true;
-}
+  writer.end_object();
 
-void Explain_query::send_explain_json_to_output(Json_writer *writer, 
-                                                select_result_sink *output)
-{
   CHARSET_INFO *cs= system_charset_info;
   List<Item> item_list;
-  const String *buf= writer->output.get_string();
-  THD *thd= output->thd;
+  const String *buf= writer.output.get_string();
   item_list.push_back(new (thd->mem_root)
                       Item_string(thd, buf->ptr(), buf->length(), cs),
                       thd->mem_root);
   output->send_data(item_list);
-} 
+}
+
 
 bool print_explain_for_slow_log(LEX *lex, THD *thd, String *str)
 {
@@ -543,20 +466,21 @@ uint Explain_union::make_union_table_name(char *buf)
   switch (operation)
   {
     case OP_MIX:
-      type= { STRING_WITH_LEN("<unit") };
+      lex_string_set3(&type, STRING_WITH_LEN("<unit"));
       break;
     case OP_UNION:
-      type= { STRING_WITH_LEN("<union") };
+      lex_string_set3(&type, STRING_WITH_LEN("<union"));
       break;
     case OP_INTERSECT:
-      type= { STRING_WITH_LEN("<intersect") };
+      lex_string_set3(&type, STRING_WITH_LEN("<intersect"));
       break;
     case OP_EXCEPT:
-      type= { STRING_WITH_LEN("<except") };
+      lex_string_set3(&type, STRING_WITH_LEN("<except"));
       break;
     default:
       DBUG_ASSERT(0);
-      type= { NULL, 0 };
+      type.str= NULL;
+      type.length= 0;
   }
   memcpy(buf, type.str, (len= (uint)type.length));
 
@@ -582,22 +506,7 @@ uint Explain_union::make_union_table_name(char *buf)
 }
 
 
-int Explain_union::print_explain(Explain_query *query,
-                                 select_result_sink *output,
-                                 uint8 explain_flags, bool is_analyze)
-{
-  if (is_pushed_down_to_engine)
-    return print_explain_pushed_down(output, explain_flags, is_analyze);
-  else
-    return print_explain_regular(query, output, explain_flags, is_analyze);
-}
-
-/*
-  Prints EXPLAIN plan for a regular UNIT (UNION/EXCEPT/INTERSECT),
-  i.e. UNIT that has not been pushed down to a storage engine
-*/
-
-int Explain_union::print_explain_regular(Explain_query *query,
+int Explain_union::print_explain(Explain_query *query, 
                                  select_result_sink *output,
                                  uint8 explain_flags, 
                                  bool is_analyze)
@@ -614,15 +523,7 @@ int Explain_union::print_explain_regular(Explain_query *query,
   }
 
   if (!using_tmp)
-  {
-    /*
-      The union operation may not employ a temporary table, for example,
-      for UNION ALL, in that case the results of the query are sent directly
-      to the output. So there is no actual UNION operation and we don't need
-      to print the line in the EXPLAIN output.
-    */
     return 0;
-  }
 
   /* Print a line with "UNIT RESULT" */
   List<Item> item_list;
@@ -639,7 +540,7 @@ int Explain_union::print_explain_regular(Explain_query *query,
   item_list.push_back(new (mem_root)
                       Item_string_sys(thd, table_name_buffer, len),
                       mem_root);
-
+  
   /* `partitions` column */
   if (explain_flags & DESCRIBE_PARTITIONS)
     item_list.push_back(item_null, mem_root);
@@ -695,6 +596,7 @@ int Explain_union::print_explain_regular(Explain_query *query,
                                       extra_buf.length()),
                       mem_root);
 
+  //output->unit.offset_limit_cnt= 0; 
   if (output->send_data(item_list))
     return 1;
   
@@ -706,88 +608,8 @@ int Explain_union::print_explain_regular(Explain_query *query,
 }
 
 
-/*
-  Prints EXPLAIN plan for a UNIT (UNION/EXCEPT/INTERSECT) that
-  has been pushed down to a storage engine
-*/
-
-int Explain_union::print_explain_pushed_down(select_result_sink *output,
-                                             uint8 explain_flags,
-                                             bool is_analyze)
-{
-  THD *thd= output->thd;
-  MEM_ROOT *mem_root= thd->mem_root;
-  List<Item> item_list;
-  Item *item_null= new (mem_root) Item_null(thd);
-
-  /* `id` column */
-  item_list.push_back(item_null, mem_root);
-
-  /* `select_type` column */
-  push_str(thd, &item_list, fake_select_type);
-
-  /* `table` column */
-  item_list.push_back(item_null, mem_root);
-
-  /* `partitions` column */
-  if (explain_flags & DESCRIBE_PARTITIONS)
-    item_list.push_back(item_null, mem_root);
-
-  /* `type` column */
-  item_list.push_back(item_null, mem_root);
-
-  /* `possible_keys` column */
-  item_list.push_back(item_null, mem_root);
-
-  /* `key` */
-  item_list.push_back(item_null, mem_root);
-
-  /* `key_len` */
-  item_list.push_back(item_null, mem_root);
-
-  /* `ref` */
-  item_list.push_back(item_null, mem_root);
-
-  /* `rows` */
-  item_list.push_back(item_null, mem_root);
-
-  /* `r_rows` */
-  if (is_analyze)
-    item_list.push_back(item_null, mem_root);
-
-  /* `filtered` */
-  if (explain_flags & DESCRIBE_EXTENDED || is_analyze)
-    item_list.push_back(item_null, mem_root);
-
-  /* `r_filtered` */
-  if (is_analyze)
-    item_list.push_back(item_null, mem_root);
-
-  /* `Extra` */
-  item_list.push_back(item_null, mem_root);
-
-  if (output->send_data(item_list))
-    return 1;
-  return 0;
-}
-
-
-void Explain_union::print_explain_json(Explain_query *query,
+void Explain_union::print_explain_json(Explain_query *query, 
                                        Json_writer *writer, bool is_analyze)
-{
-  if (is_pushed_down_to_engine)
-    print_explain_json_pushed_down(query, writer, is_analyze);
-  else
-    print_explain_json_regular(query, writer, is_analyze);
-}
-
-/*
-  Prints EXPLAIN plan in JSON format for a regular UNIT (UNION/EXCEPT/INTERSECT),
-  i.e. UNIT that has not been pushed down to a storage engine
-*/
-
-void Explain_union::print_explain_json_regular(
-  Explain_query *query, Json_writer *writer, bool is_analyze)
 {
   Json_writer_nesting_guard guard(writer);
   char table_name_buffer[SAFE_NAME_LEN];
@@ -844,30 +666,6 @@ void Explain_union::print_explain_json_regular(
 
   if (started_object)
     writer->end_object();
-}
-
-/*
-  Prints EXPLAIN plan in JSON format for a UNIT (UNION/EXCEPT/INTERSECT) that
-  has been pushed down to a storage engine
-*/
-
-void Explain_union::print_explain_json_pushed_down(Explain_query *query,
-                                                   Json_writer *writer,
-                                                   bool is_analyze)
-{
-  Json_writer_nesting_guard guard(writer);
-
-  writer->add_member("query_block").start_object();
-
-  if (is_recursive_cte)
-    writer->add_member("recursive_union").start_object();
-  else
-    writer->add_member("union_result").start_object();
-
-  writer->add_member("message").add_str(fake_select_type);
-
-  writer->end_object(); // union_result
-  writer->end_object(); // query_block
 }
 
 
@@ -965,7 +763,7 @@ bool Explain_node::print_explain_json_cache(Json_writer *writer,
   if (cache_tracker)
   {
     cache_tracker->fetch_current_stats();
-    writer->add_member("subquery_cache").start_object();
+    writer->add_member("expression_cache").start_object();
     if (cache_tracker->state != Expression_cache_tracker::OK)
     {
       writer->add_member("state").
@@ -1175,17 +973,10 @@ void Explain_select::print_explain_json(Explain_query *query,
     writer->add_member("select_id").add_ll(select_id);
     add_linkage(writer);
 
-    if (cost != 0.0)
-      writer->add_member("cost").add_double(cost);
-
     if (is_analyze && time_tracker.get_loops())
     {
       writer->add_member("r_loops").add_ll(time_tracker.get_loops());
-      if (time_tracker.has_timed_statistics())
-      {
-        writer->add_member("r_total_time_ms").
-                add_double(time_tracker.get_time_ms());
-      }
+      writer->add_member("r_total_time_ms").add_double(time_tracker.get_time_ms());
     }
 
     if (exec_const_cond)
@@ -1232,8 +1023,7 @@ void Explain_select::print_explain_json(Explain_query *query,
         case AGGR_OP_FILESORT:
         {
           writer->add_member("filesort").start_object();
-          auto aggr_node= (Explain_aggr_filesort*)node;
-          aggr_node->print_json_members(writer, is_analyze);
+          ((Explain_aggr_filesort*)node)->print_json_members(writer, is_analyze);
           break;
         }
         case AGGR_OP_REMOVE_DUPLICATES:
@@ -1243,8 +1033,7 @@ void Explain_select::print_explain_json(Explain_query *query,
         {
           //TODO: make print_json_members virtual?
           writer->add_member("window_functions_computation").start_object();
-          auto aggr_node= (Explain_aggr_window_funcs*)node;
-          aggr_node->print_json_members(writer, is_analyze);
+          ((Explain_aggr_window_funcs*)node)->print_json_members(writer, is_analyze);
           break;
         }
         default:
@@ -1321,13 +1110,14 @@ void Explain_aggr_window_funcs::print_json_members(Json_writer *writer,
 {
   Explain_aggr_filesort *srt;
   List_iterator<Explain_aggr_filesort> it(sorts);
-  Json_writer_array sorts(writer, "sorts");
+  writer->add_member("sorts").start_object();
   while ((srt= it++))
   {
-    Json_writer_object sort(writer);
-    Json_writer_object filesort(writer, "filesort");
+    writer->add_member("filesort").start_object();
     srt->print_json_members(writer, is_analyze);
+    writer->end_object(); // filesort
   }
+  writer->end_object(); // sorts
 }
 
 
@@ -1349,26 +1139,17 @@ print_explain_json_interns(Explain_query *query,
                            Json_writer *writer, 
                            bool is_analyze)
 {
+  Json_writer_nesting_guard guard(writer);
+  for (uint i=0; i< n_join_tabs; i++)
   {
-    Json_writer_array loop(writer, "nested_loop");
-    for (uint i=0; i< n_join_tabs; i++)
-    {
-      if (join_tabs[i]->start_dups_weedout)
-      {
-        writer->start_object();
-        writer->add_member("duplicates_removal");
-        writer->start_array();
-      }
+    if (join_tabs[i]->start_dups_weedout)
+      writer->add_member("duplicates_removal").start_object();
 
-      join_tabs[i]->print_explain_json(query, writer, is_analyze);
+    join_tabs[i]->print_explain_json(query, writer, is_analyze);
 
-      if (join_tabs[i]->end_dups_weedout)
-      {
-        writer->end_array();
-        writer->end_object();
-      }
-    }
-  } // "nested_loop"
+    if (join_tabs[i]->end_dups_weedout)
+      writer->end_object();
+  }
   print_explain_json_for_children(query, writer, is_analyze);
 }
 
@@ -1380,7 +1161,7 @@ void Explain_table_access::push_extra(enum explain_extra_tag extra_tag)
 
 
 /*
-  Put the contents of 'key' field of EXPLAIN output into key_str.
+  Put the contents of 'key' field of EXPLAIN otuput into key_str.
 
   It is surprisingly complex:
   - hash join shows #hash#used_key
@@ -1430,7 +1211,7 @@ void Explain_table_access::fill_key_str(String *key_str, bool is_json) const
    - for hash join, it is key_len:pseudo_key_len
    - [tabular form only] rowid filter length is added after "|".
 
-  In JSON, we consider this column to be legacy, it is superseded by
+  In JSON, we consider this column to be legacy, it is superceded by
   used_key_parts.
 */
 
@@ -1523,14 +1304,12 @@ double Explain_table_access::get_r_filtered()
 }
 
 
-int Explain_table_access::print_explain(select_result_sink *output,
-                                        uint8 explain_flags,
+int Explain_table_access::print_explain(select_result_sink *output, uint8 explain_flags, 
                                         bool is_analyze,
                                         uint select_id, const char *select_type,
-                                        bool using_temporary,
-                                        bool using_filesort)
+                                        bool using_temporary, bool using_filesort)
 {
-  THD *thd= output->thd; // note: for SHOW EXPLAIN, this is target thd.
+  THD *thd= output->thd;
   MEM_ROOT *mem_root= thd->mem_root;
 
   List<Item> item_list;
@@ -1756,7 +1535,7 @@ int Explain_table_access::print_explain(select_result_sink *output,
 
   @return
     NULL - out of memory error
-    pointer on allocated copy of the string
+    poiner on allocated copy of the string
 */
 
 const char *String_list::append_str(MEM_ROOT *mem_root, const char *str)
@@ -1794,12 +1573,10 @@ static void append_item_to_str(String *out, Item *item)
   thd->variables.option_bits &= ~OPTION_QUOTE_SHOW_CREATE;
 
   item->print(out, QT_EXPLAIN);
-
   thd->variables.option_bits= save_option_bits;
 }
 
-void Explain_table_access::tag_to_json(Json_writer *writer,
-                                       enum explain_extra_tag tag)
+void Explain_table_access::tag_to_json(Json_writer *writer, enum explain_extra_tag tag)
 {
   switch (tag)
   {
@@ -1822,9 +1599,28 @@ void Explain_table_access::tag_to_json(Json_writer *writer,
       writer->add_member("open_frm_only").add_bool(true);
       break;
     case ET_USING_INDEX_CONDITION:
+      writer->add_member("index_condition");
+      write_item(writer, pushed_index_cond);
+      break;
     case ET_USING_INDEX_CONDITION_BKA:
+      writer->add_member("index_condition_bka");
+      write_item(writer, pushed_index_cond);
+      break;
     case ET_USING_WHERE:
-      /* Conditions are printed outside of this function */
+      {
+        /*
+          We are printing the condition that is checked when scanning this
+          table.
+          - when join buffer is used, it is cache_cond. 
+          - in other cases, it is where_cond.
+        */
+        Item *item= bka_type.is_using_jbuf()? cache_cond: where_cond;
+        if (item)
+        {
+          writer->add_member("attached_condition");
+          write_item(writer, item);
+        }
+      }
       break;
     case ET_USING_INDEX:
       writer->add_member("using_index").add_bool(true);
@@ -1956,22 +1752,11 @@ static void trace_engine_stats(handler *file, Json_writer *writer)
   }
 }
 
-static void print_r_icp_filtered(handler *file, Json_writer *writer)
-{
-  if (!file || !file->handler_stats || !file->pushed_idx_cond)
-    return;
-
-  ha_handler_stats *hs= file->handler_stats;
-  double r_icp_filtered = hs->icp_attempts ?
-    (double)(hs->icp_match) / (double)(hs->icp_attempts) : 0.0;
-  writer->add_member("r_icp_filtered").add_double(r_icp_filtered * 100);
-}
-
 void Explain_table_access::print_explain_json(Explain_query *query,
                                               Json_writer *writer,
                                               bool is_analyze)
 {
-  Json_writer_object jsobj(writer);
+  Json_writer_nesting_guard guard(writer);
   
   if (pre_join_sort)
   {
@@ -2021,18 +1806,7 @@ void Explain_table_access::print_explain_json(Explain_query *query,
   writer->add_member("table_name").add_str(table_name);
 
   if (used_partitions_set)
-  {
     print_json_array(writer, "partitions", used_partitions_list);
-    if (handler_for_stats)
-    {
-      assert(handler_for_stats->partition_engine());
-      const char* pi_scan_str= partitions_index_scan_method_str[
-        handler_for_stats->partition_index_scan_method()];
-      if (pi_scan_str)
-        writer->add_member("partitions_index_scan_method")
-          .add_str(pi_scan_str);
-    }
-  }
 
   writer->add_member("access_type").add_str(join_type_str[type]);
 
@@ -2080,68 +1854,19 @@ void Explain_table_access::print_explain_json(Explain_query *query,
     rowid_filter->print_explain_json(query, writer, is_analyze);
   }
 
-  if (loops != 0.0)
-    writer->add_member("loops").add_double(loops);
-
   /* r_loops (not present in tabular output) */
   if (is_analyze)
   {
-    ha_rows loops= tracker.get_loops();
-    writer->add_member("r_loops").add_ll(loops);
-
-    if (type == JT_EQ_REF) // max one row
-    {
-      ha_rows table_loops= op_tracker.get_loops();
-      if (table_loops != loops)
-        writer->add_member("r_table_loops").add_ll(table_loops);
-    }
+    writer->add_member("r_loops").add_ll(tracker.get_loops());
   }
   
   /* `rows` */
   if (rows_set)
     writer->add_member("rows").add_ull(rows);
 
-  double r_index_rows; /* protected by have_icp_or_rowid_filter */
-  bool r_index_rows_is_zero; /* also protected by have_icp_or_rowid_filter */
-  bool have_icp_or_rowid_filter= false;
-  /* `r_index_rows` and `r_rows` */
+  /* `r_rows` */
   if (is_analyze)
   {
-    /*
-      r_index_rows is the number of rows enumerated in the index before
-      any kind of checking. The number is the average across all scans.
-    */
-    double loops;
-    if (tracker.get_loops())
-      loops = rows2double(tracker.get_loops());
-    else
-      loops= 1.0;
-    handler *file= handler_for_stats;
-
-    if (file && file->handler_stats && file->pushed_idx_cond)
-    {
-      /*
-        Pushed Index Condition is checked before checking the Rowid Filter, 
-        so try getting it first.
-      */
-      ulonglong val= file->handler_stats->icp_attempts;
-      r_index_rows_is_zero= (val == 0);
-      r_index_rows= val / loops;
-      have_icp_or_rowid_filter= true;
-    }
-    else if (rowid_filter)
-    {
-      /* If ICP wasn't used, get the number from Rowid Filter */
-      uint val= rowid_filter->tracker->get_container_lookups();
-      r_index_rows_is_zero= (val == 0);
-      r_index_rows= val / loops;
-      have_icp_or_rowid_filter= true;
-    }
-
-    /* Print r_index_rows only if ICP and/or Rowid Filter were used */
-    if (have_icp_or_rowid_filter)
-      writer->add_member("r_index_rows").add_double(r_index_rows);
-
     writer->add_member("r_rows");
     if (pre_join_sort)
     {
@@ -2158,13 +1883,7 @@ void Explain_table_access::print_explain_json(Explain_query *query,
       else
         writer->add_null();
     }
-  }
 
-  if (cost != 0.0)
-    writer->add_member("cost").add_double(cost);
-
-  if (is_analyze)
-  {
     if (op_tracker.get_loops())
     {
       double total_time= op_tracker.get_time_ms();
@@ -2180,93 +1899,26 @@ void Explain_table_access::print_explain_json(Explain_query *query,
   if (filtered_set)
     writer->add_member("filtered").add_double(filtered);
 
-  bool have_r_filtered= false;
-  double r_filtered;
-  /* Compute value of `r_filtered` - filtered of attached_condition */
+  /* `r_filtered` */
   if (is_analyze)
   {
+    writer->add_member("r_filtered");
     if (pre_join_sort)
     {
       /* Get r_filtered value from filesort */
       if (pre_join_sort->tracker.get_r_loops())
-      {
-        have_r_filtered= true;
-        r_filtered= pre_join_sort->tracker.get_r_filtered()*100;
-      }
+        writer->add_double(pre_join_sort->tracker.get_r_filtered()*100);
+      else
+        writer->add_null();
     }
     else
     {
       /* Get r_filtered from the NL-join runtime */
       if (tracker.has_scans())
-      {
-        have_r_filtered= true;
-        r_filtered= tracker.get_filtered_after_where()*100.0;
-      }
-    }
-
-    /*
-      Add r_total_filtered, as combined "filtered" of all kinds of filtering:
-      Rowid Filter, Index Condition Pushdown, attached condition.
-    */
-    double r_total_filtered;
-    if (have_icp_or_rowid_filter)
-    {
-      double out_rows;
-      if (pre_join_sort)
-        out_rows= pre_join_sort->tracker.get_avg_returned_rows();
+        writer->add_double(tracker.get_filtered_after_where()*100.0);
       else
-        out_rows= tracker.get_avg_rows_after_where();
-
-      if (r_index_rows_is_zero)
-        r_total_filtered= 100.0;
-      else
-        r_total_filtered= out_rows* 100.0 / r_index_rows;
+        writer->add_null();
     }
-    else if (have_r_filtered)
-      r_total_filtered= r_filtered;
-
-    writer->add_member("r_total_filtered");
-    if (have_r_filtered)
-      writer->add_double(r_total_filtered);
-    else
-      writer->add_null();
-  }
-
-  /*
-    `index_condition[_bka]`
-  */
-  if (pushed_index_cond)
-  {
-    writer->add_member(bka_type.is_bka? "index_condition_bka": "index_condition");
-    write_item(writer, pushed_index_cond);
-    if (is_analyze)
-      print_r_icp_filtered(handler_for_stats, writer);
-  }
-
-  /* `attached_condition` */
-  {
-    /*
-      we are printing the condition that is checked when scanning this
-      table.
-      - when join buffer is used, it is cache_cond.
-      - in other cases, it is where_cond.
-    */
-    Item *item= bka_type.is_using_jbuf()? cache_cond: where_cond;
-    if (item)
-    {
-      writer->add_member("attached_condition");
-      write_item(writer, item);
-    }
-  }
-
-  /* `r_filtered` - filtered of attached_condition */
-  if (is_analyze)
-  {
-    writer->add_member("r_filtered");
-    if (have_r_filtered)
-      writer->add_double(r_filtered);
-    else
-      writer->add_null();
   }
 
   for (int i=0; i < (int)extra_tags.elements(); i++)
@@ -2331,7 +1983,6 @@ void Explain_table_access::print_explain_json(Explain_query *query,
       }
       else
         writer->add_null();
-
     }
   }
 
@@ -2530,15 +2181,14 @@ void Explain_quick_select::print_json(Json_writer *writer)
   }
   else
   {
-    Json_writer_array ranges(writer, get_name_by_type());
+    writer->add_member(get_name_by_type()).start_object();
 
     List_iterator_fast<Explain_quick_select> it (children);
     Explain_quick_select* child;
     while ((child = it++))
-    {
-      Json_writer_object obj(writer);
       child->print_json(writer);
-    }
+
+    writer->end_object();
   }
 }
 
@@ -2795,7 +2445,7 @@ void Explain_update::print_explain_json(Explain_query *query,
   writer->add_member("select_id").add_ll(1);
  
   /* This is the total time it took to do the UPDATE/DELETE */
-  if (is_analyze && command_tracker.has_timed_statistics())
+  if (is_analyze && command_tracker.get_loops())
   {
     writer->add_member("r_total_time_ms").
             add_double(command_tracker.get_time_ms());
@@ -2903,12 +2553,12 @@ void Explain_update::print_explain_json(Explain_query *query,
   if (mrr_type.length() != 0)
     writer->add_member("mrr_type").add_str(mrr_type.ptr());
 
-  double UNINIT_VAR(r_filtered); /* set and used when is_analyze==true */
   if (is_analyze)
   {
     if (doing_buffering)
     {
       ha_rows r_rows;
+      double r_filtered;
 
       if (is_using_filesort())
       {
@@ -2927,8 +2577,7 @@ void Explain_update::print_explain_json(Explain_query *query,
         r_filtered= buf_tracker.get_filtered_after_where() * 100.0;
       }
       writer->add_member("r_rows").add_ull(r_rows);
-      /* Currently r_total_filtered == r_filtered for DMLs */
-      writer->add_member("r_total_filtered").add_double(r_filtered);
+      writer->add_member("r_filtered").add_double(r_filtered);
     }
     else /* Not doing buffering */
     {
@@ -2939,15 +2588,14 @@ void Explain_update::print_explain_json(Explain_query *query,
         writer->add_null();
 
       /* There is no 'filtered' estimate in UPDATE/DELETE atm */
-      r_filtered= tracker.get_filtered_after_where() * 100.0;
-      /* Currently r_total_filtered == r_filtered for DMLs */
-      writer->add_member("r_total_filtered").add_double(r_filtered);
+      double r_filtered= tracker.get_filtered_after_where() * 100.0;
+      writer->add_member("r_filtered").add_double(r_filtered);
     }
 
-    if (table_tracker.has_timed_statistics())
+    if (table_tracker.get_loops())
     {
-      writer->add_member("r_table_time_ms").add_double(table_tracker.get_time_ms());
-      writer->add_member("r_other_time_ms").add_double(extra_time_tracker.get_time_ms());
+      writer->add_member("r_total_time_ms").
+              add_double(table_tracker.get_time_ms());
     }
   }
 
@@ -2958,9 +2606,6 @@ void Explain_update::print_explain_json(Explain_query *query,
     writer->add_member("attached_condition");
     write_item(writer, where_cond);
   }
-
-  if (is_analyze)
-    writer->add_member("r_filtered").add_double(r_filtered);
 
   /*** The part of plan that is before the buffering/sorting ends here ***/
   if (is_using_filesort())
@@ -3043,13 +2688,13 @@ void create_explain_query_if_not_exists(LEX *lex, MEM_ROOT *mem_root)
 
 
 /**
-  Build arrays for collecting keys statistics, add possible key names
+  Build arrays for collectiong keys statistics, sdd possible key names
   to the list and name array
 
   @param alloc           MEM_ROOT to put data in
   @param list            list of possible key names to fill
   @param table           table of the keys
-  @param possible_keys   possible keys map
+  @patam possible_keys   possible keys map
 
   @retval 0 - OK
   @retval 1 - Error

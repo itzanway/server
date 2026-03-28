@@ -298,8 +298,7 @@ static void Indent(CODE_STATE *cs, int indent);
 static void DbugFlush(CODE_STATE *);
 static void DbugExit(const char *why);
 static const char *DbugStrTok(const char *s);
-static void DbugVfprintf(FILE *stream, const char* format, va_list args)
-  ATTRIBUTE_FORMAT(printf, 2, 0);
+static void DbugVfprintf(FILE *stream, const char* format, va_list args);
 
 /*
  *      Miscellaneous printf format strings.

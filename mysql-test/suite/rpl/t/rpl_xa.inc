@@ -5,7 +5,6 @@
 # --let rpl_xa_check= SELECT ...
 #
 connection master;
-source include/count_sessions.inc;
 create table t1 (a int, b int) engine=InnoDB;
 insert into t1 values(0, 0);
 xa start 't';
@@ -107,12 +106,14 @@ while ($p_trx)
   --enable_query_log
 
   --disconnect master_$xid
+  --source include/wait_until_disconnected.inc
+
   --dec $p_trx
 }
 
 
 --let $p_trx=$ro_cases
-# With disconnect
+# With diconnect
 while ($p_trx)
 {
 --connection master
@@ -122,12 +123,13 @@ while ($p_trx)
   --source rpl_create_xa_prepared.inc
   --enable_cursor_protocol
   --disconnect master_$xid
+  --source include/wait_until_disconnected.inc
+
   --dec $p_trx
 }
 
 --echo *** $ro_cases prepared xa:s must be in the list:
 --connection master
-source include/wait_until_count_sessions.inc;
 sorted_result;
 xa recover;
 
@@ -170,9 +172,10 @@ set @@sql_log_bin = 1;
 --let $query=insert into $db.t set a=1
 --source rpl_create_xa_prepared.inc
 --disconnect master_$xid
+--source include/wait_until_disconnected.inc
+
 --echo *** $xid must be in the list:
 --connection master
-source include/wait_until_count_sessions.inc;
 xa recover;
 
 --let $complete=`select if(floor(rand()*10)%2,'COMMIT','ROLLBACK')`
@@ -213,11 +216,12 @@ create table t3 (a int) engine=innodb;
   --eval xa prepare '$xid'
 
   --disconnect master_$xid
+  --source include/wait_until_disconnected.inc
 
 connection master;
 --echo *** $xid must be in the list:
-source include/wait_until_count_sessions.inc;
 xa recover;
+
   --let $complete=`select if(floor(rand()*10)%2,'COMMIT','ROLLBACK')`
   --disable_query_log
   --disable_result_log
@@ -249,6 +253,8 @@ xa recover;
   --enable_result_log
   --enable_query_log
 --disconnect master_$xid
+--source include/wait_until_disconnected.inc
+
 --echo *** Zero must be in the list:
 --connection master
 xa recover;
@@ -277,15 +283,16 @@ create table tm (a int) engine=myisam;
   --enable_query_log
 
   --disconnect master_$xid
+  --source include/wait_until_disconnected.inc
 
-# With disconnect
+# With diconnect
 --connection master
   --source rpl_create_xa_prepared.inc
   --disconnect master_$xid
+  --source include/wait_until_disconnected.inc
 
 --echo *** $xid prepared must be in the list:
 --connection master
-source include/wait_until_count_sessions.inc;
 xa recover;
 
   --let $complete=`select if(floor(rand()*10)%2,'COMMIT','ROLLBACK')`
@@ -318,10 +325,10 @@ set @@session.sql_log_bin = OFF;
 --eval xa prepare '$xid'
 
 --disconnect master_$xid
+--source include/wait_until_disconnected.inc
 
 --echo *** $xid must be in the list:
 --connection master
-source include/wait_until_count_sessions.inc;
 xa recover;
 
 # now commit it carefully to avoid binlogging as the prepare part did
@@ -359,7 +366,7 @@ sync_slave_with_master;
 
 # set a strong isolation level to keep the read view below.
 # alternatively a long-running select can do that too even in read-committed
-set session transaction_isolation='repeatable-read';
+set session tx_isolation='repeatable-read';
 start transaction;
 # opens a read view to disable purge on the slave
 select * from t1;

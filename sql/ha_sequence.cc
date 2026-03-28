@@ -85,7 +85,6 @@ int ha_sequence::open(const char *name, int mode, uint flags)
   DBUG_ASSERT(table->s == table_share && file);
 
   file->table= table;
-  file->option_struct= option_struct;
   if (likely(!(error= file->open(name, mode, flags))))
   {
     /*
@@ -186,7 +185,6 @@ int ha_sequence::create(const char *name, TABLE *form,
   DBUG_ASSERT(create_info->sequence);
   /* Sequence tables has one and only one row */
   create_info->max_rows= create_info->min_rows= 1;
-  file->option_struct= option_struct;
   return (file->create(name, form, create_info));
 }
 
@@ -229,7 +227,7 @@ int ha_sequence::write_row(const uchar *buf)
     int error= 0;
     /* This is called from alter table */
     tmp_seq.read_fields(table);
-    if (tmp_seq.check_and_adjust(thd, 0))
+    if (tmp_seq.check_and_adjust(0))
       DBUG_RETURN(HA_ERR_SEQUENCE_INVALID_DATA);
     sequence->copy(&tmp_seq);
     if (likely(!(error= file->write_row(buf))))
@@ -262,7 +260,7 @@ int ha_sequence::write_row(const uchar *buf)
         DBUG_RETURN(ER_LOCK_WAIT_TIMEOUT);
 
     tmp_seq.read_fields(table);
-    if (tmp_seq.check_and_adjust(thd, 0))
+    if (tmp_seq.check_and_adjust(0))
       DBUG_RETURN(HA_ERR_SEQUENCE_INVALID_DATA);
 
     /*
@@ -275,6 +273,14 @@ int ha_sequence::write_row(const uchar *buf)
 #ifdef WITH_WSREP
   if (WSREP_ON && WSREP(thd) && wsrep_thd_is_local(thd))
   {
+    if (sequence_locked &&
+        (wsrep_thd_is_SR(thd) || wsrep_streaming_enabled(thd)))
+    {
+      my_error(ER_NOT_SUPPORTED_YET, MYF(0),
+               "SEQUENCEs with streaming replication in Galera cluster");
+      DBUG_RETURN(HA_ERR_UNSUPPORTED);
+    }
+
     /*
        We need to start Galera transaction for select NEXT VALUE FOR
        sequence if it is not yet started. Note that ALTER is handled
@@ -292,9 +298,10 @@ int ha_sequence::write_row(const uchar *buf)
     Log_func *log_func= Write_rows_log_event::binlog_row_logging_function;
     if (!sequence_locked)
       sequence->copy(&tmp_seq);
-    rows_stats.updated++;
+    rows_changed++;
     /* We have to do the logging while we hold the sequence mutex */
-    error= binlog_log_row(0, buf, log_func);
+    if (row_logging)
+      error= binlog_log_row(table, 0, buf, log_func);
   }
 
   /* Row is already logged, don't log it again in ha_write_row() */
@@ -382,7 +389,7 @@ int ha_sequence::discard_or_import_tablespace(my_bool discard)
 }
 
 /*
-  Sequence engine error deal method
+  Squence engine error deal method
 */
 
 void ha_sequence::print_error(int error, myf errflag)
@@ -412,72 +419,6 @@ void ha_sequence::print_error(int error, myf errflag)
   }
   file->print_error(error, errflag);
   DBUG_VOID_RETURN;
-}
-
-int ha_sequence::check(THD* thd, HA_CHECK_OPT* check_opt)
-{
-  int error= 0;
-  DBUG_ENTER("ha_sequence::check");
-  /* Check the underlying engine */
-  if ((error= file->check(thd, check_opt)))
-    DBUG_RETURN(error);
-  /* Check number of rows */
-  if ((file->table_flags() & HA_STATS_RECORDS_IS_EXACT))
-  {
-    if (file->stats.records > 1)
-      push_warning(thd, Sql_condition::WARN_LEVEL_WARN,
-                   ER_SEQUENCE_TABLE_HAS_TOO_MANY_ROWS,
-                   ER_THD(thd, ER_SEQUENCE_TABLE_HAS_TOO_MANY_ROWS));
-    else if (file->stats.records == 0)
-    {
-      my_error(ER_SEQUENCE_TABLE_HAS_TOO_FEW_ROWS, MYF(0));
-      DBUG_RETURN(HA_ADMIN_CORRUPT);
-    }
-  }
-  else
-  {
-    if (file->ha_rnd_init_with_error(1))
-      DBUG_RETURN(HA_ADMIN_FAILED);
-    if ((error= file->ha_rnd_next(table->record[0])))
-    {
-      file->ha_rnd_end();
-      if (error == HA_ERR_END_OF_FILE)
-      {
-        my_error(ER_SEQUENCE_TABLE_HAS_TOO_FEW_ROWS, MYF(0));
-        DBUG_RETURN(HA_ADMIN_CORRUPT);
-      }
-      file->print_error(error, MYF(0));
-      DBUG_RETURN(HA_ADMIN_FAILED);
-    }
-    if (!file->ha_rnd_next(table->record[0]))
-      push_warning(thd, Sql_condition::WARN_LEVEL_WARN,
-                   ER_SEQUENCE_TABLE_HAS_TOO_MANY_ROWS,
-                   ER_THD(thd, ER_SEQUENCE_TABLE_HAS_TOO_MANY_ROWS));
-    file->ha_rnd_end();
-  }
-  /*
-    Initialise the sequence from the table if needed.
-  */
-  if (sequence->initialized == SEQUENCE::SEQ_UNINTIALIZED)
-  {
-    if (sequence->read_stored_values(table))
-      DBUG_RETURN(HA_ADMIN_FAILED);
-    else
-      sequence->initialized= SEQUENCE::SEQ_READY_TO_USE;
-  }
-  DBUG_ASSERT(sequence->initialized == SEQUENCE::SEQ_READY_TO_USE);
-  /* Check and adjust sequence state */
-  if (sequence->check_and_adjust(thd, false, /*adjust_next=*/false))
-  {
-    print_error(HA_ERR_SEQUENCE_INVALID_DATA, MYF(0));
-    DBUG_RETURN(HA_ADMIN_CORRUPT);
-  }
-  /* Check value not exhausted */
-  if (sequence->has_run_out())
-    push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
-                        ER_SEQUENCE_RUN_OUT, ER_THD(thd, ER_SEQUENCE_RUN_OUT),
-                        table->s->db.str, table->s->table_name.str);
-  DBUG_RETURN(0);
 }
 
 /*****************************************************************************

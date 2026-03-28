@@ -17,7 +17,9 @@ CREATE TABLE t (a INT, PRIMARY KEY (a)) ENGINE=INNODB;
 -- eval $check_stats1
 -- eval $check_stats2
 
+# open and close the table
 SELECT * FROM t;
+FLUSH TABLE t;
 
 DELETE FROM mysql.innodb_index_stats WHERE table_name = 't';
 DELETE FROM mysql.innodb_table_stats WHERE table_name = 't';
@@ -25,8 +27,7 @@ DELETE FROM mysql.innodb_table_stats WHERE table_name = 't';
 -- eval $check_stats1
 -- eval $check_stats2
 
-# rename and open the table, causing stats recalc/save
-RENAME TABLE t TO tmp, tmp TO t;
+# open the table, causing stats recalc/save
 SELECT * FROM t;
 
 -- eval $check_stats1
@@ -42,7 +43,9 @@ CREATE TABLE t (a INT, PRIMARY KEY (a)) ENGINE=INNODB STATS_AUTO_RECALC=1;
 -- eval $check_stats1
 -- eval $check_stats2
 
+# open and close the table
 SELECT * FROM t;
+FLUSH TABLE t;
 
 DELETE FROM mysql.innodb_index_stats WHERE table_name = 't';
 DELETE FROM mysql.innodb_table_stats WHERE table_name = 't';
@@ -50,7 +53,7 @@ DELETE FROM mysql.innodb_table_stats WHERE table_name = 't';
 -- eval $check_stats1
 -- eval $check_stats2
 
-RENAME TABLE t TO tmp, tmp TO t;
+# open the table, causing stats recalc/save
 SELECT * FROM t;
 
 -- eval $check_stats1
@@ -66,7 +69,9 @@ CREATE TABLE t (a INT, PRIMARY KEY (a)) ENGINE=INNODB STATS_AUTO_RECALC=0;
 -- eval $check_stats1
 -- eval $check_stats2
 
+# open and close the table
 SELECT * FROM t;
+FLUSH TABLE t;
 
 DELETE FROM mysql.innodb_index_stats WHERE table_name = 't';
 DELETE FROM mysql.innodb_table_stats WHERE table_name = 't';
@@ -74,8 +79,7 @@ DELETE FROM mysql.innodb_table_stats WHERE table_name = 't';
 -- eval $check_stats1
 -- eval $check_stats2
 
-# rename the table, stats should not be present, since autorecalc is disabled
-RENAME TABLE t TO tmp, tmp TO t;
+# open the table, stats should not be present, since autorecalc is disabled
 SELECT * FROM t;
 
 -- eval $check_stats1

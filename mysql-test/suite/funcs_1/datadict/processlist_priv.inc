@@ -132,8 +132,6 @@ DROP USER ddicttestuser1@'localhost';
 DROP USER ddicttestuser2@'localhost';
 CREATE USER ddicttestuser1@'localhost';
 CREATE USER ddicttestuser2@'localhost';
-GRANT SELECT,UPDATE,DELETE,INSERT,CREATE,CREATE TEMPORARY TABLES,CREATE VIEW,DROP on test.* to ddicttestuser1@'localhost';
-GRANT SELECT,UPDATE,DELETE,INSERT,CREATE,CREATE TEMPORARY TABLES,CREATE VIEW,DROP on test.* to ddicttestuser2@'localhost';
 SET PASSWORD FOR ddicttestuser1@'localhost' = PASSWORD('ddictpass');
 SET PASSWORD FOR ddicttestuser2@'localhost' = PASSWORD('ddictpass');
 
@@ -161,7 +159,7 @@ eval SHOW CREATE TABLE $table;
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 eval SHOW $table;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 eval SELECT * FROM $table $select_where ORDER BY id;
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 ROWS 15 QUERY_ID 17 TID
 eval SELECT $columns FROM $table $select_where ORDER BY id;
@@ -182,7 +180,7 @@ eval SHOW CREATE TABLE $table;
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 eval SHOW $table;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 eval SELECT * FROM $table $select_where ORDER BY id;
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 ROWS 15 QUERY_ID 17 TID
 eval SELECT $columns FROM $table $select_where ORDER BY id;
@@ -209,7 +207,7 @@ SHOW GRANTS;
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -222,7 +220,7 @@ SHOW GRANTS;
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -246,7 +244,7 @@ SHOW GRANTS;
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -269,7 +267,7 @@ SHOW GRANTS;
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -296,7 +294,7 @@ if ($fixed_bug_30395)
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
 }
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -318,7 +316,7 @@ SHOW GRANTS FOR 'ddicttestuser1'@'localhost';
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -341,7 +339,7 @@ SHOW GRANTS FOR 'ddicttestuser1'@'localhost';
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -389,7 +387,7 @@ SHOW GRANTS FOR 'ddicttestuser2'@'localhost';
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -411,7 +409,7 @@ SHOW GRANTS;
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -435,7 +433,7 @@ GRANT PROCESS ON *.* TO 'ddicttestuser2'@'localhost';
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 
@@ -460,7 +458,7 @@ SHOW GRANTS FOR 'ddicttestuser1'@'localhost';
 --replace_result Execute Query
 --replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS
 SHOW processlist;
---replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 E_ROWS 16 S_ROWS 17 QUERY_ID 19 TID
+--replace_column 1 ID 3 HOST_NAME 6 TIME 9 TIME_MS 13 MEMORY 14 MAX_MEMORY 15 ROWS 16 QUERY_ID 18 TID
 SELECT * FROM information_schema.processlist;
 --real_sleep 0.3
 

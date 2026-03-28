@@ -1,4 +1,4 @@
-flush global status;
+flush status;
 flush hosts;
 flush user_resources;
 flush privileges;

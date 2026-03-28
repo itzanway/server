@@ -16,6 +16,7 @@
 #include "mariadb.h"
 #include "sql_priv.h"
 
+#ifdef HAVE_QUERY_CACHE
 #include <mysql.h>
 #include "sql_basic_types.h"
 #include "emb_qcache.h"
@@ -496,3 +497,6 @@ return_ok:
 err:
   DBUG_RETURN(1);
 }
+
+#endif /*HAVE_QUERY_CACHE*/
+

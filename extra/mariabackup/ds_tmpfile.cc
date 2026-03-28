@@ -41,7 +41,7 @@ typedef struct {
 
 static ds_ctxt_t *tmpfile_init(const char *root);
 static ds_file_t *tmpfile_open(ds_ctxt_t *ctxt, const char *path,
-			const MY_STAT *mystat, bool rewrite);
+			       MY_STAT *mystat);
 static int tmpfile_write(ds_file_t *file, const uchar *buf, size_t len);
 static int tmpfile_close(ds_file_t *file);
 static void tmpfile_deinit(ds_ctxt_t *ctxt);
@@ -50,11 +50,8 @@ datasink_t datasink_tmpfile = {
 	&tmpfile_init,
 	&tmpfile_open,
 	&tmpfile_write,
-	nullptr,
 	&tmpfile_close,
 	&dummy_remove,
-	nullptr,
-	nullptr,
 	&tmpfile_deinit
 };
 
@@ -83,9 +80,8 @@ tmpfile_init(const char *root)
 
 static ds_file_t *
 tmpfile_open(ds_ctxt_t *ctxt, const char *path,
-			const MY_STAT *mystat, bool rewrite)
+			       MY_STAT *mystat)
 {
-  DBUG_ASSERT(rewrite == false);
 	ds_tmpfile_ctxt_t	*tmpfile_ctxt;
 	char			 tmp_path[FN_REFLEN];
 	ds_tmp_file_t		*tmp_file;
@@ -115,7 +111,6 @@ tmpfile_open(ds_ctxt_t *ctxt, const char *path,
 	tmp_file->orig_path = (char *) tmp_file + sizeof(ds_tmp_file_t);
 
 	tmp_file->fd = fd;
-	posix_fadvise(tmp_file->fd, 0, 0, POSIX_FADV_DONTNEED);
 	memcpy(tmp_file->orig_path, path, path_len);
 
 	/* Store the real temporary file name in file->path */
@@ -139,11 +134,12 @@ tmpfile_write(ds_file_t *file, const uchar *buf, size_t len)
 {
 	File fd = ((ds_tmp_file_t *) file->ptr)->fd;
 
-	if (my_write(fd, buf, len, MYF(MY_WME | MY_NABP))) {
-		return 1;
+	if (!my_write(fd, buf, len, MYF(MY_WME | MY_NABP))) {
+		posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+		return 0;
 	}
 
-	return 0;
+	return 1;
 }
 
 static int

@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2015, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2013, 2023, MariaDB Corporation.
+Copyright (c) 2013, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -48,6 +48,10 @@ struct dict_add_v_col_t;
 #define	DICT_HDR_SPACE		0	/* the SYSTEM tablespace */
 #define	DICT_HDR_PAGE_NO	FSP_DICT_HDR_PAGE_NO
 
+/* The ibuf table and indexes's ID are assigned as the number
+DICT_IBUF_ID_MIN plus the space id */
+#define DICT_IBUF_ID_MIN	0xFFFFFFFF00000000ULL
+
 typedef ib_id_t		table_id_t;
 typedef ib_id_t		index_id_t;
 
@@ -57,11 +61,6 @@ typedef ib_id_t		index_id_t;
 /** The bit pattern corresponding to TRX_ID_MAX */
 extern const byte trx_id_max_bytes[8];
 extern const byte timestamp_max_bytes[7];
-
-#define IS_MAX_TIMESTAMP(A)                                 \
-  (((unsigned char*) (A))[1] == 0xff &&                     \
-    memcmp((void*) (A), timestamp_max_bytes, 7) == 0)
-
 
 /** Error to ignore when we load table dictionary into memory. However,
 the table and index will be marked as "corrupted", and caller will
@@ -99,13 +98,6 @@ enum ib_quiesce_t {
 /** Prefix for InnoDB internal tables, adopted from sql/table.h */
 #define TEMP_FILE_PREFIX_INNODB		"#sql-ib"
 
-/** Checks whether the file name belongs to a partition of a table.
-@param	file_name	file name
-@return pointer to the end of the table name part of the file name
-@retval nullptr  if the file name does not belong to a partition. */
-const char *dict_is_partition(const char *file_name);
-
-
 /** Table name wrapper for pretty-printing */
 struct table_name_t
 {
@@ -140,13 +132,24 @@ struct table_name_t
 		return UNIV_LIKELY(end != nullptr) ? end + 1 : nullptr;
 	}
 
+	/** The start of the table basename suffix for partitioned tables */
+	static const char part_suffix[4];
+
 	/** Determine the partition or subpartition name suffix.
 	@return the partition name
 	@retval	NULL	if the table is not partitioned */
-	const char* part() const { return dict_is_partition(basename()); }
+	const char* part() const { return strstr(basename(), part_suffix); }
+
 	/** @return whether this is a temporary or intermediate table name */
 	inline bool is_temporary() const;
 };
+
+#if defined UNIV_DEBUG || defined UNIV_IBUF_DEBUG
+/** Dump the change buffer at startup */
+extern my_bool		ibuf_dump;
+/** Flag to control insert buffer debugging. */
+extern uint		ibuf_debug;
+#endif /* UNIV_DEBUG || UNIV_IBUF_DEBUG */
 
 /** Shift for spatial status */
 #define SPATIAL_STATUS_SHIFT	12
@@ -162,7 +165,7 @@ struct table_name_t
 Note: the spatial status is part of persistent undo log,
 so we should not modify the values in MySQL 5.7 */
 enum spatial_status_t {
-	/* Unknown status (undo format in 5.7.9) */
+	/* Unkown status (undo format in 5.7.9) */
 	SPATIAL_UNKNOWN = 0,
 
 	/** Not used in gis index. */

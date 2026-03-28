@@ -34,7 +34,18 @@ $select_current_full_facts="
                                A2.fromdate=(select MAX(fromdate) from
                                             elim_attr2 where id=A2.id);
 ";
-# TODO: same as above but for some given date also?
+$select_current_full_facts="
+  select 
+    F.id, A1.attr1, A2.attr2
+  from 
+    elim_facts F 
+    left join elim_attr1 A1 on A1.id=F.id
+    left join elim_attr2 A2 on A2.id=F.id and 
+                               A2.fromdate=(select MAX(fromdate) from
+                                            elim_attr2 where id=F.id);
+";
+# TODO: same as above but for some given date also? 
+# TODO: 
 
 
 ####
@@ -51,7 +62,6 @@ $start_time=new Benchmark;
 goto select_test if ($opt_skip_create);
 
 print "Creating tables\n";
-$dbh->do("drop view elim_current_facts");
 $dbh->do("drop table elim_facts" . $server->{'drop_attr'});
 $dbh->do("drop table elim_attr1" . $server->{'drop_attr'});
 $dbh->do("drop table elim_attr2" . $server->{'drop_attr'});
@@ -66,7 +76,7 @@ do_many($dbh,$server->create("elim_attr1",
 			     ["id integer",
                               "attr1 integer"],
 			     ["primary key (id)",
-                              "index ix_attr1 (attr1)"]));
+                              "key (attr1)"]));
 
 # Attribute2, time-versioned
 do_many($dbh,$server->create("elim_attr2",
@@ -74,7 +84,7 @@ do_many($dbh,$server->create("elim_attr2",
                               "attr2 integer",
                               "fromdate date"],
 			     ["primary key (id, fromdate)",
-                              "index ix_attr2 (attr2,fromdate)"]));
+                              "key (attr2,fromdate)"]));
 
 #NOTE: ignoring: if ($limits->{'views'})
 $dbh->do("drop view elim_current_facts");
@@ -294,8 +304,8 @@ if ($opt_lock_tables)
 }
 if (!$opt_skip_delete)
 {
-  $dbh->do("drop view elim_current_facts");
   do_query($dbh,"drop table elim_facts, elim_attr1, elim_attr2" . $server->{'drop_attr'});
+  $dbh->do("drop view elim_current_facts");
 }
 
 if ($opt_fast && defined($server->{vacuum}))

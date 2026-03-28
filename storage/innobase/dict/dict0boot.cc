@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2017, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2016, 2023, MariaDB Corporation.
+Copyright (c) 2016, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -30,6 +30,7 @@ Created 4/18/1996 Heikki Tuuri
 #include "dict0load.h"
 #include "trx0trx.h"
 #include "srv0srv.h"
+#include "ibuf0ibuf.h"
 #include "buf0flu.h"
 #include "log0recv.h"
 #include "os0file.h"
@@ -52,16 +53,15 @@ Returns a new table, index, or space id. */
 void
 dict_hdr_get_new_id(
 /*================*/
-	trx_t*			trx,		/*!< in/out: transaction */
 	table_id_t*		table_id,	/*!< out: table id
 						(not assigned if NULL) */
 	index_id_t*		index_id,	/*!< out: index id
 						(not assigned if NULL) */
-	uint32_t*		space_id)	/*!< out: space id
+	ulint*			space_id)	/*!< out: space id
 						(not assigned if NULL) */
 {
 	ib_id_t		id;
-	mtr_t		mtr{trx};
+	mtr_t		mtr;
 
 	mtr.start();
 	buf_block_t* dict_hdr = dict_hdr_get(&mtr);
@@ -97,6 +97,18 @@ dict_hdr_get_new_id(
 	mtr.commit();
 }
 
+/** Update dict_sys.row_id in the dictionary header file page. */
+void dict_hdr_flush_row_id(row_id_t id)
+{
+  mtr_t mtr;
+  mtr.start();
+  buf_block_t* d= dict_hdr_get(&mtr);
+  byte *row_id= DICT_HDR + DICT_HDR_ROW_ID + d->page.frame;
+  if (mach_read_from_8(row_id) < id)
+    mtr.write<8>(*d, row_id, id);
+  mtr.commit();
+}
+
 /** Create the DICT_HDR page on database initialization.
 @return error code */
 dberr_t dict_create()
@@ -104,7 +116,7 @@ dberr_t dict_create()
 	ulint		root_page_no;
 
 	dberr_t err;
-	mtr_t mtr{nullptr};
+	mtr_t mtr;
 	mtr.start();
 	compile_time_assert(DICT_HDR_SPACE == 0);
 
@@ -118,8 +130,10 @@ dberr_t dict_create()
 	}
 	ut_a(d->page.id() == hdr_page_id);
 
-	/* Start counting table, index, and tree ids from
+	/* Start counting row, table, index, and tree ids from
 	DICT_HDR_FIRST_ID */
+	mtr.write<8>(*d, DICT_HDR + DICT_HDR_ROW_ID + d->page.frame,
+		     DICT_HDR_FIRST_ID);
 	mtr.write<8>(*d, DICT_HDR + DICT_HDR_TABLE_ID + d->page.frame,
 		     DICT_HDR_FIRST_ID);
 	mtr.write<8>(*d, DICT_HDR + DICT_HDR_INDEX_ID + d->page.frame,
@@ -199,7 +213,7 @@ dberr_t dict_boot()
 	dict_table_t*	table;
 	dict_index_t*	index;
 	mem_heap_t*	heap;
-	mtr_t		mtr{nullptr};
+	mtr_t		mtr;
 
 	static_assert(DICT_NUM_COLS__SYS_TABLES == 8, "compatibility");
 	static_assert(DICT_NUM_FIELDS__SYS_TABLES == 10, "compatibility");
@@ -222,14 +236,12 @@ dberr_t dict_boot()
 	dict_sys.create();
 
 	dberr_t err;
-	const buf_block_t *d = recv_sys.recover(hdr_page_id, &mtr ,&err);
-	DBUG_EXECUTE_IF("hdr_page_corrupt",
-			err= DB_CORRUPTION;
-			d= nullptr;);
-	if (!d) {
+	const buf_block_t *d = buf_page_get_gen(hdr_page_id, 0, RW_X_LATCH,
+						nullptr, BUF_GET, &mtr, &err);
+        if (!d) {
 		mtr.commit();
 		return err;
-	}
+        }
 
 	heap = mem_heap_create(450);
 
@@ -237,8 +249,19 @@ dberr_t dict_boot()
 
 	const byte* dict_hdr = &d->page.frame[DICT_HDR];
 
-	if (uint32_t max_space_id
-	    = mach_read_from_4(dict_hdr + DICT_HDR_MAX_SPACE_ID)) {
+	/* Because we only write new row ids to disk-based data structure
+	(dictionary header) when it is divisible by
+	DICT_HDR_ROW_ID_WRITE_MARGIN, in recovery we will not recover
+	the latest value of the row id counter. Therefore we advance
+	the counter at the database startup to avoid overlapping values.
+	Note that when a user after database startup first time asks for
+	a new row id, then because the counter is now divisible by
+	..._MARGIN, it will immediately be updated to the disk-based
+	header. */
+
+	dict_sys.recover_row_id(mach_read_from_8(dict_hdr + DICT_HDR_ROW_ID));
+	if (ulint max_space_id = mach_read_from_4(dict_hdr
+						  + DICT_HDR_MAX_SPACE_ID)) {
 		max_space_id--;
 		fil_assign_new_space_id(&max_space_id);
 	}
@@ -399,6 +422,22 @@ dberr_t dict_boot()
 		UT_BITS_IN_BYTES(unsigned(table->indexes.start->n_nullable)));
 
 	mtr.commit();
-	dict_sys.unlock();
+
+	err = ibuf_init_at_db_start();
+
+	if (err == DB_SUCCESS || srv_force_recovery >= SRV_FORCE_NO_DDL_UNDO) {
+		err = DB_SUCCESS;
+		/* Load definitions of other indexes on system tables */
+
+		dict_load_sys_table(dict_sys.sys_tables);
+		dict_load_sys_table(dict_sys.sys_columns);
+		dict_load_sys_table(dict_sys.sys_indexes);
+		dict_load_sys_table(dict_sys.sys_fields);
+		dict_sys.unlock();
+		dict_sys.load_sys_tables();
+	} else {
+		dict_sys.unlock();
+	}
+
 	return err;
 }

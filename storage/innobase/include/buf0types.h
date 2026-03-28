@@ -90,9 +90,9 @@ class page_id_t
 {
 public:
   /** Constructor from (space, page_no).
-  @param space	 tablespace id
-  @param page_no page number */
-  constexpr page_id_t(uint32_t space, uint32_t page_no) :
+  @param[in]	space	tablespace id
+  @param[in]	page_no	page number */
+  constexpr page_id_t(ulint space, uint32_t page_no) :
     m_id(uint64_t{space} << 32 | page_no) {}
 
   constexpr page_id_t(uint64_t id) : m_id(id) {}
@@ -192,8 +192,6 @@ public:
   inline void lock_shared() noexcept;
   /** Acquire an exclusive lock */
   inline void lock() noexcept;
-  /** @return whether an exclusive lock was acquired without waiting */
-  bool try_lock() noexcept { return write_trylock(); }
 
   /** @return whether an exclusive lock is being held by any thread */
   bool is_write_locked() const noexcept { return rw_lock::is_write_locked(); }
@@ -217,7 +215,6 @@ public:
   void lock_shared() noexcept { lk.rd_lock(); }
   void unlock_shared() noexcept { lk.rd_unlock(); }
   void lock() noexcept { lk.wr_lock(); }
-  bool try_lock() noexcept { return lk.wr_lock_try(); }
   void unlock() noexcept { lk.wr_unlock(); }
   bool is_write_locked() const noexcept { return lk.is_write_locked(); }
   bool is_locked() const noexcept { return lk.is_locked(); }
@@ -232,7 +229,6 @@ public:
   void lock_shared() noexcept { lock(); }
   void unlock_shared() noexcept { unlock(); }
   void lock() noexcept { lk.wr_lock(); }
-  bool try_lock() noexcept { return lk.wr_lock_try(); }
   void unlock() noexcept { lk.wr_unlock(); }
   bool is_locked() const noexcept { return lk.is_locked(); }
   bool is_write_locked() const noexcept { return is_locked(); }

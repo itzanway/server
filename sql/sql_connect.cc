@@ -17,7 +17,7 @@
 */
 
 /*
-  Functions to authenticate and handle requests for a connection
+  Functions to autenticate and handle reqests for a connection
 */
 
 #include "mariadb.h"
@@ -318,8 +318,8 @@ void init_max_user_conn(void)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   my_hash_init(key_memory_user_conn, &hash_user_connections,
-               USER_CONN::user_host_key_charset_info_for_hash(),
-               max_connections, 0, 0, get_key_conn, my_free, 0);
+               system_charset_info, max_connections, 0, 0, get_key_conn,
+               my_free, 0);
 #endif
 }
 
@@ -420,7 +420,10 @@ void init_user_stats(USER_STATS *user_stats,
                      ulonglong bytes_sent,
                      ulonglong binlog_bytes_written,
                      ha_rows rows_sent,
-                     rows_stats *rows_stats,
+                     ha_rows rows_read,
+                     ha_rows rows_inserted,
+                     ha_rows rows_deleted,
+                     ha_rows rows_updated,
                      ulonglong select_commands,
                      ulonglong update_commands,
                      ulonglong other_commands,
@@ -451,7 +454,10 @@ void init_user_stats(USER_STATS *user_stats,
   user_stats->bytes_sent= bytes_sent;
   user_stats->binlog_bytes_written= binlog_bytes_written;
   user_stats->rows_sent= rows_sent;
-  user_stats->rows_stats= *rows_stats;
+  user_stats->rows_read= rows_read;
+  user_stats->rows_inserted= rows_inserted;
+  user_stats->rows_deleted= rows_deleted;
+  user_stats->rows_updated= rows_updated;
   user_stats->select_commands= select_commands;
   user_stats->update_commands= update_commands;
   user_stats->other_commands= other_commands;
@@ -468,17 +474,14 @@ void init_user_stats(USER_STATS *user_stats,
 
 void init_global_user_stats(void)
 {
-  my_hash_init(PSI_INSTRUMENT_ME, &global_user_stats,
-               USER_STATS::user_key_charset_info_for_hash(),
+  my_hash_init(PSI_INSTRUMENT_ME, &global_user_stats, system_charset_info,
                max_connections, 0, 0, get_key_user_stats, my_free, 0);
 }
 
 void init_global_client_stats(void)
 {
-  my_hash_init(PSI_INSTRUMENT_ME, &global_client_stats,
-               USER_STATS::user_key_charset_info_for_hash(),
-               max_connections,
-               0, 0, get_key_user_stats, my_free, 0);
+  my_hash_init(PSI_INSTRUMENT_ME, &global_client_stats, system_charset_info,
+               max_connections, 0, 0, get_key_user_stats, my_free, 0);
 }
 
 extern "C" const uchar *get_key_table_stats(const void *table_stats_,
@@ -532,36 +535,33 @@ void free_global_client_stats(void)
   my_hash_free(&global_client_stats);
 }
 
-
 /*
-  Common code for increment_count_by_name, decrement_count_by_name, to fetch
-  the USER_STATS corresponding to 'name'.
- */
+  Increments the global stats connection count for an entry from
+  global_client_stats or global_user_stats. Returns 0 on success
+  and 1 on error.
+*/
 
-static USER_STATS* count_by_name_common(const char *name, size_t name_length,
-                                        const char *role_name,
-                                        HASH *users_or_clients, THD *thd)
+static bool increment_count_by_name(const char *name, size_t name_length,
+                                   const char *role_name,
+                                   HASH *users_or_clients, THD *thd)
 {
-  USER_STATS *user_stats= nullptr;
+  USER_STATS *user_stats;
 
-  if (!(user_stats= (USER_STATS*) my_hash_search(users_or_clients,
-                                                 (uchar*) name,
-                                                 name_length)))
+  if (!(user_stats= (USER_STATS*) my_hash_search(users_or_clients, (uchar*) name,
+                                              name_length)))
   {
-    struct rows_stats rows_stats;
-    bzero(&rows_stats, sizeof(rows_stats));
     /* First connection for this user or client */
     if (!(user_stats= ((USER_STATS*)
                        my_malloc(PSI_INSTRUMENT_ME, sizeof(USER_STATS),
                                  MYF(MY_WME | MY_ZEROFILL)))))
-      return nullptr;                              // Out of memory
+      return TRUE;                              // Out of memory
 
     init_user_stats(user_stats, name, name_length, role_name,
                     0, 0, 0,   // connections
                     0, 0, 0,   // time
                     0, 0, 0,   // bytes sent, received and written
-                    0,
-                    &rows_stats,
+                    0, 0,      // rows sent and read
+                    0, 0, 0,   // rows inserted, deleted and updated
                     0, 0, 0,   // select, update and other commands
                     0, 0,      // commit and rollback trans
                     thd->status_var.access_denied_errors,
@@ -573,68 +573,12 @@ static USER_STATS* count_by_name_common(const char *name, size_t name_length,
     if (my_hash_insert(users_or_clients, (uchar*)user_stats))
     {
       my_free(user_stats);
-      return nullptr;                              // Out of memory
+      return TRUE;                              // Out of memory
     }
   }
-
-  DBUG_ASSERT(user_stats);
-  return user_stats;
-}
-
-
-/*
-  Increments the global stats connection count for an entry from
-  global_client_stats or global_user_stats. Returns FALSE on success
-  and TRUE on error.
-*/
-
-static bool increment_count_by_name(const char *name, size_t name_length,
-                                    const char *role_name,
-                                    HASH *users_or_clients, THD *thd)
-{
-  USER_STATS *user_stats= count_by_name_common(name, name_length, role_name,
-                                               users_or_clients, thd);
-  if (!user_stats)
-    return TRUE;
-
-  ++user_stats->total_connections;
-#ifndef EMBEDDED_LIBRARY
-  /*
-    For the embedded library, we get here only because THD::update_all_stats
-    is called after command dispatch, not because of any connection events
-    (those are compiled-out for the embedded library).  Maybe this entire
-    function should do nothing in the case of embedded library?  At least
-    this makes it behave the same way it did before supporting
-    concurrent_connections.
-   */
-  ++user_stats->concurrent_connections;
-#endif
+  user_stats->total_connections++;
   if (thd->net.vio && thd->net.vio->type == VIO_TYPE_SSL)
-    ++user_stats->total_ssl_connections;
-
-  return FALSE;
-}
-
-
-/*
-  Decrements the global stats connection count for an entry from
-  global_client_stats or global_user_stats. Returns FALSE on success
-  and TRUE on error.
-*/
-
-#ifndef EMBEDDED_LIBRARY
-static bool decrement_count_by_name(const char *name, size_t name_length,
-                                    const char *role_name,
-                                    HASH *users_or_clients, THD *thd)
-{
-  USER_STATS *user_stats= count_by_name_common(name, name_length, role_name,
-                                               users_or_clients, thd);
-  if (!user_stats)
-    return TRUE;
-
-  if (user_stats->concurrent_connections > 0)
-    --user_stats->concurrent_connections;
-
+    user_stats->total_ssl_connections++;
   return FALSE;
 }
 
@@ -648,65 +592,36 @@ static bool decrement_count_by_name(const char *name, size_t name_length,
   @retval 1 error.
 */
 
-static bool increment_connection_count(THD* thd)
+#ifndef EMBEDDED_LIBRARY
+static bool increment_connection_count(THD* thd, bool use_lock)
 {
   const char *user_string= get_valid_user_string(thd->main_security_ctx.user);
   const char *client_string= get_client_host(thd);
+  bool return_value= FALSE;
 
   if (!thd->userstat_running)
     return FALSE;
 
-  mysql_mutex_lock(&LOCK_global_user_client_stats);
-  SCOPE_EXIT([] () {
-    mysql_mutex_unlock(&LOCK_global_user_client_stats);
-  });
+  if (use_lock)
+    mysql_mutex_lock(&LOCK_global_user_client_stats);
 
   if (increment_count_by_name(user_string, strlen(user_string), user_string,
                               &global_user_stats, thd))
-    return TRUE;
-
+  {
+    return_value= TRUE;
+    goto end;
+  }
   if (increment_count_by_name(client_string, strlen(client_string),
                               user_string, &global_client_stats, thd))
-    return TRUE;
+  {
+    return_value= TRUE;
+    goto end;
+  }
 
-  return FALSE;
-}
-
-static bool decrement_connection_count(THD* thd)
-{
-  const char *user_string= get_valid_user_string(thd->main_security_ctx.user);
-  const char *client_string= get_client_host(thd);
-
-  /*
-    THD::update_all_stats, called only from dispatch_command, clears
-    thd->userstat_running to avoid double counting.  thd->userstat_running
-    is set during THD::init.
-
-    When a user connects for the first time, thd->userstat_running is set
-    from the global variable opt_userstat_running during THD::init (indirectly
-    called from THD::change_user).  After each dispatched command, as noted
-    above, it is cleared (even if the user maintains the connection).  So for
-    normal cases where the user disconnects after running a query, we need to
-    check opt_userstat_running.  We check thd->userstat_running for abnormal
-    cases where the user disconnects during a dispatched command, before it
-    reaches THD::update_all_stats.
-  */
-  if (!thd->userstat_running && !opt_userstat_running)
-    return FALSE;
-
-  mysql_mutex_lock(&LOCK_global_user_client_stats);
-  SCOPE_EXIT([] () {
+end:
+  if (use_lock)
     mysql_mutex_unlock(&LOCK_global_user_client_stats);
-  });
-
-  if (decrement_count_by_name(user_string, strlen(user_string), user_string,
-                              &global_user_stats, thd))
-    return TRUE;
-  if (decrement_count_by_name(client_string, strlen(client_string),
-                              user_string, &global_client_stats, thd))
-    return TRUE;
-
-  return FALSE;
+  return return_value;
 }
 #endif
 
@@ -737,22 +652,16 @@ static void update_global_user_stats_with_user(THD *thd,
     (thd->status_var.binlog_bytes_written -
      thd->org_status_var.binlog_bytes_written);
   /* We are not counting rows in internal temporary tables here ! */
-  user_stats->rows_sent+=            (thd->status_var.rows_sent -
-                                      thd->org_status_var.rows_sent);
-  user_stats->rows_stats.read+=      (thd->status_var.rows_read -
-                                      thd->org_status_var.rows_read);
-  user_stats->rows_stats.inserted+=  (thd->status_var.ha_write_count -
-                                      thd->org_status_var.ha_write_count);
-  user_stats->rows_stats.deleted+=   (thd->status_var.ha_delete_count -
-                                      thd->org_status_var.ha_delete_count);
-  user_stats->rows_stats.updated+=   (thd->status_var.ha_update_count -
-                                      thd->org_status_var.ha_update_count);
-  user_stats->rows_stats.key_read_hit+= (thd->status_var.ha_read_key_count -
-                                         thd->org_status_var.ha_read_key_count -
-                                         (thd->status_var.ha_read_key_miss -
-                                          thd->org_status_var.ha_read_key_miss));
-  user_stats->rows_stats.key_read_miss+=   (thd->status_var.ha_read_key_miss -
-                                            thd->org_status_var.ha_read_key_miss);
+  user_stats->rows_read+=      (thd->status_var.rows_read -
+                                thd->org_status_var.rows_read);
+  user_stats->rows_sent+=      (thd->status_var.rows_sent -
+                                thd->org_status_var.rows_sent);
+  user_stats->rows_inserted+=  (thd->status_var.ha_write_count -
+                                thd->org_status_var.ha_write_count);
+  user_stats->rows_deleted+=   (thd->status_var.ha_delete_count -
+                                thd->org_status_var.ha_delete_count);
+  user_stats->rows_updated+=   (thd->status_var.ha_update_count -
+                                thd->org_status_var.ha_update_count);
   user_stats->select_commands+= thd->select_commands;
   user_stats->update_commands+= thd->update_commands;
   user_stats->other_commands+=  thd->other_commands;
@@ -851,10 +760,6 @@ void update_global_user_stats(THD *thd, bool create_user, time_t now)
 bool thd_init_client_charset(THD *thd, uint cs_number)
 {
   CHARSET_INFO *cs;
-
-  // Test a non-default collation ID. See also comments in this function below.
-  DBUG_EXECUTE_IF("thd_init_client_charset_utf8mb3_bin", cs_number= 83;);
-
   /*
    Use server character set and collation if
    - opt_character_set_client_handshake is not set
@@ -876,25 +781,6 @@ bool thd_init_client_charset(THD *thd, uint cs_number)
       my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), "character_set_client",
                cs->cs_name.str);
       return true;
-    }
-    /*
-      Some connectors (e.g. JDBC, Node.js) can send non-default collation IDs
-      in the handshake packet, to set @@collation_connection right during
-      handshake. Although this is a non-documenting feature,
-      for better backward compatibility with such connectors let's:
-      a. resolve only default collations according to @@character_set_collations
-      b. preserve non-default collations as is
-
-      Perhaps eventually we should change (b) also to resolve non-default
-      collations according to @@character_set_collations. Clients that used to
-      send a non-default collation ID in the handshake packet will have to set
-      @@character_set_collations instead.
-    */
-    if (cs->state & MY_CS_PRIMARY)
-    {
-      Sql_used used;
-      cs= global_system_variables.character_set_collations.
-            get_collation_for_charset(&used, cs);
     }
     thd->org_charset= cs;
     thd->update_charset(cs,cs,cs);
@@ -1172,6 +1058,7 @@ static int check_connection(THD *thd)
     statistic_increment(aborted_connects_preauth, &LOCK_status);
     return 1; /* The error is set by alloc(). */
   }
+
   auth_rc= acl_authenticate(thd, 0);
   if (auth_rc == 0 && connect_errors != 0)
   {
@@ -1212,7 +1099,7 @@ void setup_connection_thread_globals(THD *thd)
 
 
 /*
-  Authenticate user, with error reporting
+  Autenticate user, with error reporting
 
   SYNOPSIS
    login_connection()
@@ -1226,7 +1113,7 @@ void setup_connection_thread_globals(THD *thd)
     1    error
 */
 
-static bool login_connection(THD *thd)
+bool login_connection(THD *thd)
 {
   NET *net= &thd->net;
   int error= 0;
@@ -1256,7 +1143,7 @@ static bool login_connection(THD *thd)
   my_net_set_write_timeout(net, thd->variables.net_write_timeout);
 
   /*  Updates global user connection stats. */
-  if (increment_connection_count(thd))
+  if (increment_connection_count(thd, TRUE))
   {
     my_error(ER_OUTOFMEMORY, MYF(0), (int) (2*sizeof(USER_STATS)));
     error= 1;
@@ -1315,9 +1202,6 @@ void end_connection(THD *thd)
   if (likely(!thd->killed) && (net->error && net->vio != 0))
     thd->print_aborted_warning(1, thd->get_stmt_da()->is_error()
              ? thd->get_stmt_da()->message() : ER_THD(thd, ER_UNKNOWN_ERROR));
-
-  if (decrement_connection_count(thd))
-    my_error(ER_OUTOFMEMORY, MYF(ME_ERROR_LOG), (int) (2*sizeof(USER_STATS)));
 }
 
 
@@ -1407,7 +1291,6 @@ pthread_handler_t handle_one_connection(void *arg)
   CONNECT *connect= (CONNECT*) arg;
 
   mysql_thread_set_psi_id(connect->thread_id);
-  my_thread_set_name("one_connection");
 
   if (init_new_connection_handler_thread())
     connect->close_with_error(0, 0, ER_OUT_OF_RESOURCES);
@@ -1553,7 +1436,7 @@ end_thread:
   This and close_with_error are only called if we didn't manage to
   create a new thd object.
 
-  Note: err can be 0 if unknown/not important
+  Note: err can be 0 if unknown/not inportant
 */
 
 void CONNECT::close_and_delete(uint err)
@@ -1583,7 +1466,7 @@ void CONNECT::close_and_delete(uint err)
 
 /*
   Close a connection with a possible error to the end user
-  Else deletes the connection object, like close_and_delete()
+  Alse deletes the connection object, like close_and_delete()
 */
 
 void CONNECT::close_with_error(uint sql_errno,

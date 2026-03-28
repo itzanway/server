@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (C) 2013, 2023, MariaDB Corporation.
+Copyright (C) 2013, 2021, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -47,13 +47,24 @@ Updated 14/02/2015
 #include "trx0sys.h"
 #include "row0mysql.h"
 #include "buf0lru.h"
+#include "ibuf0ibuf.h"
 #include "zlib.h"
 #include "row0mysql.h"
+#ifdef HAVE_LZ4
 #include "lz4.h"
+#endif
+#ifdef HAVE_LZO
 #include "lzo/lzo1x.h"
+#endif
+#ifdef HAVE_LZMA
 #include "lzma.h"
+#endif
+#ifdef HAVE_BZIP2
 #include "bzlib.h"
+#endif
+#ifdef HAVE_SNAPPY
 #include "snappy-c.h"
+#endif
 
 /** Compress a page for the given compression algorithm.
 @param[in]	buf		page to be compressed
@@ -78,7 +89,6 @@ static ulint fil_page_compress_low(
 		/* fall through */
 	case PAGE_UNCOMPRESSED:
 		return 0;
-
 	case PAGE_ZLIB_ALGORITHM:
 		{
 			ulong len = uLong(write_size);
@@ -89,15 +99,23 @@ static ulint fil_page_compress_low(
 			}
 		}
 		break;
-
+#ifdef HAVE_LZ4
 	case PAGE_LZ4_ALGORITHM:
+# ifdef HAVE_LZ4_COMPRESS_DEFAULT
 		write_size = LZ4_compress_default(
 			reinterpret_cast<const char*>(buf),
 			reinterpret_cast<char*>(out_buf) + header_len,
 			int(srv_page_size), int(write_size));
+# else
+		write_size = LZ4_compress_limitedOutput(
+			reinterpret_cast<const char*>(buf),
+			reinterpret_cast<char*>(out_buf) + header_len,
+			int(srv_page_size), int(write_size));
+# endif
 
 		return write_size;
-
+#endif /* HAVE_LZ4 */
+#ifdef HAVE_LZO
 	case PAGE_LZO_ALGORITHM: {
 		lzo_uint len = write_size;
 
@@ -110,7 +128,8 @@ static ulint fil_page_compress_low(
 		}
 		break;
 	}
-
+#endif /* HAVE_LZO */
+#ifdef HAVE_LZMA
 	case PAGE_LZMA_ALGORITHM: {
 		size_t out_pos = 0;
 
@@ -123,7 +142,9 @@ static ulint fil_page_compress_low(
 		}
 		break;
 	}
+#endif /* HAVE_LZMA */
 
+#ifdef HAVE_BZIP2
 	case PAGE_BZIP2_ALGORITHM: {
 		unsigned len = unsigned(write_size);
 		if (BZ_OK == BZ2_bzBuffToBuffCompress(
@@ -137,7 +158,9 @@ static ulint fil_page_compress_low(
 		}
 		break;
 	}
+#endif /* HAVE_BZIP2 */
 
+#ifdef HAVE_SNAPPY
 	case PAGE_SNAPPY_ALGORITHM: {
 		size_t len = snappy_max_compressed_length(srv_page_size);
 
@@ -151,6 +174,7 @@ static ulint fil_page_compress_low(
 		}
 		break;
 	}
+#endif /* HAVE_SNAPPY */
 	}
 
 	return 0;
@@ -166,7 +190,7 @@ static ulint fil_page_compress_low(
 static ulint fil_page_compress_for_full_crc32(
 	const byte*	buf,
 	byte*		out_buf,
-	uint32_t	flags,
+	ulint		flags,
 	ulint		block_size,
 	bool		encrypted)
 {
@@ -292,7 +316,7 @@ static ulint fil_page_compress_for_non_full_crc32(
 		mach_write_to_2(out_buf + FIL_PAGE_TYPE, FIL_PAGE_PAGE_COMPRESSED);
 	}
 
-	/* Set up the actual payload length */
+	/* Set up the actual payload lenght */
 	mach_write_to_2(out_buf + FIL_PAGE_DATA + FIL_PAGE_COMP_SIZE,
 			write_size);
 
@@ -352,7 +376,7 @@ static ulint fil_page_compress_for_non_full_crc32(
 ulint fil_page_compress(
 	const byte*	buf,
 	byte*		out_buf,
-	uint32_t	flags,
+	ulint		flags,
 	ulint		block_size,
 	bool		encrypted)
 {
@@ -406,7 +430,7 @@ static bool fil_page_decompress_low(
 					       uLong(actual_size))
 				&& len == srv_page_size);
 		}
-
+#ifdef HAVE_LZ4
 	case PAGE_LZ4_ALGORITHM:
 		return LZ4_decompress_safe(
 			reinterpret_cast<const char*>(buf) + header_len,
@@ -414,7 +438,8 @@ static bool fil_page_decompress_low(
 			static_cast<int>(actual_size),
 			static_cast<int>(srv_page_size)) ==
 			static_cast<int>(srv_page_size);
-
+#endif /* HAVE_LZ4 */
+#ifdef HAVE_LZO
 	case PAGE_LZO_ALGORITHM:
 		{
 			lzo_uint len_lzo = srv_page_size;
@@ -423,7 +448,8 @@ static bool fil_page_decompress_low(
 					actual_size, tmp_buf, &len_lzo, NULL)
 				&& len_lzo == srv_page_size);
 		}
-
+#endif /* HAVE_LZO */
+#ifdef HAVE_LZMA
 	case PAGE_LZMA_ALGORITHM:
 		{
 			size_t		src_pos = 0;
@@ -436,7 +462,8 @@ static bool fil_page_decompress_low(
 				srv_page_size)
 				&& dst_pos == srv_page_size;
 		}
-
+#endif /* HAVE_LZMA */
+#ifdef HAVE_BZIP2
 	case PAGE_BZIP2_ALGORITHM:
 		{
 			uint dst_pos = static_cast<uint>(srv_page_size);
@@ -447,7 +474,8 @@ static bool fil_page_decompress_low(
 				static_cast<uint>(actual_size), 1, 0)
 				&& dst_pos == srv_page_size;
 		}
-
+#endif /* HAVE_BZIP2 */
+#ifdef HAVE_SNAPPY
 	case PAGE_SNAPPY_ALGORITHM:
 		{
 			size_t olen = srv_page_size;
@@ -459,6 +487,7 @@ static bool fil_page_decompress_low(
 				reinterpret_cast<char*>(tmp_buf), &olen)
 				&& olen == srv_page_size;
 		}
+#endif /* HAVE_SNAPPY */
 	}
 
 	return false;
@@ -471,8 +500,7 @@ static bool fil_page_decompress_low(
 @return size of the compressed data
 @retval	0		if decompression failed
 @retval	srv_page_size	if the page was not compressed */
-static size_t fil_page_decompress_for_full_crc32(byte *tmp_buf, byte *buf,
-                                                 uint32_t flags)
+ulint fil_page_decompress_for_full_crc32(byte* tmp_buf, byte* buf, ulint flags)
 {
 	ut_ad(fil_space_t::full_crc32(flags));
 	bool compressed = false;
@@ -517,7 +545,9 @@ static size_t fil_page_decompress_for_full_crc32(byte *tmp_buf, byte *buf,
 @return size of the compressed data
 @retval	0		if decompression failed
 @retval	srv_page_size	if the page was not compressed */
-static size_t fil_page_decompress_for_non_full_crc32(byte *tmp_buf, byte *buf)
+ulint fil_page_decompress_for_non_full_crc32(
+	byte*	tmp_buf,
+	byte*	buf)
 {
 	ulint header_len;
 	uint comp_algo;
@@ -568,7 +598,10 @@ static size_t fil_page_decompress_for_non_full_crc32(byte *tmp_buf, byte *buf)
 @return size of the compressed data
 @retval	0		if decompression failed
 @retval	srv_page_size	if the page was not compressed */
-ulint fil_page_decompress(byte *tmp_buf, byte *buf, uint32_t flags)
+ulint fil_page_decompress(
+	byte*	tmp_buf,
+	byte*	buf,
+	ulint	flags)
 {
 	if (fil_space_t::full_crc32(flags)) {
 		return fil_page_decompress_for_full_crc32(tmp_buf, buf, flags);

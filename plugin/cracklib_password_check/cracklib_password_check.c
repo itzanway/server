@@ -22,21 +22,18 @@
 static char *dictionary;
 
 static int crackme(const MYSQL_CONST_LEX_STRING *username,
-                   const MYSQL_CONST_LEX_STRING *password,
-                   const MYSQL_CONST_LEX_STRING *hostname)
+                   const MYSQL_CONST_LEX_STRING *password)
 {
   char *user= alloca(username->length + 1);
-  char *full_name= alloca(hostname->length + username->length + 2);
+  char *host;
   const char *res;
 
   memcpy(user, username->str, username->length);
   user[username->length]= 0;
-  memcpy(full_name, username->str, username->length);
-  full_name[username->length]= '@';
-  memcpy(full_name + username->length + 1, hostname->str, hostname->length);
-  full_name[hostname->length+ username->length + 1]= 0;
+  if ((host= strchr(user, '@')))
+    *host++= 0;
 
-  if ((res= FascistCheckUser(password->str, dictionary, user, full_name)))
+  if ((res= FascistCheckUser(password->str, dictionary, user, host)))
   {
     my_printf_error(ER_NOT_VALID_PASSWORD, "cracklib: %s",
                     ME_WARNING, res);

@@ -17,7 +17,6 @@
 #include "mariadb.h"
 #include "sql_type.h"
 #include "sql_type_geom.h"
-#include "sql_type_vector.h"
 #include "sql_const.h"
 #include "sql_class.h"
 #include "sql_time.h"
@@ -26,8 +25,6 @@
 #include "log.h"
 #include "tztime.h"
 #include <mysql/plugin_data_type.h>
-#include "sp_type_def.h"
-#include "sp_head.h"
 
 
 const DTCollation &DTCollation_numeric::singleton()
@@ -36,92 +33,7 @@ const DTCollation &DTCollation_numeric::singleton()
   return tmp;
 }
 
-
-bool
-DTCollation::merge_charset_and_collation(Sql_used *used,
-                                         const Charset_collation_map_st &map,
-                                         CHARSET_INFO *cs,
-                                         const Lex_extended_collation_st &cl,
-                                         my_repertoire_t repertoire)
-{
-  Lex_exact_charset_opt_extended_collate cscl(cs, true);
-  if (cscl.merge_collation_override(used, map, cl))
-    return true;
-  set(cscl.collation().charset_info(), DERIVATION_EXPLICIT, repertoire);
-  return false;
-}
-
-
-bool DTCollation::merge_collation(Sql_used *used,
-                                  const Charset_collation_map_st &map,
-                                  const Lex_extended_collation_st &cl,
-                                  my_repertoire_t repertoire,
-                                  bool allow_ignorable_with_context_collation)
-{
-  if (derivation != DERIVATION_IGNORABLE)
-  {
-    // A known character set + an extended collation
-    return merge_charset_and_collation(used, map, collation, cl, repertoire);
-  }
-
-  if (cl.type() == Lex_extended_collation::TYPE_EXACT)
-  {
-    /*
-      An unknown character set + an exact collation.
-      Just use this exact collation.
-      Examples:
-      - Expressions derived from an explicit NULL:
-          SELECT NULL         COLLATE utf8mb4_general_ci;
-          SELECT CONCAT(NULL) COLLATE utf8mb4_general_ci;
-        Any collation is applicable to an explicit NULL.
-
-      - Expressions with PS parameters (at PREPARE time, not bound yet)
-          SELECT ?         COLLATE utf8mb4_general_ci;
-          SELECT CONCAT(?) COLLATE utf8mb4_general_ci;
-        The collation will be checked for applicability to the
-        character set of the actual bound parameter at the EXECUTE time.
-        We're now in PREPARE: let's assume it will be applicable.
-    */
-    set(cl.charset_info(), DERIVATION_EXPLICIT, repertoire);
-    return false;
-  }
-
-  // An unknown character set + a contextually typed collation
-  if (allow_ignorable_with_context_collation)
-  {
-    /*
-      Expressions with non-bound PS parameters, PREPARE time.
-        SELECT ?         COLLATE uca1400_ai_ci;
-        SELECT CONCAT(?) COLLATE uca1400_ai_ci;
-      There is a chance the character set of the actual bound parameter
-      will be known at the EXECUTE time (unless an explicit NULL is bound).
-
-      For now let's use utf8mb4 to resolve collations like uca1400_ai_ci.
-      The real character set of the actual bound parameter expression will be
-      later used to resolve the collation again, during the EXECUTE time.
-    */
-    return merge_charset_and_collation(used, map,
-                                       &my_charset_utf8mb4_general_ci,
-                                       cl, repertoire);
-  }
-
-  /*
-    Expressions with an unknown character set:
-    - Either without PS parameters at all:
-        SELECT NULL         COLLATE uca1400_ai_ci;
-        SELECT CONCAT(NULL) COLLATE uca1400_ai_ci;
-    - Or with PS parameters bound to NULL at EXECUTE time:
-        EXECUTE IMMEDIATE
-          'SELECT ? COLLATE uca1400_ai_ci' USING NULL;
-        EXECUTE IMMEDIATE
-          'SELECT CONCAT(?) COLLATE uca1400_ai_ci' USING NULL;
-        EXECUTE IMMEDIATE
-          'SELECT ? COLLATE uca1400_ai_ci' USING CONCAT(NULL);
-  */
-  my_error(ER_NOT_ALLOWED_IN_THIS_CONTEXT, MYF(0), "NULL");
-  return true;
-}
-
+Named_type_handler<Type_handler_row> type_handler_row("row");
 
 Named_type_handler<Type_handler_null> type_handler_null("null");
 
@@ -132,7 +44,7 @@ Named_type_handler<Type_handler_long> type_handler_slong("int");
 Named_type_handler<Type_handler_long_ge0> type_handler_slong_ge0("int");
 Named_type_handler<Type_handler_int24> type_handler_sint24("mediumint");
 Named_type_handler<Type_handler_longlong> type_handler_slonglong("bigint");
-Named_type_handler<Type_handler_utiny> type_handler_utiny("tinyint unsigned");
+Named_type_handler<Type_handler_utiny> type_handler_utiny("tiny unsigned");
 Named_type_handler<Type_handler_ushort> type_handler_ushort("smallint unsigned");
 Named_type_handler<Type_handler_ulong> type_handler_ulong("int unsigned");
 Named_type_handler<Type_handler_uint24> type_handler_uint24("mediumint unsigned");
@@ -215,9 +127,56 @@ bool Type_handler::is_traditional_scalar_type() const
 }
 
 
+class Type_collection_row: public Type_collection
+{
+public:
+  bool init(Type_handler_data *data) override
+  {
+    return false;
+  }
+  const Type_handler *aggregate_for_result(const Type_handler *a,
+                                           const Type_handler *b)
+                                           const override
+  {
+    return NULL;
+  }
+  const Type_handler *aggregate_for_comparison(const Type_handler *a,
+                                               const Type_handler *b)
+                                               const override
+  {
+    DBUG_ASSERT(a == &type_handler_row);
+    DBUG_ASSERT(b == &type_handler_row);
+    return &type_handler_row;
+  }
+  const Type_handler *aggregate_for_min_max(const Type_handler *a,
+                                            const Type_handler *b)
+                                            const override
+  {
+    return NULL;
+  }
+  const Type_handler *aggregate_for_num_op(const Type_handler *a,
+                                           const Type_handler *b)
+                                           const override
+  {
+    return NULL;
+  }
+};
+
+
+static Type_collection_row type_collection_row;
+
+const Type_collection *Type_handler_row::type_collection() const
+{
+  return &type_collection_row;
+}
+
+
 bool Type_handler_data::init()
 {
+#ifdef HAVE_SPATIAL
   return type_collection_geometry.init(this);
+#endif
+  return false;
 }
 
 
@@ -245,10 +204,12 @@ Type_handler::handler_by_name(THD *thd, const LEX_CSTRING &name)
     return ph;
   }
 
+#ifdef HAVE_SPATIAL
   const Type_handler *ha= Type_collection_geometry_handler_by_name(name);
-  if (!ha && type_handler_vector.name().eq(name))
-    return &type_handler_vector;
-  return ha;
+  if (ha)
+    return ha;
+#endif
+  return NULL;
 }
 
 
@@ -282,33 +243,32 @@ Type_handler::handler_by_name_or_error(THD *thd, const LEX_CSTRING &name)
 }
 
 
-Item *Type_handler::create_item_method_or_error(THD *thd,
-                                                object_method_type_t type,
-                                                const Lex_ident_sys &ca,
-                                                const Lex_ident_sys &cb,
-                                                List<Item> *args,
-                                                const Lex_ident_cli_st
-                                                  &query_fragment)
-                                                             const
-{
-  Item *item= create_item_method(thd, type, ca, cb, args, query_fragment);
-  if (item)
-    return item;
-  char err_buffer[MYSQL_ERRMSG_SIZE];
-  Identifier_chain2(ca, cb).make_qname(err_buffer, sizeof(err_buffer));
-  my_error(ER_SP_DOES_NOT_EXIST, MYF(0),
-           type == object_method_type_t::FUNCTION ? "FUNCTION" : "PROCEDURE",
-           err_buffer);
-  return nullptr;
-}
-
-
 Type_handler_data *type_handler_data= NULL;
 
 
 bool Float::to_string(String *val_buffer, uint dec) const
 {
-  return val_buffer->set_real(m_value, dec, &my_charset_numeric);
+  uint to_length= 70;
+  if (val_buffer->alloc(to_length))
+    return true;
+
+  char *to=(char*) val_buffer->ptr();
+  size_t len;
+
+  if (dec >= FLOATING_POINT_DECIMALS)
+    len= my_gcvt(m_value, MY_GCVT_ARG_FLOAT, to_length - 1, to, NULL);
+  else
+  {
+    /*
+      We are safe here because the buffer length is 70, and
+      fabs(float) < 10^39, dec < FLOATING_POINT_DECIMALS. So the resulting string
+      will be not longer than 69 chars + terminating '\0'.
+    */
+    len= my_fcvt(m_value, (int) dec, to, NULL);
+  }
+  val_buffer->length((uint) len);
+  val_buffer->set_charset(&my_charset_numeric);
+  return false;
 }
 
 
@@ -421,10 +381,7 @@ bool Timestamp::to_native(Native *to, uint decimals) const
 {
   uint len= my_timestamp_binary_length(decimals);
   if (to->reserve(len))
-  {
-    to->length(0); // Safety: set to '0000-00-00 00:00:00' on failures
     return true;
-  }
   my_timestamp_to_binary(this, (uchar *) to->ptr(), decimals);
   to->length(len);
   return false;
@@ -433,7 +390,7 @@ bool Timestamp::to_native(Native *to, uint decimals) const
 
 bool Timestamp::to_TIME(THD *thd, MYSQL_TIME *to, date_mode_t fuzzydate) const
 {
-  return thd->timestamp_to_TIME(to, (my_time_t) tv_sec, tv_usec, fuzzydate);
+  return thd->timestamp_to_TIME(to, tv_sec, tv_usec, fuzzydate);
 }
 
 
@@ -493,7 +450,7 @@ int Timestamp_or_zero_datetime_native::save_in_field(Field *field,
     static Datetime zero(Datetime::zero());
     return field->store_time_dec(zero.get_mysql_time(), decimals);
   }
-  return field->store_timestamp_dec(Timestamp(*this), decimals);
+  return field->store_timestamp_dec(Timestamp(*this).tv(), decimals);
 }
 
 
@@ -1096,11 +1053,11 @@ void Datetime::make_from_datetime(THD *thd, int *warn, const MYSQL_TIME *from,
 }
 
 
-Datetime::Datetime(THD *thd, const my_timeval &tv)
+Datetime::Datetime(THD *thd, const timeval &tv)
 {
-  thd->variables.time_zone->gmt_sec_to_TIME(this, (my_time_t) tv.tv_sec);
+  thd->variables.time_zone->gmt_sec_to_TIME(this, tv.tv_sec);
   second_part= tv.tv_usec;
-  thd->used|= THD::TIME_ZONE_USED;
+  thd->time_zone_used= 1;
   DBUG_ASSERT(is_valid_value_slow());
 }
 
@@ -1388,7 +1345,7 @@ Type_handler::odbc_literal_type_handler(const LEX_CSTRING *type_str)
 
   TODO: type_handler_adjusted_to_max_octet_length() and string_type_handler()
   provide very similar functionality, to properly choose between
-  VARCHAR/VARBINARY vs TEXT/BLOB variations taking into account maximum
+  VARCHAR/VARBINARY vs TEXT/BLOB variations taking into accoung maximum
   possible octet length.
 
   We should probably get rid of either of them and use the same method
@@ -1741,6 +1698,11 @@ const Type_handler *Type_handler_timestamp_common::type_handler_for_comparison()
 }
 
 
+const Type_handler *Type_handler_row::type_handler_for_comparison() const
+{
+  return &type_handler_row;
+}
+
 /***************************************************************************/
 
 const Type_handler *
@@ -1761,7 +1723,7 @@ Type_handler_time_common::type_handler_for_native_format() const
 
 const Type_handler *Type_handler_typelib::type_handler_for_item_field() const
 {
-  return &type_handler_varchar;
+  return &type_handler_string;
 }
 
 
@@ -1845,7 +1807,7 @@ Type_handler::bit_and_int_mixture_handler(uint max_char_length)
 
              Note, independently from "treat_bit_as_number":
              - a single BIT argument gives BIT as a result
-             - two BIT counterparts give BIT as a result
+             - two BIT couterparts give BIT as a result
              - (BIT + explicit NULL) or (explicit NULL + BIT) give BIT
 
   @details This function aggregates field types from the array of items.
@@ -1865,16 +1827,19 @@ aggregate_for_result(const LEX_CSTRING &funcname, Item **items, uint nitems,
                      bool treat_bit_as_number)
 {
   bool bit_and_non_bit_mixture_found= false;
-  if (!nitems)
+  uint32 max_display_length;
+  if (!nitems || items[0]->result_type() == ROW_RESULT)
   {
     DBUG_ASSERT(0);
     set_handler(&type_handler_null);
     return true;
   }
   set_handler(items[0]->type_handler());
+  max_display_length= items[0]->max_display_length();
   for (uint i= 1 ; i < nitems ; i++)
   {
     const Type_handler *cur= items[i]->type_handler();
+    set_if_bigger(max_display_length, items[i]->max_display_length());
     uint bit_count= (type_handler() == &type_handler_bit) +
                     (cur == &type_handler_bit);
     uint null_count= (type_handler() == &type_handler_null) +
@@ -1895,12 +1860,7 @@ aggregate_for_result(const LEX_CSTRING &funcname, Item **items, uint nitems,
     }
   }
   if (bit_and_non_bit_mixture_found && type_handler() == &type_handler_slonglong)
-  {
-    uint32 max_display_length= items[0]->max_display_length();
-    for (uint i= 1; i < nitems ; i++)
-      set_if_bigger(max_display_length, items[i]->max_display_length());
     set_handler(Type_handler::bit_and_int_mixture_handler(max_display_length));
-  }
   return false;
 }
 
@@ -2207,7 +2167,12 @@ Type_handler::get_handler_by_field_type(enum_field_types type)
   case MYSQL_TYPE_STRING:      return &type_handler_string;
   case MYSQL_TYPE_ENUM:        return &type_handler_varchar; // Map to VARCHAR
   case MYSQL_TYPE_SET:         return &type_handler_varchar; // Map to VARCHAR
-  case MYSQL_TYPE_GEOMETRY:    return &type_handler_geometry;
+  case MYSQL_TYPE_GEOMETRY:
+#ifdef HAVE_SPATIAL
+    return &type_handler_geometry;
+#else
+    return NULL;
+#endif
   case MYSQL_TYPE_TIMESTAMP:   return &type_handler_timestamp2;// Map to timestamp2
   case MYSQL_TYPE_TIMESTAMP2:  return &type_handler_timestamp2;
   case MYSQL_TYPE_DATE:        return &type_handler_newdate;   // Map to newdate
@@ -2259,7 +2224,12 @@ Type_handler::get_handler_by_real_type(enum_field_types type)
   case MYSQL_TYPE_STRING:      return &type_handler_string;
   case MYSQL_TYPE_ENUM:        return &type_handler_enum;
   case MYSQL_TYPE_SET:         return &type_handler_set;
-  case MYSQL_TYPE_GEOMETRY:    return &type_handler_geometry;
+  case MYSQL_TYPE_GEOMETRY:
+#ifdef HAVE_SPATIAL
+    return &type_handler_geometry;
+#else
+    return NULL;
+#endif
   case MYSQL_TYPE_TIMESTAMP:   return &type_handler_timestamp;
   case MYSQL_TYPE_TIMESTAMP2:  return &type_handler_timestamp2;
   case MYSQL_TYPE_DATE:        return &type_handler_date;
@@ -2697,7 +2667,7 @@ Field *Type_handler_enum::make_conversion_table_field(MEM_ROOT *root,
          Field_enum(NULL, target->field_length,
                     (uchar *) "", 1, Field::NONE, &empty_clex_str,
                     metadata & 0x00ff/*pack_length()*/,
-                    ((const Field_enum*) target)->typelib(), target->charset());
+                    ((const Field_enum*) target)->typelib, target->charset());
 }
 
 
@@ -2713,7 +2683,7 @@ Field *Type_handler_set::make_conversion_table_field(MEM_ROOT *root,
          Field_set(NULL, target->field_length,
                    (uchar *) "", 1, Field::NONE, &empty_clex_str,
                    metadata & 0x00ff/*pack_length()*/,
-                   ((const Field_enum*) target)->typelib(), target->charset());
+                   ((const Field_enum*) target)->typelib, target->charset());
 }
 
 
@@ -2733,33 +2703,12 @@ Field *Type_handler_enum::make_schema_field(MEM_ROOT *root, TABLE *table,
                     addr.null_ptr(), addr.null_bit(),
                     Field::NONE, &name,
                     get_enum_pack_length(typelib->count),
-                    typelib, system_charset_info_for_i_s);
+                    typelib, system_charset_info);
 
 }
 
 
 /*************************************************************************/
-
-bool
-Type_handler::sp_variable_declarations_finalize(THD *thd,
-                                                LEX *lex, int nvars,
-                                                const Column_definition &cdef)
-                                                                        const
-{
-  Column_definition tmp(cdef);
-  if (lex->sphead->fill_spvar_definition(thd, &tmp))
-    return true;
-
-  for (uint i= 0 ; i < (uint) nvars; i++)
-  {
-    uint offset= (uint) nvars - 1 - i;
-    sp_variable *spvar= lex->spcont->get_last_context_variable(offset);
-    spvar->field_def.set_type(tmp);
-    spvar->field_def.field_name= spvar->name;
-  }
-  return false;
-}
-
 
 bool Type_handler::
        Column_definition_validate_check_constraint(THD *thd,
@@ -2775,12 +2724,11 @@ bool
 Type_handler::Column_definition_set_attributes(THD *thd,
                                                Column_definition *def,
                                                const Lex_field_type_st &attr,
+                                               CHARSET_INFO *cs,
                                                column_definition_type_t type)
                                                const
 {
-  def->set_charset_collation_attrs(thd,
-                                   thd->variables.character_set_collations,
-                                   attr.charset_collation_attrs());
+  def->charset= cs;
   def->set_length_and_dec(attr);
   return false;
 }
@@ -2809,11 +2757,12 @@ Type_handler_string::Column_definition_set_attributes(
                                                  THD *thd,
                                                  Column_definition *def,
                                                  const Lex_field_type_st &attr,
+                                                 CHARSET_INFO *cs,
                                                  column_definition_type_t type)
                                                  const
 {
-  Type_handler::Column_definition_set_attributes(thd, def, attr, type);
-  if (attr.has_explicit_length())
+  Type_handler::Column_definition_set_attributes(thd, def, attr, cs, type);
+  if (attr.length())
     return false;
   switch (type) {
   case COLUMN_DEFINITION_ROUTINE_PARAM:
@@ -2840,11 +2789,12 @@ Type_handler_varchar::Column_definition_set_attributes(
                                                  THD *thd,
                                                  Column_definition *def,
                                                  const Lex_field_type_st &attr,
+                                                 CHARSET_INFO *cs,
                                                  column_definition_type_t type)
                                                  const
 {
-  Type_handler::Column_definition_set_attributes(thd, def, attr, type);
-  if (attr.has_explicit_length())
+  Type_handler::Column_definition_set_attributes(thd, def, attr, cs, type);
+  if (attr.length())
     return false;
   switch (type) {
   case COLUMN_DEFINITION_ROUTINE_PARAM:
@@ -3029,8 +2979,7 @@ void Type_handler_typelib::
                                               const Field *field) const
 {
   DBUG_ASSERT(def->flags & (ENUM_FLAG | SET_FLAG));
-  const Field_enum *field_enum= static_cast<const Field_enum*>(field);
-  field_enum->Type_typelib_attributes::store(def);
+  def->interval= field->get_typelib();
 }
 
 
@@ -3043,7 +2992,10 @@ void Type_handler_year::
   {
     char buff[sizeof("YEAR()") + MY_INT64_NUM_DECIMAL_DIGITS + 1];
     my_snprintf(buff, sizeof(buff), "YEAR(%llu)", def->length);
-    warn_deprecated<1300>(thd, buff, "YEAR(4)");
+    push_warning_printf(thd, Sql_condition::WARN_LEVEL_NOTE,
+                        ER_WARN_DEPRECATED_SYNTAX,
+                        ER_THD(thd, ER_WARN_DEPRECATED_SYNTAX),
+                        buff, "YEAR(4)");
   }
 }
 
@@ -3068,7 +3020,8 @@ bool Type_handler::
        Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
-                                        column_definition_type_t type,
+                                        handler *file,
+                                        ulonglong table_flags,
                                         const Column_derived_attributes
                                               *derived_attr)
                                         const
@@ -3081,24 +3034,38 @@ bool Type_handler_null::
        Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
-                                        column_definition_type_t type,
+                                        handler *file,
+                                        ulonglong table_flags,
                                         const Column_derived_attributes
                                               *derived_attr)
                                         const
 {
-  def->prepare_charset_for_string(thd,
-                                  thd->variables.character_set_collations,
-                                  derived_attr);
+  def->prepare_charset_for_string(derived_attr);
   def->create_length_to_internal_length_null();
   return false;
 }
 
+bool Type_handler_row::
+       Column_definition_prepare_stage1(THD *thd,
+                                        MEM_ROOT *mem_root,
+                                        Column_definition *def,
+                                        handler *file,
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
+{
+  def->charset= &my_charset_bin;
+  def->create_length_to_internal_length_null();
+  return false;
+}
 
 bool Type_handler_temporal_result::
        Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
-                                        column_definition_type_t type,
+                                        handler *file,
+                                        ulonglong table_flags,
                                         const Column_derived_attributes
                                               *derived_attr)
                                         const
@@ -3112,7 +3079,8 @@ bool Type_handler_numeric::
        Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
-                                        column_definition_type_t type,
+                                        handler *file,
+                                        ulonglong table_flags,
                                         const Column_derived_attributes
                                               *derived_attr)
                                         const
@@ -3125,7 +3093,8 @@ bool Type_handler_newdecimal::
        Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
-                                        column_definition_type_t type,
+                                        handler *file,
+                                        ulonglong table_flags,
                                         const Column_derived_attributes
                                               *derived_attr)
                                         const
@@ -3139,29 +3108,28 @@ bool Type_handler_bit::
        Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
-                                        column_definition_type_t type,
+                                        handler *file,
+                                        ulonglong table_flags,
                                         const Column_derived_attributes
                                               *derived_attr)
                                         const
 {
   def->charset= &my_charset_numeric;
-  return def->prepare_stage1_bit(thd, mem_root);
+  return def->prepare_stage1_bit(thd, mem_root, file, table_flags);
 }
 
 bool Type_handler_typelib::
        Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
-                                        column_definition_type_t type,
+                                        handler *file,
+                                        ulonglong table_flags,
                                         const Column_derived_attributes
                                               *derived_attr)
                                         const
 {
-  return def->prepare_charset_for_string(thd,
-                                         thd->variables.
-                                           character_set_collations,
-                                         derived_attr) ||
-         def->prepare_stage1_typelib(thd, mem_root, type);
+  return def->prepare_charset_for_string(derived_attr) ||
+         def->prepare_stage1_typelib(thd, mem_root, file, table_flags);
 }
 
 
@@ -3169,16 +3137,14 @@ bool Type_handler_string_result::
        Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
-                                        column_definition_type_t type,
+                                        handler *file,
+                                        ulonglong table_flags,
                                         const Column_derived_attributes
                                               *derived_attr)
                                         const
 {
-  return def->prepare_charset_for_string(thd,
-                                         thd->variables.
-                                           character_set_collations,
-                                         derived_attr) ||
-         def->prepare_stage1_string(thd, mem_root);
+  return def->prepare_charset_for_string(derived_attr) ||
+         def->prepare_stage1_string(thd, mem_root, file, table_flags);
 }
 
 
@@ -3201,7 +3167,7 @@ bool Type_handler_general_purpose_string::
     Change character sets for all varchar/char/text columns,
     but do not touch varbinary/binary/blob columns.
   */
-  if (!(def->flags & CONTEXT_COLLATION_FLAG) && defcs != &my_charset_bin)
+  if (defcs != &my_charset_bin)
     def->charset= bulk_alter_attr->alter_table_convert_to_charset();
   return false;
 };
@@ -3376,7 +3342,7 @@ bool Type_handler_set::
   if (def->prepare_stage2_typelib("SET", FIELDFLAG_BITFIELD, &dup_count))
     return true;
   /* Check that count of unique members is not more then 64 */
-  if (def->typelib()->count - dup_count > sizeof(longlong)*8)
+  if (def->interval->count - dup_count > sizeof(longlong)*8)
   {
      my_error(ER_TOO_BIG_SET, MYF(0), def->field_name.str);
      return true;
@@ -3389,11 +3355,10 @@ bool Type_handler_bit::
                                         handler *file,
                                         ulonglong table_flags) const
 {
-  if (!(table_flags & HA_CAN_BIT_FIELD))
-  {
-    def->pack_flag|= FIELDFLAG_TREAT_BIT_AS_CHAR;
-    def->create_length_to_internal_length_bit();
-  }
+  /* 
+    We have sql_field->pack_flag already set here, see
+    mysql_prepare_create_table().
+  */
   return false;
 }
 
@@ -3589,66 +3554,20 @@ Type_handler_string_result::calc_key_length(const Column_definition &def) const
 
 uint Type_handler_enum::calc_key_length(const Column_definition &def) const
 {
-  DBUG_ASSERT(def.typelib());
-  return get_enum_pack_length(def.typelib()->count);
+  DBUG_ASSERT(def.interval);
+  return get_enum_pack_length(def.interval->count);
 }
 
 uint Type_handler_set::calc_key_length(const Column_definition &def) const
 {
-  DBUG_ASSERT(def.typelib());
-  return get_set_pack_length(def.typelib()->count);
+  DBUG_ASSERT(def.interval);
+  return get_set_pack_length(def.interval->count);
 }
 
 uint Type_handler_blob_common::calc_key_length(const Column_definition &def) const
 {
   return 0;
 }
-
-/*************************************************************************/
-
-// SELECT 1 INTO spvar;
-my_var *Type_handler::make_outvar(THD *thd,
-                                  const Lex_ident_sys_st &name,
-                                  const sp_rcontext_addr &addr,
-                                  sp_head *sphead,
-                                  bool validate_only) const
-{
-  if (validate_only) // e.g. EXPLAIN SELECT
-    return nullptr;
-  return new (thd->mem_root) my_var_sp(name, addr, this, sphead);
-}
-
-
-// SELECT 1 INTO spvar.field;
-my_var *Type_handler::make_outvar_field(THD *thd,
-                                        const Lex_ident_sys_st &name,
-                                        const sp_rcontext_addr &addr,
-                                        const Lex_ident_sys_st &field,
-                                        sp_head *sphead,
-                                        bool validate_only) const
-{
-  my_printf_error(ER_UNKNOWN_ERROR,
-                  "'%s' is not a row variable", MYF(0), name.str);
-  return nullptr;
-}
-
-
-/*
-  SELECT 1 INTO spvar(arg);
-  SELECT 1 INTO spvar(arg).field;
-*/
-my_var *Type_handler::make_outvar_lvalue_functor(THD *thd,
-                                                 const Lex_ident_sys_st &name,
-                                                 Item *arg,
-                                                 const Lex_ident_sys &opt_field,
-                                                 sp_head *sphead,
-                                                 const sp_rcontext_addr &addr,
-                                                 bool validate_only) const
-{
-  raise_bad_data_type_for_functor(Qualified_ident(name));
-  return nullptr;
-}
-
 
 /*************************************************************************/
 Field *Type_handler::make_and_init_table_field(MEM_ROOT *root,
@@ -4017,14 +3936,13 @@ Field *Type_handler_enum::make_table_field(MEM_ROOT *root,
                                            const Type_all_attributes &attr,
                                            TABLE_SHARE *share) const
 {
-  const Type_typelib_attributes typelib_attr(attr.type_extra_attributes());
-  DBUG_ASSERT(typelib_attr.typelib());
+  const TYPELIB *typelib= attr.get_typelib();
+  DBUG_ASSERT(typelib);
   return new (root)
          Field_enum(addr.ptr(), attr.max_length,
                     addr.null_ptr(), addr.null_bit(),
                     Field::NONE, name,
-                    get_enum_pack_length(typelib_attr.typelib()->count),
-                    typelib_attr.typelib(),
+                    get_enum_pack_length(typelib->count), typelib,
                     attr.collation);
 }
 
@@ -4036,14 +3954,13 @@ Field *Type_handler_set::make_table_field(MEM_ROOT *root,
                                           TABLE_SHARE *share) const
 
 {
-  const Type_typelib_attributes typelib_attr(attr.type_extra_attributes());
-  DBUG_ASSERT(typelib_attr.typelib());
+  const TYPELIB *typelib= attr.get_typelib();
+  DBUG_ASSERT(typelib);
   return new (root)
          Field_set(addr.ptr(), attr.max_length,
                    addr.null_ptr(), addr.null_bit(),
                    Field::NONE, name,
-                   get_enum_pack_length(typelib_attr.typelib()->count),
-                   typelib_attr.typelib(),
+                   get_enum_pack_length(typelib->count), typelib,
                    attr.collation);
 }
 
@@ -4055,22 +3972,12 @@ Field *Type_handler_float::make_schema_field(MEM_ROOT *root, TABLE *table,
                                              const ST_FIELD_INFO &def) const
 {
   LEX_CSTRING name= def.name();
-  uint32 len= def.char_length();
-  uint dec= NOT_FIXED_DEC;
-  if (len >= 100)
-  {
-    dec= def.decimal_scale();
-    uint prec= def.decimal_precision();
-    /* Field defined in sql_show.cc with decimals */
-    len= my_decimal_precision_to_length(prec, dec, 0);
-  }
-
   return new (root)
-    Field_float(addr.ptr(), len,
-                addr.null_ptr(), addr.null_bit(),
-                Field::NONE, &name,
-                dec,
-                0/*zerofill*/, def.unsigned_flag());
+     Field_float(addr.ptr(), def.char_length(),
+                  addr.null_ptr(), addr.null_bit(),
+                  Field::NONE, &name,
+                  (uint8) NOT_FIXED_DEC,
+                  0/*zerofill*/, def.unsigned_flag());
 }
 
 
@@ -4129,7 +4036,7 @@ Field *Type_handler_varchar::make_schema_field(MEM_ROOT *root, TABLE *table,
   {
     Field *field= new (root)
       Field_blob(addr.ptr(), addr.null_ptr(), addr.null_bit(), Field::NONE,
-                 &name, table->s, 4, system_charset_info_for_i_s);
+                 &name, table->s, 4, system_charset_info);
     if (field)
       field->field_length= octet_length;
     return field;
@@ -4141,7 +4048,7 @@ Field *Type_handler_varchar::make_schema_field(MEM_ROOT *root, TABLE *table,
                       HA_VARCHAR_PACKLENGTH(octet_length),
                       addr.null_ptr(), addr.null_bit(),
                       Field::NONE, &name,
-                      table->s, system_charset_info_for_i_s);
+                      table->s, system_charset_info);
   }
 }
 
@@ -4344,6 +4251,13 @@ Type_handler_bit::Bit_decimal_notation_int_digits_by_nbits(uint nbits)
 
 /*************************************************************************/
 
+void Type_handler_row::Item_update_null_value(Item *item) const
+{
+  DBUG_ASSERT(0);
+  item->null_value= true;
+}
+
+
 void Type_handler_time_common::Item_update_null_value(Item *item) const
 {
   MYSQL_TIME ltime;
@@ -4458,6 +4372,12 @@ int Type_handler_bool::Item_save_in_field(Item *item, Field *field,
 
 /***********************************************************************/
 
+bool Type_handler_row::
+set_comparator_func(THD *thd, Arg_comparator *cmp) const
+{
+  return cmp->set_cmp_func_row(thd);
+}
+
 bool Type_handler_int_result::
 set_comparator_func(THD *thd, Arg_comparator *cmp) const
 {
@@ -4562,7 +4482,7 @@ bool Type_handler_string_result::
        ... AND a='oe'
     to
        ... AND 'oe' COLLATE utf8_german2_ci='oe'
-    it will be evaluated to TRUE and removed from the condition,
+    it will be evalulated to TRUE and removed from the condition,
     so the overall query will be simplified to:
 
       SELECT * FROM t1 WHERE a='oe' COLLATE utf8_german2_ci;
@@ -4597,6 +4517,12 @@ bool Type_handler_numeric::
 
 
 /*************************************************************************/
+
+Item_cache *
+Type_handler_row::Item_get_cache(THD *thd, const Item *item) const
+{
+  return new (thd->mem_root) Item_cache_row(thd);
+}
 
 Item_cache *
 Type_handler_int_result::Item_get_cache(THD *thd, const Item *item) const
@@ -4684,8 +4610,8 @@ Type_handler_timestamp_common::create_item_copy(THD *thd, Item *item) const
 
 /*
   This method handles YEAR and BIT data types.
-  It does not switch the data type to DECIMAL on a
-  unsigned_flag mismatch. This important for combinations
+  It does not switch the data type to DECIAMAL on a
+  unsigned_flag mistmatch. This important for combinations
   like YEAR+NULL, BIT+NULL.
 */
 bool Type_handler_int_result::
@@ -4805,8 +4731,8 @@ bool Type_handler_typelib::
   const TYPELIB *typelib= NULL;
   for (uint i= 0; i < nitems; i++)
   {
-    const Type_extra_attributes eattr2= items[i]->type_extra_attributes();
-    if (eattr2.typelib())
+    const TYPELIB *typelib2;
+    if ((typelib2= items[i]->get_typelib()))
     {
       if (typelib)
       {
@@ -4818,13 +4744,11 @@ bool Type_handler_typelib::
         handler->set_handler(&type_handler_varchar);
         return func->aggregate_attributes_string(func_name, items, nitems);
       }
-      typelib= eattr2.typelib();
+      typelib= typelib2;
     }
   }
   DBUG_ASSERT(typelib); // There must be at least one typelib
-  Type_extra_attributes *eattr_addr= func->type_extra_attributes_addr();
-  if (eattr_addr)
-    eattr_addr->set_typelib(typelib);
+  func->set_typelib(typelib);
   return func->aggregate_attributes_string(func_name, items, nitems);
 }
 
@@ -4889,7 +4813,6 @@ bool Type_handler_timestamp_common::
   func->aggregate_attributes_temporal(MAX_DATETIME_WIDTH, items, nitems);
   return false;
 }
-
 
 /*************************************************************************/
 
@@ -5251,7 +5174,7 @@ bool Type_handler_int_result::Item_val_bool(Item *item) const
     and we need to evaluate the boolean value from the integer value
     as a fall-back method. To avoid the assert, let's hide the IS_COND flag.
     Eventually we'll need to implement val_bool() in all Item descendants and
-    remove the trick with flags. This change would be too risky for 10.6.
+    remove the trick with flags. This change would be too ricky for 10.6.
     Let's do it in a later version.
   */
   item_base_t flags= item->base_flags;
@@ -5268,7 +5191,7 @@ bool Type_handler_temporal_result::Item_val_bool(Item *item) const
 
 bool Type_handler_string_result::Item_val_bool(Item *item) const
 {
-  return item->val_bool_from_str();
+  return item->val_real() != 0.0;
 }
 
 
@@ -5299,41 +5222,6 @@ bool Type_handler::Item_func_hybrid_field_type_get_date_with_warn(THD *thd,
                            item->field_name_or_null(), ltime, mode);
   Item_func_hybrid_field_type_get_date(thd, item, &warn, ltime, mode);
   return ltime->time_type < 0;
-}
-
-
-Type_ref_null
-Type_handler::Item_func_hybrid_field_type_val_ref(THD *thd,
-                                             Item_func_hybrid_field_type *item)
-                                                                          const
-{
-  return Type_ref_null();
-}
-
-
-void Type_handler::
-raise_bad_data_type_for_functor(const Qualified_ident &ident,
-                                const Lex_ident_sys &field) const
-{
-  DBUG_ASSERT(ident.defined_parts() > 0 && ident.defined_parts() <= 3);
-
-  char param[MYSQL_ERRMSG_SIZE];
-  size_t used= 0;
-  for (uint i= 0; i < ident.defined_parts() && used < sizeof(param); i++)
-  {
-    used+= my_snprintf(param + used,
-                       sizeof(param) - used,
-                       "%sQ.",
-                       ident.part(i).str);
-  }
-  used-= 1;
-  if (!field.str)
-    my_snprintf(param + used, sizeof(param) - used, "(..)");
-  else
-    my_snprintf(param + used, sizeof(param) - used, "(..).%sQ", field.str);
-
-  my_error(ER_ILLEGAL_PARAMETER_DATA_TYPE_FOR_OPERATION, MYF(0),
-          name().ptr(), param);
 }
 
 
@@ -5885,6 +5773,14 @@ bool Type_handler_string_result::
 }
 
 
+longlong Type_handler_row::
+           Item_func_between_val_int(Item_func_between *func) const
+{
+  DBUG_ASSERT(0);
+  func->null_value= true;
+  return 0;
+}
+
 longlong Type_handler_string_result::
            Item_func_between_val_int(Item_func_between *func) const
 {
@@ -5952,6 +5848,12 @@ cmp_item *Type_handler_string_result::make_cmp_item(THD *thd,
                                                     CHARSET_INFO *cs) const
 {
   return new (thd->mem_root) cmp_item_sort_string(cs);
+}
+
+cmp_item *Type_handler_row::make_cmp_item(THD *thd,
+                                                    CHARSET_INFO *cs) const
+{
+  return new (thd->mem_root) cmp_item_row;
 }
 
 cmp_item *Type_handler_time_common::make_cmp_item(THD *thd,
@@ -6040,6 +5942,13 @@ Type_handler_timestamp_common::make_in_vector(THD *thd,
 }
 
 
+in_vector *Type_handler_row::make_in_vector(THD *thd,
+                                            const Item_func_in *func,
+                                            uint nargs) const
+{
+  return new (thd->mem_root) in_row(thd, nargs, 0);
+}
+
 /***************************************************************************/
 
 bool Type_handler_string_result::
@@ -6109,6 +6018,14 @@ bool Type_handler_temporal_result::
                                                     1U << (uint) TIME_RESULT);
 }
 
+
+bool Type_handler_row::Item_func_in_fix_comparator_compatible_types(THD *thd,
+                                              Item_func_in *func) const
+{
+  return func->compatible_types_row_bisection_possible() ?
+         func->fix_for_row_comparison_using_bisection(thd) :
+         func->fix_for_row_comparison_using_cmp_items(thd);
+}
 
 /***************************************************************************/
 
@@ -6379,6 +6296,32 @@ bool Type_handler_timestamp_common::
 /***************************************************************************/
 
 /**
+  Get a string representation of the Item value.
+  See sql_type.h for details.
+*/
+String *Type_handler_row::
+          print_item_value(THD *thd, Item *item, String *str) const
+{
+  CHARSET_INFO *cs= thd->variables.character_set_client;
+  StringBuffer<STRING_BUFFER_USUAL_SIZE> val(cs);
+  str->append(STRING_WITH_LEN("ROW("));
+  for (uint i= 0 ; i < item->cols(); i++)
+  {
+    if (i > 0)
+      str->append(',');
+    Item *elem= item->element_index(i);
+    String *tmp= elem->type_handler()->print_item_value(thd, elem, &val);
+    if (tmp)
+      str->append(*tmp);
+    else
+      str->append(NULL_clex_str);
+  }
+  str->append(')');
+  return str;
+}
+
+
+/**
   Get a string representation of the Item value,
   using the character string format with its charset and collation, e.g.
     latin1 'string' COLLATE latin1_german2_ci
@@ -6413,18 +6356,6 @@ String *Type_handler_numeric::
           print_item_value(THD *thd, Item *item, String *str) const
 {
   return item->val_str(str);
-}
-
-
-String *Type_handler_bool::
-          print_item_value(THD *thd, Item *item, String *str) const
-{
-  DBUG_ASSERT(item->fixed());
-  bool b=item->val_bool();
-  if (item->null_value)
-    return 0;
-  str->set_int(b, item->unsigned_flag, item->collation.collation);
-  return str;
 }
 
 
@@ -6481,6 +6412,14 @@ String *Type_handler_timestamp_common::
 
 
 /***************************************************************************/
+
+bool Type_handler_row::
+       Item_func_round_fix_length_and_dec(Item_func_round *item) const
+{
+  DBUG_ASSERT(0);
+  return false;
+}
+
 
 bool Type_handler_int_result::
        Item_func_round_fix_length_and_dec(Item_func_round *item) const
@@ -6592,6 +6531,14 @@ bool Type_handler_string_result::
 
 /***************************************************************************/
 
+bool Type_handler_row::
+       Item_func_int_val_fix_length_and_dec(Item_func_int_val *item) const
+{
+  DBUG_ASSERT(0);
+  return false;
+}
+
+
 bool Type_handler_int_result::
        Item_func_int_val_fix_length_and_dec(Item_func_int_val *item) const
 {
@@ -6696,6 +6643,14 @@ bool Type_handler_string_result::
 
 /***************************************************************************/
 
+bool Type_handler_row::
+       Item_func_abs_fix_length_and_dec(Item_func_abs *item) const
+{
+  DBUG_ASSERT(0);
+  return false;
+}
+
+
 bool Type_handler_int_result::
        Item_func_abs_fix_length_and_dec(Item_func_abs *item) const
 {
@@ -6745,6 +6700,14 @@ bool Type_handler_string_result::
 
 
 /***************************************************************************/
+
+bool Type_handler_row::
+       Item_func_neg_fix_length_and_dec(Item_func_neg *item) const
+{
+  DBUG_ASSERT(0);
+  return false;
+}
+
 
 bool Type_handler_int_result::
        Item_func_neg_fix_length_and_dec(Item_func_neg *item) const
@@ -6953,6 +6916,14 @@ bool Type_handler::
 
 /***************************************************************************/
 
+bool Type_handler_row::
+       Item_func_plus_fix_length_and_dec(Item_func_plus *item) const
+{
+  DBUG_ASSERT(0);
+  return true;
+}
+
+
 bool Type_handler_int_result::
        Item_func_plus_fix_length_and_dec(Item_func_plus *item) const
 {
@@ -6994,6 +6965,14 @@ bool Type_handler_string_result::
 
 /***************************************************************************/
 
+bool Type_handler_row::
+       Item_func_minus_fix_length_and_dec(Item_func_minus *item) const
+{
+  DBUG_ASSERT(0);
+  return true;
+}
+
+
 bool Type_handler_int_result::
        Item_func_minus_fix_length_and_dec(Item_func_minus *item) const
 {
@@ -7035,6 +7014,14 @@ bool Type_handler_string_result::
 
 /***************************************************************************/
 
+bool Type_handler_row::
+       Item_func_mul_fix_length_and_dec(Item_func_mul *item) const
+{
+  DBUG_ASSERT(0);
+  return true;
+}
+
+
 bool Type_handler_int_result::
        Item_func_mul_fix_length_and_dec(Item_func_mul *item) const
 {
@@ -7075,6 +7062,14 @@ bool Type_handler_string_result::
 }
 
 /***************************************************************************/
+
+bool Type_handler_row::
+       Item_func_div_fix_length_and_dec(Item_func_div *item) const
+{
+  DBUG_ASSERT(0);
+  return true;
+}
+
 
 bool Type_handler_int_result::
        Item_func_div_fix_length_and_dec(Item_func_div *item) const
@@ -7116,6 +7111,14 @@ bool Type_handler_string_result::
 }
 
 /***************************************************************************/
+
+bool Type_handler_row::
+       Item_func_mod_fix_length_and_dec(Item_func_mod *item) const
+{
+  DBUG_ASSERT(0);
+  return true;
+}
+
 
 bool Type_handler_int_result::
        Item_func_mod_fix_length_and_dec(Item_func_mod *item) const
@@ -7239,37 +7242,6 @@ Item_divisor_precision_increment_with_seconds(const Item *item) const
          TIME_SECOND_PART_DIGITS;
 }
 
-
-/***************************************************************************/
-Type_std_attributes
-Type_handler::Item_type_std_attributes_generic(const Item *item) const
-{
-  return *item;
-}
-
-
-Type_std_attributes
-Type_handler_int_result::Item_type_std_attributes_generic(const Item *item)
-                                                                      const
-{
-  /*
-    Item_int is a special item, it optimizes it's metadata to have
-    shorter strings in string contexts: CONCAT(1) -> VARCHAR(1).
-    When we want to convert its attributes to a generic non-optimized
-    Item (e.g. for subselect), we need to add one extra character for
-    a possible sign.
-    The code below works both for optimized Item_int and other item kinds.
-    It evaluates max_length from the precision and the optinal sign length.
-  */
-  DBUG_ASSERT(item->decimals == 0);
-  uint32 max_length= item->decimal_precision() + (item->unsigned_flag ? 0 : 1);
-  return Type_std_attributes(
-           Type_numeric_attributes(max_length, 0, item->unsigned_flag),
-           item->collation);
-  return *item;
-}
-
-
 /***************************************************************************/
 
 decimal_digits_t Type_handler_string_result::Item_decimal_precision(const Item *item) const
@@ -7311,7 +7283,7 @@ decimal_digits_t Type_handler_long_ge0::Item_decimal_precision(const Item *item)
   DBUG_ASSERT(item->max_length);
   DBUG_ASSERT(!item->decimals);
   /*
-    Unlike in Type_handler_long, Type_handler_long_ge does
+    Unlinke in Type_handler_long, Type_handler_long_ge does
     not reserve one character for the sign. All max_length
     characters are digits.
   */
@@ -7443,79 +7415,105 @@ Type_handler_olddecimal::type_handler_for_union(const Item *item) const
 
 /***************************************************************************/
 
-void Type_handler::set_null_if_needed(const Item *item, st_value *value) const
+bool Type_handler::check_null(const Item *item, st_value *value) const
 {
   if (item->null_value)
+  {
     value->m_type= DYN_COL_NULL;
+    return true;
+  }
+  return false;
 }
 
 
-void Type_handler_null::
+bool Type_handler_null::
        Item_save_in_value(THD *thd, Item *item, st_value *value) const
 {
   value->m_type= DYN_COL_NULL;
+  return true;
 }
 
 
-void Type_handler_int_result::
+bool Type_handler_row::
+       Item_save_in_value(THD *thd, Item *item, st_value *value) const
+{
+  DBUG_ASSERT(0);
+  value->m_type= DYN_COL_NULL;
+  return true;
+}
+
+
+bool Type_handler_int_result::
        Item_save_in_value(THD *thd, Item *item, st_value *value) const
 {
   value->m_type= item->unsigned_flag ? DYN_COL_UINT : DYN_COL_INT;
   value->value.m_longlong= item->val_int();
-  set_null_if_needed(item, value);
+  return check_null(item, value);
 }
 
 
-void Type_handler_real_result::
+bool Type_handler_real_result::
        Item_save_in_value(THD *thd, Item *item, st_value *value) const
 {
   value->m_type= DYN_COL_DOUBLE;
   value->value.m_double= item->val_real();
-  set_null_if_needed(item, value);
+  return check_null(item, value);
 }
 
 
-void Type_handler_decimal_result::
+bool Type_handler_decimal_result::
        Item_save_in_value(THD *thd, Item *item, st_value *value) const
 {
   value->m_type= DYN_COL_DECIMAL;
   my_decimal *dec= item->val_decimal(&value->m_decimal);
   if (dec != &value->m_decimal && !item->null_value)
     my_decimal2decimal(dec, &value->m_decimal);
-  set_null_if_needed(item, value);
+  return check_null(item, value);
 }
 
 
-void Type_handler_string_result::
+bool Type_handler_string_result::
        Item_save_in_value(THD *thd, Item *item, st_value *value) const
 {
   value->m_type= DYN_COL_STRING;
   String *str= item->val_str(&value->m_string);
   if (str != &value->m_string && !item->null_value)
     value->m_string.set(str->ptr(), str->length(), str->charset());
-  set_null_if_needed(item, value);
+  return check_null(item, value);
 }
 
 
-void Type_handler_temporal_with_date::
+bool Type_handler_temporal_with_date::
        Item_save_in_value(THD *thd, Item *item, st_value *value) const
 {
   value->m_type= DYN_COL_DATETIME;
   item->get_date(thd, &value->value.m_time,
                  Datetime::Options(thd, TIME_FRAC_NONE));
-  set_null_if_needed(item, value);
+  return check_null(item, value);
 }
 
 
-void Type_handler_time_common::
+bool Type_handler_time_common::
        Item_save_in_value(THD *thd, Item *item, st_value *value) const
 {
   value->m_type= DYN_COL_DATETIME;
   item->get_time(thd, &value->value.m_time);
-  set_null_if_needed(item, value);
+  return check_null(item, value);
 }
 
 /***************************************************************************/
+
+bool Type_handler_row::
+  Item_param_set_from_value(THD *thd,
+                            Item_param *param,
+                            const Type_all_attributes *attr,
+                            const st_value *val) const
+{
+  DBUG_ASSERT(0);
+  param->set_null();
+  return true;
+}
+
 
 bool Type_handler_real_result::
   Item_param_set_from_value(THD *thd,
@@ -7785,108 +7783,37 @@ Item *Type_handler_temporal_with_date::
 }
 
 
-/***************************************************************************/
-
-/*
-  Check if in a predicate like:
-
-     WHERE timestamp_arg=datetime_arg
-
-  we can replace DATETIME comparison to TIMESTAMP comparison,
-  to avoid slow TIMESTAMP->DATETIME data type conversion per row.
-
-  TIMESTAMP and DATETIME are compared as DATETIME historically.
-  This may be inefficient, because involves a conversion of
-  the TIMESTAMP side to DATETIME per row.
-  The conversion happens in Timezone::gmt_sec_to_TIME().
-  E.g. in case of the SYSTEM timezone, it calls localtime_r(),
-  which is known to be slow.
-
-  It's generally not possible to compare TIMESTAMP and DATETIME
-  as TIMESTAMP without behavior change, because:
-  - DATETIME has a wider range.
-  - Two different TIMESTAMP values can have the same DATETIME value
-    near the "fall back" DST change, as well as for leap seconds.
-  - There are DATETIME gaps during the "spring forward" DST switch.
-
-  However, if the DATETIME side is a constant, then we can compare
-  it to TIMESTAMP as TIMESTAMP in many cases. The DATETIME argument can
-  be converted once to TIMESTAMP, so no data type conversion will
-  happen per row. This is faster for big tables.
-
-  The comparison predicates must satisfy the following conditions:
-    1. There must be a proper data type combination:
-       - other must be of the TIMESTAMP data type
-       - subject must be of the DATETIME data type,
-         or can convert to DATETIME.
-    2. subject must be a constant
-    3. subject must convert to TIMESTAMP safely
-       (without time zone anomalies near its value)
-*/
-
-Item *
-Type_handler_datetime_common::convert_item_for_comparison(
-                                                        THD *thd,
-                                                        Item *subject,
-                                                        const Item *counterpart)
-                                                        const
+Item *Type_handler_row::
+  make_const_item_for_comparison(THD *thd, Item *item, const Item *cmp) const
 {
-  if (!dynamic_cast<const Type_handler_timestamp_common*>(
-                                                 counterpart->type_handler()) ||
-      !subject->type_handler()->can_return_date())
-    return subject;
-
-  struct Count_handler : public Internal_error_handler
-  {
-    uint hit= 0;
-    bool handle_condition(THD *thd,
-                          uint sql_errno,
-                          const char *sqlstate,
-                          Sql_condition::enum_warning_level *level,
-                          const char *msg,
-                          Sql_condition **cond_hdl) override
-    {
-      if (sql_errno == ER_TRUNCATED_WRONG_VALUE ||
-          sql_errno == ER_DATETIME_FUNCTION_OVERFLOW)
-      {
-        hit++;
-        return *level >= Sql_condition::WARN_LEVEL_WARN;
-      }
-      return false;
-    }
-  } cnt_handler;
-
-  // Suppress and count warnings
-  thd->push_internal_handler(&cnt_handler);
-  Datetime dt(thd, subject, Timestamp::DatetimeOptions(thd));
-  thd->pop_internal_handler();
-
-  if (!dt.is_valid_datetime() || cnt_handler.hit)
+  if (item->type() == Item::ROW_ITEM && cmp->type() == Item::ROW_ITEM)
   {
     /*
-      SQL NULL DATETIME, or a DATETIME with zeros in YYYYMMDD,
-      or warnings during DATETIME evaluation.
+      Substitute constants only in Item_row's. Don't affect other Items
+      with ROW_RESULT (eg Item_singlerow_subselect).
+
+      For such Items more optimal is to detect if it is constant and replace
+      it with Item_row. This would optimize queries like this:
+      SELECT * FROM t1 WHERE (a,b) = (SELECT a,b FROM t2 LIMIT 1);
     */
-    return subject;
+    Item_row *item_row= (Item_row*) item;
+    Item_row *comp_item_row= (Item_row*) cmp;
+    uint col;
+    /*
+      If item and comp_item are both Item_row's and have same number of cols
+      then process items in Item_row one by one.
+      We can't ignore NULL values here as this item may be used with <=>, in
+      which case NULL's are significant.
+    */
+    DBUG_ASSERT(item->result_type() == cmp->result_type());
+    DBUG_ASSERT(item_row->cols() == comp_item_row->cols());
+    col= item_row->cols();
+    while (col-- > 0)
+      resolve_const_item(thd, item_row->addr(col),
+                         comp_item_row->element_index(col));
   }
-
-  // '0000-00-00 00:00:00' is a special valid MariaDB TIMESTAMP value
-  if (!non_zero_date(dt.get_mysql_time()))
-    return new (thd->mem_root) Item_timestamp_literal(thd,
-                                          Timestamp_or_zero_datetime::zero(),
-                                          subject->datetime_precision(thd));
-
-  const Timeval_null tv(thd->safe_timeval_replacement_for_nonzero_datetime(dt));
-  if (tv.is_null())
-    return subject; // Time zone anomalies found around "dt"
-
-  // Should be safe to convert
-  const Timestamp_or_zero_datetime ts(Timestamp(tv.to_timeval()));
-  return new (thd->mem_root) Item_timestamp_literal(thd,
-                                          ts,
-                                          subject->datetime_precision(thd));
+  return NULL;
 }
-
 
 /***************************************************************************/
 
@@ -7900,10 +7827,11 @@ static const char* item_name(Item *a, String *str)
 }
 
 
-static void wrong_precision_error(uint errcode, Item *a, uint maximum)
+static void wrong_precision_error(uint errcode, Item *a,
+                                  ulonglong number, uint maximum)
 {
   StringBuffer<1024> buf(system_charset_info);
-  my_error(errcode, MYF(0), item_name(a, &buf), maximum);
+  my_error(errcode, MYF(0), number, item_name(a, &buf), maximum);
 }
 
 
@@ -7922,12 +7850,12 @@ bool get_length_and_scale(ulonglong length, ulonglong decimals,
 {
   if (length > (ulonglong) max_precision)
   {
-    wrong_precision_error(ER_TOO_BIG_PRECISION, a, max_precision);
+    wrong_precision_error(ER_TOO_BIG_PRECISION, a, length, max_precision);
     return 1;
   }
   if (decimals > (ulonglong) max_scale)
   {
-    wrong_precision_error(ER_TOO_BIG_SCALE, a, max_scale);
+    wrong_precision_error(ER_TOO_BIG_SCALE, a, decimals, max_scale);
     return 1;
   }
 
@@ -7970,7 +7898,8 @@ Item *Type_handler_time_common::
 {
   if (attr.decimals() > MAX_DATETIME_PRECISION)
   {
-    wrong_precision_error(ER_TOO_BIG_PRECISION, item, MAX_DATETIME_PRECISION);
+    wrong_precision_error(ER_TOO_BIG_PRECISION, item, attr.decimals(),
+                          MAX_DATETIME_PRECISION);
     return 0;
   }
   return new (thd->mem_root)
@@ -7984,7 +7913,8 @@ Item *Type_handler_datetime_common::
 {
   if (attr.decimals() > MAX_DATETIME_PRECISION)
   {
-    wrong_precision_error(ER_TOO_BIG_PRECISION, item, MAX_DATETIME_PRECISION);
+    wrong_precision_error(ER_TOO_BIG_PRECISION, item, attr.decimals(),
+                          MAX_DATETIME_PRECISION);
     return 0;
   }
   return new (thd->mem_root)
@@ -8062,18 +7992,13 @@ Item *Type_handler_interval_DDhhmmssff::
 {
   if (attr.decimals() > MAX_DATETIME_PRECISION)
   {
-    wrong_precision_error(ER_TOO_BIG_PRECISION, item, MAX_DATETIME_PRECISION);
+    wrong_precision_error(ER_TOO_BIG_PRECISION, item, attr.decimals(),
+                          MAX_DATETIME_PRECISION);
     return 0;
   }
   return new (thd->mem_root) Item_interval_DDhhmmssff_typecast(thd, item,
                                                                (uint)
                                                                attr.decimals());
-}
-
-/***************************************************************************/
-Item_literal *Type_handler::create_boolean_false_item(THD *thd) const
-{
-  return new (thd->mem_root) Item_int(thd, 0);
 }
 
 /***************************************************************************/
@@ -8224,6 +8149,19 @@ void Type_handler_typelib::Item_param_set_param_func(Item_param *param,
 
 
 /***************************************************************************/
+
+Field *Type_handler_row::
+  make_table_field_from_def(TABLE_SHARE *share, MEM_ROOT *mem_root,
+                            const LEX_CSTRING *name,
+                            const Record_addr &rec, const Bit_addr &bit,
+                            const Column_definition_attributes *attr,
+                            uint32 flags) const
+{
+  DBUG_ASSERT(attr->length == 0);
+  DBUG_ASSERT(f_maybe_null(attr->pack_flag));
+  return new (mem_root) Field_row(rec.ptr(), name);
+}
+
 
 Field *Type_handler_olddecimal::
   make_table_field_from_def(TABLE_SHARE *share, MEM_ROOT *mem_root,
@@ -8631,7 +8569,7 @@ Field *Type_handler_enum::
   return new (mem_root)
     Field_enum(rec.ptr(), (uint32) attr->length, rec.null_ptr(), rec.null_bit(),
                attr->unireg_check, name, attr->pack_flag_to_pack_length(),
-               attr->typelib(), attr->charset);
+               attr->interval, attr->charset);
 }
 
 
@@ -8645,7 +8583,7 @@ Field *Type_handler_set::
   return new (mem_root)
     Field_set(rec.ptr(), (uint32) attr->length, rec.null_ptr(), rec.null_bit(),
               attr->unireg_check, name, attr->pack_flag_to_pack_length(),
-              attr->typelib(), attr->charset);
+              attr->interval, attr->charset);
 }
 
 
@@ -8907,43 +8845,6 @@ Type_handler_temporal_result::Item_const_eq(const Item_const *a,
           b->get_type_all_attributes_from_const()->decimals);
 }
 
-
-/*
-  @brief
-    Check if two constant timestamp values are identical.
-
-  @return
-    true <=> *a and *b are identical
-*/
-bool
-Type_handler_timestamp_common::Item_const_eq(const Item_const *a,
-                                             const Item_const *b,
-                                             bool binary_cmp) const
-{
-  /*
-    In a condition like:
-      WHERE IF(a='2001-01-01 00:00:00',1,0)=IF(a='2001-01-01 00:00:00',1,0);
-    Item_func_eq::fix_length_and_dec() calls get_timestamp_item_for_comparison()
-    which replaces string literals '2001-01-01 00:00:00' with
-    Item_timestamp_literal instances, which later during remove_eq_conds()
-    come to here.
-
-    Note, Item_param bound to TIMESTAMP is not detected here,
-    so trivial conditions of this kind do not get eliminated:
-      DECLARE ts TIMESTAMP DEFAULT (SELECT MAX(ts_col) FROM t1);
-      EXECUTE IMMEDIATE
-        'SELECT * FROM t1 WHERE COALESCE(ts_col,?)<=>COALESCE(ts_col,?)'
-         USING ts, ts;
-    It should be fixed by MDEV-14271.
-  */
-  const Item_timestamp_literal *ta, *tb;
-  if (!(ta= dynamic_cast<const Item_timestamp_literal*>(a)) ||
-      !(tb= dynamic_cast<const Item_timestamp_literal*>(b)))
-    return false;
-  return !ta->value().cmp(tb->value());
-}
-
-
 /***************************************************************************/
 
 const Type_handler *
@@ -8954,6 +8855,14 @@ Type_handler_hex_hybrid::cast_to_int_type_handler() const
 
 
 /***************************************************************************/
+
+bool Type_handler_row::Item_eq_value(THD *thd, const Type_cmp_attributes *attr,
+                                     Item *a, Item *b) const
+{
+  DBUG_ASSERT(0);
+  return false;
+}
+
 
 bool Type_handler_int_result::Item_eq_value(THD *thd,
                                             const Type_cmp_attributes *attr,
@@ -9033,48 +8942,41 @@ bool Type_handler_string_result::union_element_finalize(Item_type_holder* item) 
 
 /***************************************************************************/
 
-
-const Type_handler *
-Type_handler_var_string::type_handler_for_implicit_upgrade() const
+void Type_handler_var_string::
+  Column_definition_implicit_upgrade(Column_definition *c) const
 {
-  return &type_handler_varchar;
-}
-
-
-void Type_handler::
-  Column_definition_implicit_upgrade_to_this(Column_definition *old) const
-{
-  old->set_handler(this);
+  // Change old VARCHAR to new VARCHAR
+  c->set_handler(&type_handler_varchar);
 }
 
 
 void Type_handler_time_common::
-  Column_definition_implicit_upgrade_to_this(Column_definition *old) const
+  Column_definition_implicit_upgrade(Column_definition *c) const
 {
   if (opt_mysql56_temporal_format)
-    old->set_handler(&type_handler_time2);
+    c->set_handler(&type_handler_time2);
   else
-    old->set_handler(&type_handler_time);
+    c->set_handler(&type_handler_time);
 }
 
 
 void Type_handler_datetime_common::
-  Column_definition_implicit_upgrade_to_this(Column_definition *old) const
+  Column_definition_implicit_upgrade(Column_definition *c) const
 {
   if (opt_mysql56_temporal_format)
-    old->set_handler(&type_handler_datetime2);
+    c->set_handler(&type_handler_datetime2);
   else
-    old->set_handler(&type_handler_datetime);
+    c->set_handler(&type_handler_datetime);
 }
 
 
 void Type_handler_timestamp_common::
-  Column_definition_implicit_upgrade_to_this(Column_definition *old) const
+  Column_definition_implicit_upgrade(Column_definition *c) const
 {
   if (opt_mysql56_temporal_format)
-    old->set_handler(&type_handler_timestamp2);
+    c->set_handler(&type_handler_timestamp2);
   else
-    old->set_handler(&type_handler_timestamp);
+    c->set_handler(&type_handler_timestamp);
 }
 
 
@@ -9447,6 +9349,13 @@ bool Type_handler_datetime_common::validate_implicit_default_value(THD *thd,
 
 /***************************************************************************/
 
+const Name & Type_handler_row::default_value() const
+{
+  DBUG_ASSERT(0);
+  static Name def(STRING_WITH_LEN(""));
+  return def;
+}
+
 const Name & Type_handler_numeric::default_value() const
 {
   static Name def(STRING_WITH_LEN("0"));
@@ -9706,13 +9615,4 @@ int initialize_data_type_plugin(void *plugin_)
     return 1;
   }
   return 0;
-}
-
-
-Item *Type_handler::make_typedef_constructor_item(THD *thd,
-                                                  const sp_type_def &def,
-                                                  List<Item> *arg_list) const
-{
-  my_error(ER_WRONG_ARGUMENTS, MYF(0), def.get_name().str);
-  return nullptr;
 }

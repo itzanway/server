@@ -1,8 +1,5 @@
 --source include/have_innodb.inc
 
---source include/test_db_charset_latin1.inc
-
-
 #
 # Bug 10838
 # Insert causes warnings for no default values and corrupts tables
@@ -290,7 +287,7 @@ drop table t1;
 
 create table t1 (a int);
 insert into t1 values(-1);
-alter table t1 add b int default 1, add c int default -1, add d int default (1+1), add e timestamp not null default now();
+alter table t1 add b int default 1, add c int default -1, add d int default (1+1), add e timestamp;
 select a,b,c,d,e from t1;
 insert into t1 values(10,10,10,10,0);
 alter table t1 add f int default (1+1+1) null, add g int default (1+1+1+1) not null,add h int default (2+2+2+2);
@@ -320,7 +317,7 @@ create or replace table t1 (a int default b, b int default a);
 show create table t1;
 
 --echo #
---echo # Referring to other columns
+--echo # Refering to other columns
 --echo #
 
 create or replace table t1 (a int default 1, b int default a);
@@ -1923,7 +1920,7 @@ INSERT INTO t2 VALUES (1),(2),(3),(2);
 INSERT INTO t1 SELECT a FROM t2 ON DUPLICATE KEY UPDATE a=DEFAULT;
 SELECT * FROM t1 order by a;
 truncate table t1;
-# effectively it is DEFAULT
+# efectively it is DEFALT
 INSERT INTO t1 SELECT a FROM t2 ON DUPLICATE KEY UPDATE a=IGNORE;
 SELECT * FROM t1 order by a;
 DROP TABLE t1,t2;
@@ -1949,7 +1946,7 @@ select * from t1 order by a;
 drop table t1;
 
 --echo #
---echo # DEFAULT & PS adoption
+--echo # DEVAULT & PS adoption
 --echo #
 
 
@@ -2196,5 +2193,3 @@ execute stmt using default;
 drop table t1;
 
 --echo # End of 10.6 test
-
---source include/test_db_charset_restore.inc

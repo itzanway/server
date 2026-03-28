@@ -2,7 +2,6 @@
 #define PARTITION_ELEMENT_INCLUDED
 
 /* Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
-   Copyright (c) 2021, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -111,12 +110,14 @@ public:
   ha_rows part_max_rows;
   ha_rows part_min_rows;
   longlong range_value;
-  Lex_ident_partition partition_name;
+  const char *partition_name;
+  const char *tablespace_name;
   struct st_ddl_log_memory_entry *log_entry;
   const char* part_comment;
   const char* data_file_name;
   const char* index_file_name;
   handlerton *engine_type;
+  LEX_CSTRING connect_string;
   enum partition_state part_state;
   uint16 nodegroup_id;
   bool has_null_value;
@@ -126,30 +127,29 @@ public:
   bool empty;
   elem_type_enum type;
 
-  engine_option_value *option_list;           // create options for partition
-  ha_table_option_struct *option_struct_part; // structure with parsed options
-
   partition_element()
   : part_max_rows(0), part_min_rows(0), range_value(0),
+    partition_name(NULL), tablespace_name(NULL),
     log_entry(NULL), part_comment(NULL),
     data_file_name(NULL), index_file_name(NULL),
-    engine_type(NULL), part_state(PART_NORMAL),
+    engine_type(NULL), connect_string(null_clex_str), part_state(PART_NORMAL),
     nodegroup_id(UNDEF_NODEGROUP), has_null_value(FALSE),
     signed_flag(FALSE), max_value(FALSE),
     id(UINT_MAX32),
     empty(true),
-    type(CONVENTIONAL),
-    option_list(NULL), option_struct_part(NULL)
+    type(CONVENTIONAL)
   {}
   partition_element(partition_element *part_elem)
   : part_max_rows(part_elem->part_max_rows),
     part_min_rows(part_elem->part_min_rows),
-    range_value(0),
+    range_value(0), partition_name(NULL),
+    tablespace_name(part_elem->tablespace_name),
     log_entry(NULL),
     part_comment(part_elem->part_comment),
     data_file_name(part_elem->data_file_name),
     index_file_name(part_elem->index_file_name),
     engine_type(part_elem->engine_type),
+    connect_string(null_clex_str),
     part_state(part_elem->part_state),
     nodegroup_id(part_elem->nodegroup_id),
     has_null_value(FALSE),
@@ -157,9 +157,7 @@ public:
     max_value(part_elem->max_value),
     id(part_elem->id),
     empty(part_elem->empty),
-    type(CONVENTIONAL),
-    option_list(part_elem->option_list),
-    option_struct_part(part_elem->option_struct_part)
+    type(CONVENTIONAL)
   {}
   ~partition_element() = default;
 

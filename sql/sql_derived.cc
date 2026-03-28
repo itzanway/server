@@ -41,8 +41,6 @@ typedef bool (*dt_processor)(THD *thd, LEX *lex, TABLE_LIST *derived);
 static bool mysql_derived_init(THD *thd, LEX *lex, TABLE_LIST *derived);
 static bool mysql_derived_prepare(THD *thd, LEX *lex, TABLE_LIST *derived);
 static bool mysql_derived_optimize(THD *thd, LEX *lex, TABLE_LIST *derived);
-static bool mysql_derived_optimize_stage2(THD *thd, LEX *lex,
-            TABLE_LIST *derived);
 static bool mysql_derived_merge(THD *thd, LEX *lex, TABLE_LIST *derived);
 static bool mysql_derived_create(THD *thd, LEX *lex, TABLE_LIST *derived);
 static bool mysql_derived_fill(THD *thd, LEX *lex, TABLE_LIST *derived);
@@ -60,7 +58,6 @@ dt_processor processors[]=
   &mysql_derived_create,
   &mysql_derived_fill,
   &mysql_derived_reinit,
-  &mysql_derived_optimize_stage2
 };
 
 /*
@@ -112,8 +109,8 @@ mysql_handle_derived(LEX *lex, uint phases)
       {
         if (!cursor->is_view_or_derived() && phases == DT_MERGE_FOR_INSERT)
           continue;
-        uint allowed_phases= (cursor->is_merged_derived() ? DT_PHASES_MERGE :
-                              DT_PHASES_MATERIALIZE | DT_MERGE_FOR_INSERT);
+        uint8 allowed_phases= (cursor->is_merged_derived() ? DT_PHASES_MERGE :
+                               DT_PHASES_MATERIALIZE | DT_MERGE_FOR_INSERT);
         /*
           Skip derived tables to which the phase isn't applicable.
           TODO: mark derived at the parse time, later set it's type
@@ -173,7 +170,7 @@ bool
 mysql_handle_single_derived(LEX *lex, TABLE_LIST *derived, uint phases)
 {
   bool res= FALSE;
-  uint allowed_phases= (derived->is_merged_derived() ? DT_PHASES_MERGE :
+  uint8 allowed_phases= (derived->is_merged_derived() ? DT_PHASES_MERGE :
                          DT_PHASES_MATERIALIZE);
   DBUG_ENTER("mysql_handle_single_derived");
   DBUG_PRINT("enter", ("phases: 0x%x  allowed: 0x%x  alias: '%s'",
@@ -391,7 +388,7 @@ bool mysql_derived_merge(THD *thd, LEX *lex, TABLE_LIST *derived)
       make_leaves_list(thd, dt_select->leaf_tables, derived, TRUE, 0);
     } 
 
-    derived->nested_join= thd->calloc<NESTED_JOIN>(1);
+    derived->nested_join= (NESTED_JOIN*) thd->calloc(sizeof(NESTED_JOIN));
     if (!derived->nested_join)
     {
       res= TRUE;
@@ -659,7 +656,7 @@ bool mysql_derived_prepare(THD *thd, LEX *lex, TABLE_LIST *derived)
 {
   SELECT_LEX_UNIT *unit= derived->get_unit();
   SELECT_LEX *first_select;
-  bool res= FALSE, keep_row_order, distinct;
+  bool res= FALSE, keep_row_order;
   DBUG_ENTER("mysql_derived_prepare");
   DBUG_PRINT("enter", ("unit: %p  table_list: %p  alias: '%s'",
                        unit, derived, derived->alias.str));
@@ -705,7 +702,7 @@ bool mysql_derived_prepare(THD *thd, LEX *lex, TABLE_LIST *derived)
   {
     /* 
       Here 'derived' is either a non-recursive table reference to a recursive
-      with table or a recursive table reference to a recursive table whose
+      with table or a recursive table reference to a recursvive table whose
       specification has been already prepared (a secondary recursive table
       reference.
     */ 
@@ -858,26 +855,18 @@ bool mysql_derived_prepare(THD *thd, LEX *lex, TABLE_LIST *derived)
     goto exit;
 
   /*
-    Temp table is created so that it honors if UNION without ALL is to be
+    Temp table is created so that it hounours if UNION without ALL is to be 
     processed
 
-    We pass as 'distinct' parameter in any of the above cases
-
-    1) It is an UNION and the last part of an union is distinct (as
-       thus the final temporary table should not contain duplicates).
-    2) It is not an UNION and the unit->distinct flag is set. This is the
-       case for WHERE A IN (...).
-
-    Note that the underlying query will also control distinct condition.
+    As 'distinct' parameter we always pass FALSE (0), because underlying
+    query will control distinct condition by itself. Correct test of
+    distinct underlying query will be is_unit_op &&
+    !unit->union_distinct->next_select() (i.e. it is union and last distinct
+    SELECT is last SELECT of UNION).
   */
   thd->create_tmp_table_for_derived= TRUE;
-  distinct= (unit->first_select()->next_select() ?
-             unit->union_distinct && !unit->union_distinct->next_select() :
-             unit->distinct);
-
   if (!(derived->table) &&
-      derived->derived_result->create_result_table(thd, &unit->types,
-                                                   distinct,
+      derived->derived_result->create_result_table(thd, &unit->types, FALSE,
                                                    (first_select->options |
                                                    thd->variables.option_bits |
                                                    TMP_TABLE_ALL_COLUMNS),
@@ -886,14 +875,6 @@ bool mysql_derived_prepare(THD *thd, LEX *lex, TABLE_LIST *derived)
                                                    0))
   { 
     thd->create_tmp_table_for_derived= FALSE;
-    if (thd->is_error())
-    {
-      /*
-        EOM error, or attempted to a create a table with a Field
-        of a not allowed data type, e.g. SYS_REFCURSOR.
-      */
-      res= true;
-    }
     goto exit;
   }
   thd->create_tmp_table_for_derived= FALSE;
@@ -905,6 +886,22 @@ bool mysql_derived_prepare(THD *thd, LEX *lex, TABLE_LIST *derived)
     first_select->mark_as_belong_to_derived(derived);
 
   derived->dt_handler= derived->find_derived_handler(thd);
+  if (derived->dt_handler)
+  {
+    char query_buff[4096];
+    String derived_query(query_buff, sizeof(query_buff), thd->charset());
+    derived_query.length(0);
+    derived->derived->print(&derived_query,
+                            enum_query_type(QT_VIEW_INTERNAL | 
+                                            QT_ITEM_ORIGINAL_FUNC_NULLIF |
+                                            QT_PARSABLE));
+    if (!thd->make_lex_string(&derived->derived_spec,
+                              derived_query.ptr(), derived_query.length()))
+    {
+      delete derived->dt_handler;
+      derived->dt_handler= NULL;
+    }
+  }
 
 exit:
   /* Hide "Unknown column" or "Unknown function" error */
@@ -933,7 +930,6 @@ exit:
       if (derived->table && derived->table->s->tmp_table)
         free_tmp_table(thd, derived->table);
       delete derived->derived_result;
-      derived->derived_result= NULL;
     }
   }
   else
@@ -1075,43 +1071,6 @@ err:
 }
 
 
-/*
-  @brief
-    Call JOIN::optimize_stage2_and_finish() for all child selects that use
-    two-phase optimization.
-*/
-
-static
-bool mysql_derived_optimize_stage2(THD *thd, LEX *lex, TABLE_LIST *derived)
-{
-  SELECT_LEX_UNIT *unit= derived->get_unit();
-  SELECT_LEX *first_select= unit->first_select();
-  SELECT_LEX *save_current_select= lex->current_select;
-  bool res= FALSE;
-
-  if (derived->merged || unit->is_unit_op())
-  {
-    /*
-      Two-phase join optimization is not applicable for merged derived tables
-      and UNIONs.
-    */
-    return FALSE;
-  }
-
-  lex->current_select= first_select;
-  /* Same condition as in mysql_derived_optimize(): */
-  if (unit->derived && !derived->is_merged_derived())
-  {
-    JOIN *join= first_select->join;
-    if (join && join->optimization_state == JOIN::OPTIMIZATION_PHASE_1_DONE)
-      res= join->optimize_stage2_and_finish();
-  }
-
-  lex->current_select= save_current_select;
-  return res;
-}
-
-
 /**
   Actually create result table for a materialized derived table/view.
 
@@ -1161,7 +1120,7 @@ bool mysql_derived_create(THD *thd, LEX *lex, TABLE_LIST *derived)
 
 void TABLE_LIST::register_as_derived_with_rec_ref(With_element *rec_elem)
 {
-  rec_elem->derived_with_rec_ref.insert(this, &this->next_with_rec_ref);
+  rec_elem->derived_with_rec_ref.link_in_list(this, &this->next_with_rec_ref);
   is_derived_with_recursive_reference= true;
   get_unit()->uncacheable|= UNCACHEABLE_DEPENDENT;
 }
@@ -1402,9 +1361,6 @@ bool mysql_derived_reinit(THD *thd, LEX *lex, TABLE_LIST *derived)
                        (derived->alias.str ? derived->alias.str : "<NULL>"),
                        derived->get_unit()));
   st_select_lex_unit *unit= derived->get_unit();
-
-  if (derived->original_names_source)
-    unit->first_select()->set_item_list_names(derived->original_names);
 
   // reset item names to that saved after wildcard expansion in JOIN::prepare
   for(st_select_lex *sl= unit->first_select(); sl; sl= sl->next_select())

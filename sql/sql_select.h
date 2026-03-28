@@ -24,13 +24,15 @@
   classes to use when handling where clause
 */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface			/* gcc class implementation */
+#endif
+
 #include "procedure.h"
 #include "sql_array.h"                        /* Array */
 #include "records.h"                          /* READ_RECORD */
 #include "opt_range.h"                /* SQL_SELECT, QUICK_SELECT_I */
 #include "filesort.h"
-#include "sql_delete.h"
-#include "sql_update.h"
 
 #include "cset_narrowing.h"
 
@@ -60,7 +62,7 @@ typedef struct keyuse_t {
     !NULL - This KEYUSE was created from an equality that was wrapped into
             an Item_func_trig_cond. This means the equality (and validity of 
             this KEYUSE element) can be turned on and off. The on/off state 
-            is indicated by the pointed value:
+            is indicted by the pointed value:
               *cond_guard == TRUE <=> equality condition is on
               *cond_guard == FALSE <=> equality condition is off
 
@@ -284,7 +286,7 @@ typedef struct st_join_table {
   st_join_table *first_inner;   /**< first inner table for including outerjoin */
   bool           found;         /**< true after all matches or null complement */
   bool           not_null_compl;/**< true before null complement is added      */
-  st_join_table *last_inner;    /**< last table for embedding outer join */
+  st_join_table *last_inner;    /**< last table table for embedding outer join */
   st_join_table *first_upper;  /**< first inner table for embedding outer join */
   st_join_table *first_unmatched; /**< used for optimization purposes only     */
 
@@ -311,6 +313,11 @@ typedef struct st_join_table {
   Table_access_tracker *jbuf_tracker;
   Time_and_counter_tracker *jbuf_unpack_tracker;
   Counter_tracker  *jbuf_loops_tracker;
+  /* 
+    Bitmap of TAB_INFO_* bits that encodes special line for EXPLAIN 'Extra'
+    column, or 0 if there is no info.
+  */
+  uint          packed_info;
 
   //  READ_RECORD::Setup_func materialize_table;
   READ_RECORD::Setup_func read_first_record;
@@ -323,6 +330,7 @@ typedef struct st_join_table {
   */  
   READ_RECORD::Setup_func save_read_first_record;/* to save read_first_record */
   READ_RECORD::Read_func save_read_record;/* to save read_record.read_record */
+  double	worst_seeks;
   key_map	const_keys;			/**< Keys with constant part */
   key_map	checked_keys;			/**< Keys checked in find_best */
   key_map	needed_reg;
@@ -342,22 +350,9 @@ typedef struct st_join_table {
   */
   double        read_time;
   
-  /* Copy of POSITION::records_init, set by get_best_combination() */
-  double        records_init;
-
   /* Copy of POSITION::records_read, set by get_best_combination() */
   double        records_read;
-
-  /* Copy of POSITION::records_out, set by get_best_combination() */
-  double        records_out;
-
-  /*
-    Copy of POSITION::read_time, set by get_best_combination(). The cost of
-    accessing the table in course of the join execution.
-  */
-  double        join_read_time;
-  double        join_loops;
-
+  
   /* The selectivity of the conditions that can be pushed to the table */ 
   double        cond_selectivity;  
   
@@ -366,42 +361,7 @@ typedef struct st_join_table {
     
   double        partial_join_cardinality;
 
-  /* set by estimate_scan_time() */
-  double        cached_scan_and_compare_time;
-  ALL_READ_COST cached_scan_and_compare_cost;
-
-  /* Used with force_index_join */
-  ALL_READ_COST cached_forced_index_cost;
-  /*
-    dependent is the table that must be read before the current one
-    Used for example with STRAIGHT_JOIN or outer joins
-  */
-  table_map	dependent;
-  /*
-    Normally `key_dependent` is the same as `dependent` but may also include
-    tables that are used to compare with a key field in a simple expression
-    (see add_key_field()).
-    It is only used to prune searches in best_extension_by_limited_search()
-  */
-  table_map     key_dependent;
-   /*
-    Tables that have expression in their attached condition clause that depends
-    on this table.
-  */
-  table_map     related_tables;
-
-  /*
-    Bitmap of TAB_INFO_* bits that encodes special line for EXPLAIN 'Extra'
-    column, or 0 if there is no info.
-  */
-  uint          packed_info;
-  /*
-    This is set for embedded sub queries.  It contains the table map of
-    the outer expression, like 'A' in the following expression:
-    WHERE A in (SELECT ....)
-  */
-  table_map     embedded_dependent;
-
+  table_map	dependent,key_dependent;
   /*
      1 - use quick select
      2 - use "Range checked for each record"
@@ -414,21 +374,17 @@ typedef struct st_join_table {
   uint          index;
   uint		status;				///< Save status for cache
   uint		used_fields;
-  uint          cached_covering_key;            // Set by estimate_scan_time()
   ulong         used_fieldlength;
   ulong         max_used_fieldlength;
   uint          used_blobs;
   uint          used_null_fields;
   uint          used_uneven_bit_fields;
-  uint          cached_forced_index;
-  enum join_type type, cached_forced_index_type;
+  enum join_type type;
   /* If first key part is used for any key in 'key_dependent' */
   bool          key_start_dependent;
   bool          cached_eq_ref_table,eq_ref_table;
   bool          shortcut_for_distinct;
   bool          sorted;
-  bool          cached_pfs_batch_update;
-
   /* 
     If it's not 0 the number stored this field indicates that the index
     scan has been chosen to access the table data and we expect to scan 
@@ -557,13 +513,6 @@ typedef struct st_join_table {
   /** HAVING condition for checking prior saving a record into tmp table*/
   Item *having;
 
-  /**
-    Ordering to be produced when doing full index scan.
-    Important for vector indexes, set by test_if_skip_sort_order() when it
-    decides to use full index to produce rows in order.
-  */
-  ORDER *full_index_scan_order;
-
   /** TRUE <=> remove duplicates on this table. */
   bool distinct;
 
@@ -595,11 +544,10 @@ typedef struct st_join_table {
   Range_rowid_filter_cost_info *range_rowid_filter_info;
   /* Rowid filter to be used when joining this join table */
   Rowid_filter *rowid_filter;
-  /* True if the plan requires a rowid filter and it's not built yet */
-  bool need_to_build_rowid_filter;
+  /* Becomes true just after the used range filter has been built / filled */
+  bool is_rowid_filter_built;
 
-  bool build_range_rowid_filter();
-  void clear_range_rowid_filter();
+  bool build_range_rowid_filter_if_needed();
 
   void cleanup();
   inline bool is_using_loose_index_scan()
@@ -711,11 +659,11 @@ typedef struct st_join_table {
   {
     return (is_hash_join_key_no(key) ? hj_key : table->key_info+key);
   }
-  void estimate_scan_time();
-  double get_examined_rows();
+  double scan_time();
+  ha_rows get_examined_rows();
   bool preread_init();
 
-  bool pfs_batch_update();
+  bool pfs_batch_update(JOIN *join);
 
   bool is_sjm_nest() { return MY_TEST(bush_children); }
   
@@ -806,12 +754,6 @@ public:
 
   virtual void mark_used() = 0;
 
-  /*
-     Returns TRUE if the strategy is disabled by either optimizer switch
-     setting or an optimizer hint
-  */
-  virtual bool is_disabled() const { return false; }
-
   virtual ~Semi_join_strategy_picker() = default;
 };
 
@@ -832,15 +774,12 @@ class Duplicate_weedout_picker : public Semi_join_strategy_picker
   table_map dupsweedout_tables;
   
   bool is_used;
-
-  bool disabled; // See comment for Semi_join_strategy_picker::is_disabled()
 public:
   void set_empty() override
   {
     dupsweedout_tables= 0;
     first_dupsweedout_table= MAX_TABLES;
     is_used= FALSE;
-    disabled= FALSE;
   }
   void set_from_prev(POSITION *prev) override;
   
@@ -851,13 +790,10 @@ public:
                  double *record_count,
                  double *read_time,
                  table_map *handled_fanout,
-                 sj_strategy_enum *strategy,
+                 sj_strategy_enum *stratey,
                  POSITION *loose_scan_pos) override;
 
   void mark_used() override { is_used= TRUE; }
-
-  bool is_disabled() const override { return disabled; }
-
   friend void fix_semijoin_strategies_for_picked_join_order(JOIN *join);
 };
 
@@ -1012,40 +948,12 @@ public:
   /* The table that's put into join order */
   JOIN_TAB *table;
 
-  /* number of rows that will be read from the table */
-  double records_init;
-
   /*
-    Number of expected rows before applying the full WHERE clause. This
-    includes rowid filter and table->cond_selectivity if
-    use_cond_selectivity > 1. See matching_candidates_in_table().
-    Should normally not be used.
-  */
-  double records_read;
-
-  /*
-    The number of rows after applying the WHERE clause.
-
-    Same as the "fanout": number of output rows that will be produced (after
+    The "fanout": number of output rows that will be produced (after
     pushed down selection condition is applied) per each row combination of
     previous tables.
-
-    In best_access_path() it is set to the minimum number of accepted rows
-    for any possible access method or filter:
-
-    records_out takes into account table->cond_selectivity, the WHERE clause
-    related to this table calculated in calculate_cond_selectivity_for_table(),
-    and the used rowid filter.
-
-    After best_access_path() records_out it does not yet take into
-    account the part of the WHERE clause involving preceding tables.
-    records_out is updated in best_extension_by_limited_search() to take these
-    tables into account by calling table_after_join_selectivity().
   */
-  double records_out;
-
-  /* Values from prev_record_reads call for EQ_REF table*/
-  double identical_keys;
+  double records_read;
 
   /* The selectivity of the pushed down conditions */
   double cond_selectivity;
@@ -1053,17 +961,11 @@ public:
   /* 
     Cost accessing the table in course of the entire complete join execution,
     i.e. cost of one access method use (e.g. 'range' or 'ref' scan ) times 
-    number the access method will be invoked and checking the WHERE clause.
+    number the access method will be invoked.
   */
   double read_time;
 
-  /* record combinations before this table */
-  double loops;
-
   double    prefix_record_count;
-
-  /* Cost for the join prefix */
-  double prefix_cost;
 
   /*
     NULL  -  'index' or 'range' or 'index_merge' or 'ALL' access is used.
@@ -1108,7 +1010,9 @@ public:
   LooseScan_picker          loosescan_picker;
   Sj_materialization_picker sjmat_picker;
 
-  ulonglong refills;
+  /* Cumulative cost and record count for the join prefix */
+  Cost_estimate prefix_cost;
+
   /*
     Current optimization state: Semi-join strategy to be used for this
     and preceding join tables.
@@ -1125,21 +1029,18 @@ public:
 
   /* Type of join (EQ_REF, REF etc) */
   enum join_type type;
-
   /*
     Valid only after fix_semijoin_strategies_for_picked_join_order() call:
     if sj_strategy!=SJ_OPT_NONE, this is the number of subsequent tables that
     are covered by the specified semi-join strategy
   */
   uint n_sj_tables;
-  uint forced_index;                    // If force_index() is used
+
   /*
     TRUE <=> join buffering will be used. At the moment this is based on
     *very* imprecise guesses made in best_access_path().
   */
   bool use_join_buffer;
-  /* True if we can use join_buffer together with firstmatch */
-  bool firstmatch_with_join_buf;
   POSITION();
 };
 
@@ -1170,7 +1071,7 @@ class Pushdown_query;
 
   @details
     The result records are obtained on the put_record() call.
-    The aggregation process is determined by the write_func, it could be:
+    The aggrgation process is determined by the write_func, it could be:
       end_write          Simply store all records in tmp table.
       end_write_group    Perform grouping using join->group_fields,
                          records are expected to be sorted.
@@ -1299,7 +1200,7 @@ public:
   */
   TABLE    **table;
   /**
-    The table which has an index that allows to produce the required ordering.
+    The table which has an index that allows to produce the requried ordering.
     A special value of 0x1 means that the ordering will be produced by
     passing 1st non-const table to filesort(). NULL means no such table exists.
   */
@@ -1376,13 +1277,6 @@ public:
   bool     hash_join;
   bool	   do_send_rows;
   table_map const_table_map;
-
-  /*
-    Tables one is allowed to use in choose_plan(). Either all or
-    set to a map of the tables in the materialized semi-join nest
-  */
-  table_map allowed_tables;
-
   /** 
     Bitmap of semijoin tables that the current partial plan decided
     to materialize and access by lookups
@@ -1410,14 +1304,10 @@ public:
   table_map select_list_used_tables;
   /* Tables that has HA_NON_COMPARABLE_ROWID (does not support rowid) set */
   table_map not_usable_rowid_map;
-  /* Tables that have a possiblity to use EQ_ref */
-  table_map eq_ref_tables;
-
-  table_map allowed_top_level_tables;
-  ha_rows  send_records,found_records, accepted_rows;
+  ha_rows  send_records,found_records,join_examined_rows, accepted_rows;
 
   /*
-    LIMIT for the JOIN operation. When not using aggregation or DISTINCT, this
+    LIMIT for the JOIN operation. When not using aggregation or DISITNCT, this 
     is the same as select's LIMIT clause specifies.
     Note that this doesn't take sql_calc_found_rows into account.
   */
@@ -1446,13 +1336,10 @@ public:
 
   /* Finally picked QEP. This is result of join optimization */
   POSITION *best_positions;
-  POSITION *sort_positions;    /* Temporary space used by greedy_search */
-  POSITION *next_sort_position; /* Next free space in sort_positions */
 
   Pushdown_query *pushdown_query;
   JOIN_TAB *original_join_tab;
   uint	   original_table_count;
-  uint	   sort_space;
 
 /******* Join optimization state members start *******/
   /*
@@ -1479,21 +1366,12 @@ public:
   */
   table_map cur_sj_inner_tables;
 
-  /* A copy of thd->variables.optimizer_prune_level */
-  uint prune_level;
-  /*
-    If true, do extra heuristic pruning (enabled based on
-    optimizer_extra_pruning_depth)
-  */
-  bool extra_heuristic_pruning;
 #ifndef DBUG_OFF
   void dbug_verify_sj_inner_tables(uint n_positions) const;
   int dbug_join_tab_array_size;
 #endif
 
-  /*
-    We also maintain a stack of join optimization states in join->positions[]
-  */
+  /* We also maintain a stack of join optimization states in * join->positions[] */
 /******* Join optimization state members end *******/
 
   /*
@@ -1511,7 +1389,7 @@ public:
   double   best_read;
   /*
     Estimated result rows (fanout) of the join operation. If this is a subquery
-    that is reexecuted multiple times, this value includes the estimated # of
+    that is reexecuted multiple times, this value includes the estiamted # of
     reexecutions. This value is equal to the multiplication of all
     join->positions[i].records_read of a JOIN.
   */
@@ -1616,7 +1494,7 @@ public:
 
   bool need_tmp; 
   bool hidden_group_fields;
-  /* TRUE if there was full cleanup of the JOIN */
+  /* TRUE if there was full cleunap of the JOIN */
   bool cleaned;
   DYNAMIC_ARRAY keyuse;
   Item::cond_result cond_value, having_value;
@@ -1625,8 +1503,6 @@ public:
     (set in make_join_statistics())
   */
   bool impossible_where; 
-
-  bool prepared;
 
   /*
     All fields used in the query processing.
@@ -1658,13 +1534,13 @@ public:
   COND *conds;                            // ---"---
   Item *conds_history;                    // store WHERE for explain
   COND *outer_ref_cond;       ///<part of conds containing only outer references
-  COND *pseudo_bits_cond;     // part of conds containing special bits
+  COND *pseudo_bits_cond;     // part of conds containing special bita
   TABLE_LIST *tables_list;           ///<hold 'tables' parameter of mysql_select
   List<TABLE_LIST> *join_list;       ///< list of joined tables in reverse order
   COND_EQUAL *cond_equal;
   COND_EQUAL *having_equal;
   /*
-    Constant condition computed during optimization, but evaluated during
+    Constant codition computed during optimization, but evaluated during
     join execution. Typically expensive conditions that should not be
     evaluated at optimization time.
   */
@@ -1722,6 +1598,8 @@ public:
   /* SJM nests that are executed with SJ-Materialization strategy */
   List<SJ_MATERIALIZATION_INFO> sjm_info_list;
 
+  /** TRUE <=> ref_pointer_array is set to items3. */
+  bool set_group_rpa;
   /** Exec time only: TRUE <=> current group has been sent */
   bool group_sent;
   /**
@@ -1745,13 +1623,6 @@ public:
     the optimize_cond() call in JOIN::optimize_inner() method.
   */
   bool is_orig_degenerated;
-
-  /*
-    DELETE and UPDATE may have an imitation JOIN, which is not NULL,
-    but has NULL join_tab. In such cases we may want to access
-    sql_cmd_dml::scanned_rows to choose optimization strategies.
-  */
-  Sql_cmd_dml *sql_cmd_dml;
 
   JOIN(THD *thd_arg, List<Item> &fields_arg, ulonglong select_options_arg,
        select_result *result_arg)
@@ -1784,24 +1655,25 @@ public:
   int optimize();
   int optimize_inner();
   int optimize_stage2();
-  int optimize_stage2_and_finish();
   bool build_explain();
   int reinit();
   int init_execution();
-  int exec() __attribute__((warn_unused_result));
-  int exec_inner();
+  void exec();
+
+  void exec_inner();
   bool prepare_result(List<Item> **columns_list);
   int destroy();
   void restore_tmp();
   bool alloc_func_list();
   bool flatten_subqueries();
   bool optimize_unflattened_subqueries();
+  bool optimize_constant_subqueries();
   bool make_range_rowid_filters();
   bool init_range_rowid_filters();
   bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_fields,
 			  bool before_group_by);
 
-  /// Initializes a slice, see comments for ref_ptrs above.
+  /// Initialzes a slice, see comments for ref_ptrs above.
   Ref_ptr_array ref_ptr_array_slice(size_t slice_num)
   {
     size_t slice_sz= select_lex->ref_pointer_array.size() / 5U;
@@ -1827,7 +1699,7 @@ public:
     memcpy(dest, src, src_arr.size() * src_arr.element_size());
   }
 
-  /// Overwrites 'ref_ptrs' and remembers the source as 'current'.
+  /// Overwrites 'ref_ptrs' and remembers the the source as 'current'.
   void set_items_ref_array(Ref_ptr_array src_arr)
   {
     copy_ref_ptr_array(ref_ptrs, src_arr);
@@ -1889,7 +1761,11 @@ public:
                            ulonglong curr_space,
                            ulonglong needed_space);
   void set_allowed_join_cache_types();
-  bool is_allowed_hash_join_access(const TABLE *table);
+  bool is_allowed_hash_join_access()
+  { 
+    return MY_TEST(allowed_join_cache_types & JOIN_CACHE_HASHED_BIT) &&
+           max_allowed_join_cache_level > JOIN_CACHE_HASHED_BIT;
+  }
   /*
     Check if we need to create a temporary table.
     This has to be done if all tables are not already read (const tables)
@@ -1945,12 +1821,6 @@ public:
   bool transform_in_predicates_into_in_subq(THD *thd);
 
   bool optimize_upper_rownum_func();
-  void calc_allowed_top_level_tables(SELECT_LEX *lex);
-  table_map get_allowed_nj_tables(uint idx);
-  bool propagate_dependencies(JOIN_TAB *stat);
-  void update_key_dependencies();
-  table_map *export_table_dependencies() const;
-  void restore_table_dependencies(table_map *orig_dep_array);
 
 private:
   /**
@@ -1991,7 +1861,6 @@ private:
   bool prepare_sum_aggregators(THD *thd,Item_sum **func_ptr,
                                bool need_distinct);
   bool transform_in_predicates_into_equalities(THD *thd);
-  bool transform_date_conds_into_sargable();
   bool transform_all_conds_and_on_exprs(THD *thd,
                                         Item_transformer transformer);
   bool transform_all_conds_and_on_exprs_in_join_list(THD *thd,
@@ -2291,7 +2160,7 @@ int join_read_key2(THD *thd, struct st_join_table *tab, TABLE *table,
                    struct st_table_ref *table_ref);
 
 bool handle_select(THD *thd, LEX *lex, select_result *result,
-                   ulonglong setup_tables_done_option);
+                   ulong setup_tables_done_option);
 bool mysql_select(THD *thd, TABLE_LIST *tables, List<Item> &list,
                   COND *conds, uint og_num, ORDER *order, ORDER *group,
                   Item *having, ORDER *proc_param, ulonglong select_type, 
@@ -2426,40 +2295,11 @@ public:
   */
   bool open();
 
-  /*
-    Set pre-allocated field count to real field count
-    This can be used when the real number of fields used fields
-    are less than what was estimated at init
-  */
-  void fix_field_count()
-  {
-    m_alloced_field_count= s->fields;
-  }
-
   void set_all_fields_to_null()
   {
     for (uint i= 0; i < s->fields; i++)
       field[i]->set_null();
   }
-
-  /*
-    Run the event handler for all fields in the table
-    in the range [start, end-1].
-  */
-  void expr_event_handler(THD *thd, expr_event_t event, uint start, uint end)
-  {
-    DBUG_ASSERT(start <= end);
-    DBUG_ASSERT(end <= s->fields);
-    for (uint i= start; i < end; i++)
-      field[i]->expr_event_handler(thd, event);
-  }
-
-  // Run the event handler for all fields in the table
-  void expr_event_handler(THD *thd, expr_event_t event)
-  {
-    expr_event_handler(thd, event, 0, s->fields);
-  }
-
   /**
     Set all fields from a compatible item list.
     The number of fields in "this" must be equal to the number
@@ -2531,7 +2371,7 @@ create_virtual_tmp_table(THD *thd, List<Spvar_definition> &field_list)
     is enabled, we now enable "simulate_out_of_memory". This effectively
     makes table->init() fail on OOM inside multi_alloc_root().
     This is done to test that ~Virtual_tmp_table() called from the "delete"
-    below correctly handles OOM.
+    below correcly handles OOM.
   */
   DBUG_EXECUTE_IF("simulate_create_virtual_tmp_table_out_of_memory",
                   DBUG_SET("+d,simulate_out_of_memory"););
@@ -2585,7 +2425,7 @@ inline Item * or_items(THD *thd, Item* cond, Item *item)
 {
   return (cond ? (new (thd->mem_root) Item_cond_or(thd, cond, item)) : item);
 }
-bool choose_plan(JOIN *join, table_map join_tables, TABLE_LIST *emb_sjm_nest);
+bool choose_plan(JOIN *join, table_map join_tables);
 void optimize_wo_join_buffering(JOIN *join, uint first_tab, uint last_tab, 
                                 table_map last_remaining_tables, 
                                 bool first_alt, uint no_jbuf_before,
@@ -2671,24 +2511,13 @@ bool instantiate_tmp_table(TABLE *table, KEY *keyinfo,
                            TMP_ENGINE_COLUMNDEF **recinfo,
                            ulonglong options);
 bool open_tmp_table(TABLE *table);
+double prev_record_reads(const POSITION *positions, uint idx, table_map found_ref);
 void fix_list_after_tbl_changes(SELECT_LEX *new_parent, List<TABLE_LIST> *tlist);
+double get_tmp_table_lookup_cost(THD *thd, double row_count, uint row_size);
+double get_tmp_table_write_cost(THD *thd, double row_count, uint row_size);
 void optimize_keyuse(JOIN *join, DYNAMIC_ARRAY *keyuse_array);
-bool sort_and_filter_keyuse(JOIN *join, DYNAMIC_ARRAY *keyuse,
-                            bool skip_unprefixed_keyparts,
-                            bool is_splitting= false);
-
-struct TMPTABLE_COSTS
-{
-  double create;
-  double lookup;
-  double write;
-  double avg_io_cost;
-  double cache_hit_ratio;
-  double block_size;
-};
-
-TMPTABLE_COSTS get_tmp_table_costs(THD *thd, double row_count, uint row_size,
-                                   bool blobs_used, bool add_row_copy_cost);
+bool sort_and_filter_keyuse(THD *thd, DYNAMIC_ARRAY *keyuse,
+                            bool skip_unprefixed_keyparts);
 
 struct st_cond_statistic
 {
@@ -2758,8 +2587,5 @@ void propagate_new_equalities(THD *thd, Item *cond,
 
 #define PREV_BITS(type, N_BITS) ((type)my_set_bits(N_BITS))
 
-bool dbug_user_var_equals_str(THD *thd, const char *name, const char *value);
-
-#include "opt_vcol_substitution.h"
 
 #endif /* SQL_SELECT_INCLUDED */

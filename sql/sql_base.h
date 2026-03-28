@@ -28,7 +28,6 @@ struct Name_resolution_context;
 class Open_table_context;
 class Open_tables_state;
 class Prelocking_strategy;
-class DML_prelocking_strategy;
 struct TABLE_LIST;
 class THD;
 struct handlerton;
@@ -95,7 +94,7 @@ TABLE *open_ltable(THD *thd, TABLE_LIST *table_list, thr_lock_type update,
 */
 #define MYSQL_OPEN_GET_NEW_TABLE                0x0040
 /* 0x0080 used to be MYSQL_OPEN_SKIP_TEMPORARY */
-/** Fail instead of waiting when conflicting metadata lock is discovered. */
+/** Fail instead of waiting when conficting metadata lock is discovered. */
 #define MYSQL_OPEN_FAIL_ON_MDL_CONFLICT         0x0100
 /** Open tables using MDL_SHARED lock instead of one specified in parser. */
 #define MYSQL_OPEN_FORCE_SHARED_MDL             0x0200
@@ -157,8 +156,7 @@ thr_lock_type read_lock_type_for_table(THD *thd,
 
 my_bool mysql_rm_tmp_tables(void);
 void close_tables_for_reopen(THD *thd, TABLE_LIST **tables,
-                             const MDL_savepoint &start_of_statement_svp,
-                             bool remove_indirect);
+                             const MDL_savepoint &start_of_statement_svp);
 bool table_already_fk_prelocked(TABLE_LIST *tl, LEX_CSTRING *db,
                                 LEX_CSTRING *table, thr_lock_type lock_type);
 TABLE_LIST *find_table_in_list(TABLE_LIST *table,
@@ -166,24 +164,20 @@ TABLE_LIST *find_table_in_list(TABLE_LIST *table,
                                const LEX_CSTRING *db_name,
                                const LEX_CSTRING *table_name);
 int close_thread_tables(THD *thd);
-int close_thread_tables_for_query(THD *thd);
 void switch_to_nullable_trigger_fields(List<Item> &items, TABLE *);
 void switch_defaults_to_nullable_trigger_fields(TABLE *table);
 bool fill_record_n_invoke_before_triggers(THD *thd, TABLE *table,
                                           List<Item> &fields,
                                           List<Item> &values,
                                           bool ignore_errors,
-                                          enum trg_event_type event,
-                                          bool *skip_row_indicator);
+                                          enum trg_event_type event);
 bool fill_record_n_invoke_before_triggers(THD *thd, TABLE *table,
                                           Field **field,
                                           List<Item> &values,
                                           bool ignore_errors,
-                                          enum trg_event_type event,
-                                          bool *skip_row_indicator);
+                                          enum trg_event_type event);
 bool insert_fields(THD *thd, Name_resolution_context *context,
-                   const Lex_ident_db &db_name,
-                   const Lex_ident_table &table_name,
+		   const char *db_name, const char *table_name,
                    List_iterator<Item> *it, bool any_privileges,
                    uint *hidden_bit_fields, bool returning_field);
 void make_leaves_list(THD *thd, List<TABLE_LIST> &list, TABLE_LIST *tables,
@@ -210,7 +204,7 @@ find_field_in_tables(THD *thd, Item_ident *item,
                      bool check_privileges, bool register_tree_change);
 Field *
 find_field_in_table_ref(THD *thd, TABLE_LIST *table_list,
-                        const Lex_ident_column &name,
+                        const char *name, size_t length,
                         const char *item_name, const char *db_name,
                         const char *table_name,
                         ignored_tables_list_t ignored_tables,
@@ -218,10 +212,10 @@ find_field_in_table_ref(THD *thd, TABLE_LIST *table_list,
                         field_index_t *cached_field_index_ptr,
                         bool register_tree_change, TABLE_LIST **actual_table);
 Field *
-find_field_in_table(THD *thd, TABLE *table, const Lex_ident_column &name,
+find_field_in_table(THD *thd, TABLE *table, const char *name, size_t length,
                     bool allow_rowid, field_index_t *cached_field_index_ptr);
 Field *
-find_field_in_table_sef(TABLE *table, const Lex_ident_column &name);
+find_field_in_table_sef(TABLE *table, const char *name);
 Item ** find_item_in_list(Item *item, List<Item> &items, uint *counter,
                           find_item_error_report_type report_error,
                           enum_resolution_type *resolution, uint limit= 0);
@@ -247,7 +241,7 @@ void update_non_unique_table_error(TABLE_LIST *update,
                                    const char *operation,
                                    TABLE_LIST *duplicate);
 int setup_conds(THD *thd, TABLE_LIST *tables, List<TABLE_LIST> &leaves,
-		COND **conds, List<Item> *all_fields);
+		COND **conds);
 void wrap_ident(THD *thd, Item **conds);
 int setup_ftfuncs(SELECT_LEX* select);
 void cleanup_ftfuncs(SELECT_LEX *select_lex);
@@ -297,9 +291,6 @@ bool open_normal_and_derived_tables(THD *thd, TABLE_LIST *tables, uint flags,
 bool open_tables_only_view_structure(THD *thd, TABLE_LIST *tables,
                                      bool can_deadlock);
 bool open_and_lock_internal_tables(TABLE *table, bool lock);
-bool open_tables_for_query(THD *thd, TABLE_LIST *tables,
-                           uint *table_count, uint flags,
-                           DML_prelocking_strategy *prelocking_strategy);
 bool lock_tables(THD *thd, TABLE_LIST *tables, uint counter, uint flags);
 int decide_logging_format(THD *thd, TABLE_LIST *tables);
 void close_thread_table(THD *thd, TABLE **table_ptr);
@@ -339,7 +330,7 @@ int dynamic_column_error_message(enum_dyncol_func_result rc);
 /* open_and_lock_tables with optional derived handling */
 int open_and_lock_tables_derived(THD *thd, TABLE_LIST *tables, bool derived);
 
-extern "C" int simple_raw_key_cmp(void *arg, const void *key1, const void *key2);
+extern "C" qsort_cmp2 simple_raw_key_cmp;
 extern "C" int count_distinct_walk(void *elem, element_count count, void *arg);
 int simple_str_key_cmp(void *arg, const void *key1, const void *key2);
 
@@ -372,14 +363,14 @@ inline void setup_table_map(TABLE *table, TABLE_LIST *table_list, uint tablenr)
   DBUG_ASSERT(tablenr <= MAX_TABLES);
   table->tablenr= tablenr;
   table->map= (table_map) 1 << tablenr;
-  table->force_index= table->force_index_join= 0;
+  table->force_index= table_list->force_index;
   table->force_index_order= table->force_index_group= 0;
   table->covering_keys= table->s->keys_for_keyread;
 }
 
 inline TABLE_LIST *find_table_in_global_list(TABLE_LIST *table,
-                                             const LEX_CSTRING *db_name,
-                                             const LEX_CSTRING *table_name)
+                                             LEX_CSTRING *db_name,
+                                             LEX_CSTRING *table_name)
 {
   return find_table_in_list(table, &TABLE_LIST::next_global,
                             db_name, table_name);
@@ -443,25 +434,6 @@ public:
                     TABLE_LIST *table_list, bool *need_prelocking) override;
   bool handle_view(THD *thd, Query_tables_list *prelocking_ctx,
                    TABLE_LIST *table_list, bool *need_prelocking) override;
-};
-
-
-
-class Multiupdate_prelocking_strategy : public DML_prelocking_strategy
-{
-  bool done;
-  bool has_prelocking_list;
-public:
-  void reset(THD *thd) override;
-  bool handle_end(THD *thd) override;
-};
-
-class Multidelete_prelocking_strategy : public DML_prelocking_strategy
-{
-  bool done;
-public:
-  void reset(THD *thd) override;
-  bool handle_end(THD *thd) override;
 };
 
 
@@ -568,8 +540,7 @@ public:
     OT_BACKOFF_AND_RETRY,
     OT_REOPEN_TABLES,
     OT_DISCOVER,
-    OT_REPAIR,
-    OT_ADD_HISTORY_PARTITION
+    OT_REPAIR
   };
   Open_table_context(THD *thd, uint flags);
 
@@ -642,9 +613,6 @@ private:
     protection against global read lock.
   */
   mdl_bitmap_t m_has_protection_against_grl;
-
-public:
-  uint vers_create_count;
 };
 
 
@@ -702,11 +670,4 @@ private:
   int m_unhandled_errors;
   uint first_error;
 };
-
-bool setup_oracle_join(THD *thd, Item **conds,
-                       TABLE_LIST *tables,
-                       SQL_I_List<TABLE_LIST> &select_table_list,
-                       List<TABLE_LIST> *select_join_list,
-                       List<Item> *all_fields);
-
 #endif /* SQL_BASE_INCLUDED */

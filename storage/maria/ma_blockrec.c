@@ -448,10 +448,8 @@ my_bool _ma_once_end_block_record(MARIA_SHARE *share)
   int res= _ma_bitmap_end(share);
   if (share->bitmap.file.file >= 0)
   {
-    if (share->pagecache &&
-        flush_pagecache_blocks(share->pagecache, &share->bitmap.file,
-                               share->deleting ?
-                               FLUSH_IGNORE_CHANGED : FLUSH_RELEASE))
+    if (flush_pagecache_blocks(share->pagecache, &share->bitmap.file,
+                       share->deleting ? FLUSH_IGNORE_CHANGED : FLUSH_RELEASE))
       res= 1;
     /*
       File must be synced as it is going out of the maria_open_list and so
@@ -2087,8 +2085,7 @@ static my_bool write_tail(MARIA_HA *info,
         data_file_length after writing any log record (FILE_ID/REDO/UNDO) (see
         collect_tables()).
       */
-      if (_ma_set_share_data_file_length(info, position + block_size))
-        res= 1;
+      _ma_set_share_data_file_length(share, position + block_size);
     }
   }
   DBUG_RETURN(res);
@@ -2191,10 +2188,7 @@ static my_bool write_full_pages(MARIA_HA *info,
     DBUG_ASSERT(block->used & BLOCKUSED_USED);
   }
   if (share->state.state.data_file_length < max_position)
-  {
-    if (_ma_set_share_data_file_length(info, max_position))
-      DBUG_RETURN(1);
-  }
+    _ma_set_share_data_file_length(share, max_position);
   DBUG_RETURN(0);
 }
 
@@ -3215,10 +3209,7 @@ static my_bool write_block_record(MARIA_HA *info,
     /* Increase data file size, if extended */
     position= (my_off_t) head_block->page * block_size;
     if (share->state.state.data_file_length <= position)
-    {
-      if (_ma_set_share_data_file_length(info, position + block_size))
-        goto disk_err;
-    }
+      _ma_set_share_data_file_length(share, position + block_size);
   }
 
   if (share->now_transactional && (tmp_data_used || blob_full_pages_exists))
@@ -5050,7 +5041,7 @@ int _ma_read_block_record2(MARIA_HA *info, uchar *record,
 #ifdef EXTRA_DEBUG
   if (share->calc_checksum && !info->in_check_table)
   {
-    /* Ensure that row checksum is correct */
+    /* Esnure that row checksum is correct */
     DBUG_ASSERT(((share->calc_checksum)(info, record) & 255) ==
                 cur_row->checksum);
   }
@@ -5711,7 +5702,7 @@ uint ma_calc_length_for_store_length(ulong nr)
 }
 
 
-/* Retrieve a stored number */
+/* Retrive a stored number */
 
 static ulong ma_get_length(const uchar **packet)
 {
@@ -6240,7 +6231,7 @@ my_bool write_hook_for_undo_row_delete(enum translog_record_type type
 
 
 /**
-   @brief Updates "records" and "checksum" and calls the generic UNDO hook
+   @brief Upates "records" and "checksum" and calls the generic UNDO hook
 
    @return Operation status, always 0 (success)
 */
@@ -7613,7 +7604,7 @@ void _ma_print_block_info(MARIA_SHARE *share, uchar *buff)
          (uint)buff[DIR_COUNT_OFFSET],
          (uint)buff[DIR_FREE_OFFSET],
          (uint) uint2korr(buff + EMPTY_SPACE_OFFSET));
-  printf("Start of directory: %u\n",
+  printf("Start of directory: %lu\n",
          maria_block_size - PAGE_SUFFIX_SIZE -
          (uint) buff[DIR_COUNT_OFFSET] * DIR_ENTRY_SIZE);
   _ma_print_directory(share, stdout, buff, maria_block_size);

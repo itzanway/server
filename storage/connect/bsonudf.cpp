@@ -9,7 +9,6 @@
 /*********************************************************************************/
 #include <my_global.h>
 #include <mysqld.h>
-#include <mysqld_error.h>
 #include <mysql.h>
 #include <sql_error.h>
 #include <stdio.h>
@@ -23,7 +22,7 @@
 
 #define MEMFIX  4096
 #if defined(connect_EXPORTS)
-#define PUSH_WARNING(M) push_warning(current_thd, Sql_condition::WARN_LEVEL_WARN, ER_UNKNOWN_ERROR, M)
+#define PUSH_WARNING(M) push_warning(current_thd, Sql_condition::WARN_LEVEL_WARN, 0, M)
 #else
 #define PUSH_WARNING(M) htrc(M)
 #endif
@@ -294,11 +293,8 @@ my_bool BJNX::ParseJpath(PGLOBAL g)
 	if (Parsed)
 		return false;                       // Already done
 	else if (!Jpath)
-	{
 		//	Jpath = Name;
-		snprintf(g->Message, sizeof(g->Message), MSG(ARG_IS_NULL));
 		return true;
-	}
 
 	if (trace(1))
 		htrc("ParseJpath %s\n", SVP(Jpath));

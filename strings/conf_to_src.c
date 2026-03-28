@@ -78,7 +78,7 @@ static uint get_collation_number(const char *name)
        cs < all_charsets + array_elements(all_charsets);
        cs++)
   {
-    if (cs->coll_name.str && !strcmp(cs->coll_name.str, name))
+    if (cs->name && !strcmp(cs->name, name))
       return cs->number;
   }
   return 0;
@@ -93,8 +93,8 @@ get_charset_number_internal(const char *charset_name, uint cs_flags)
        cs < all_charsets + array_elements(all_charsets);
        cs++)
   {
-    if (cs->cs_name.str && (cs->state & cs_flags) &&
-        !strcmp(cs->cs_name.str, charset_name))
+    if (cs->csname && (cs->state & cs_flags) &&
+        !strcmp(cs->csname, charset_name))
       return cs->number;
   }  
   return 0;
@@ -114,23 +114,17 @@ static void simple_cs_copy_data(struct charset_info_st *to, CHARSET_INFO *from)
   to->number= from->number ? from->number : to->number;
   to->state|= from->state;
 
-  if (from->cs_name.str)
-  {
-    to->cs_name.str= strndup(from->cs_name.str, from->cs_name.length);
-    to->cs_name.length= from->cs_name.length;
-  }
+  if (from->csname)
+    to->csname= strdup(from->csname);
   
-  if (from->coll_name.str)
-  {
-    to->coll_name.str= strndup(from->coll_name.str, from->coll_name.length);
-    to->coll_name.length= from->coll_name.length;
-  }
+  if (from->name)
+    to->name= strdup(from->name);
 
   if (from->tailoring)
     to->tailoring= strdup(from->tailoring);
 
-  if (from->m_ctype)
-    to->m_ctype= (uchar*) mdup((char*) from->m_ctype, MY_CS_CTYPE_TABLE_SIZE);
+  if (from->ctype)
+    to->ctype= (uchar*) mdup((char*) from->ctype, MY_CS_CTYPE_TABLE_SIZE);
   if (from->to_lower)
     to->to_lower= (uchar*) mdup((char*) from->to_lower, MY_CS_TO_LOWER_TABLE_SIZE);
   if (from->to_upper)
@@ -166,9 +160,9 @@ static void inherit_charset_data(struct charset_info_st *cs,
                                  CHARSET_INFO *refcs)
 {
   cs->state|= (refcs->state & (MY_CS_PUREASCII|MY_CS_NONASCII));
-  if (refcs->m_ctype && cs->m_ctype &&
-      !memcmp(cs->m_ctype, refcs->m_ctype, MY_CS_CTYPE_TABLE_SIZE))
-    cs->m_ctype= NULL;
+  if (refcs->ctype && cs->ctype &&
+      !memcmp(cs->ctype, refcs->ctype, MY_CS_CTYPE_TABLE_SIZE))
+    cs->ctype= NULL;
   if (refcs->to_lower && cs->to_lower &&
       !memcmp(cs->to_lower, refcs->to_lower, MY_CS_TO_LOWER_TABLE_SIZE))
      cs->to_lower= NULL;
@@ -185,7 +179,7 @@ static void inherit_charset_data(struct charset_info_st *cs,
 static CHARSET_INFO *find_charset_data_inheritance_source(CHARSET_INFO *cs)
 {
   CHARSET_INFO *refcs;
-  uint refid= get_charset_number_internal(cs->cs_name.str, MY_CS_PRIMARY);
+  uint refid= get_charset_number_internal(cs->csname, MY_CS_PRIMARY);
   return refid && refid != cs->number &&
          (refcs= &all_charsets[refid]) &&
          (refcs->state & MY_CS_LOADED) ? refcs : NULL;
@@ -203,16 +197,16 @@ static CHARSET_INFO *find_charset_data_inheritance_source(CHARSET_INFO *cs)
 */
 static my_bool simple_cs_is_full(CHARSET_INFO *cs)
 {
-  return ((cs->cs_name.str && cs->tab_to_uni && cs->m_ctype && cs->to_upper &&
+  return ((cs->csname && cs->tab_to_uni && cs->ctype && cs->to_upper &&
 	   cs->to_lower) &&
-	  (cs->number && cs->coll_name.str &&
+	  (cs->number && cs->name && 
 	  (cs->sort_order || cs->tailoring || (cs->state & MY_CS_BINSORT))));
 }
 
 static int add_collation(struct charset_info_st *cs)
 {
-  if (cs->coll_name.str &&
-      (cs->number || (cs->number= get_collation_number(cs->coll_name.str))))
+  if (cs->name &&
+      (cs->number || (cs->number= get_collation_number(cs->name))))
   {
     if (!(all_charsets[cs->number].state & MY_CS_COMPILED))
     {
@@ -221,8 +215,7 @@ static int add_collation(struct charset_info_st *cs)
     }
     
     cs->number= 0;
-    cs->coll_name.str= 0;
-    cs->coll_name.length= 0;
+    cs->name= NULL;
     cs->tailoring= NULL;
     cs->state= 0;
     cs->sort_order= NULL;
@@ -283,16 +276,16 @@ static int my_read_charset_file(const char *filename)
 
 void print_arrays(FILE *f, CHARSET_INFO *cs)
 {
-  if (cs->m_ctype)
-    print_array(f, cs->coll_name.str, "ctype", cs->m_ctype, MY_CS_CTYPE_TABLE_SIZE);
+  if (cs->ctype)
+    print_array(f, cs->name, "ctype",      cs->ctype,      MY_CS_CTYPE_TABLE_SIZE);
   if (cs->to_lower)
-    print_array(f, cs->coll_name.str, "to_lower",   cs->to_lower,   MY_CS_TO_LOWER_TABLE_SIZE);
+    print_array(f, cs->name, "to_lower",   cs->to_lower,   MY_CS_TO_LOWER_TABLE_SIZE);
   if (cs->to_upper)
-    print_array(f, cs->coll_name.str, "to_upper",   cs->to_upper,   MY_CS_TO_UPPER_TABLE_SIZE);
+    print_array(f, cs->name, "to_upper",   cs->to_upper,   MY_CS_TO_UPPER_TABLE_SIZE);
   if (cs->sort_order)
-    print_array(f, cs->coll_name.str, "sort_order", cs->sort_order, MY_CS_SORT_ORDER_TABLE_SIZE);
+    print_array(f, cs->name, "sort_order", cs->sort_order, MY_CS_SORT_ORDER_TABLE_SIZE);
   if (cs->tab_to_uni)
-    print_array16(f, cs->coll_name.str, "to_uni",     cs->tab_to_uni, MY_CS_TO_UNI_TABLE_SIZE);
+    print_array16(f, cs->name, "to_uni",     cs->tab_to_uni, MY_CS_TO_UNI_TABLE_SIZE);
 }
 
 
@@ -339,7 +332,7 @@ print_array_ref(FILE *f,
   CHARSET_INFO *cs= array0 ? cs0 : array1 ? cs1 : NULL;
   if (cs)
     fprintf(f,"  %s_%s,                   /* %s         */\n",
-            name, cs->coll_name.str, name);
+            name, cs->name, name);
   else
     fprintf(f,"  NULL,                     /* %s         */\n", name);
 }
@@ -348,12 +341,6 @@ print_array_ref(FILE *f,
 static const char *nopad_infix(CHARSET_INFO *cs)
 {
   return (cs->state & MY_CS_NOPAD) ? "_nopad" : "";
-}
-
-
-void fprintf_lex_str_member(FILE *f, const LEX_CSTRING str, const char *comment)
-{
-  fprintf(f,"  { STRING_WITH_LEN(\"%s\") }, %s\n", str.str, comment);
 }
 
 
@@ -369,23 +356,23 @@ void dispcset(FILE *f,CHARSET_INFO *cs)
           cs->state & MY_CS_NONASCII        ? "|MY_CS_NONASCII"  : "",
           cs->state & MY_CS_NOPAD           ? "|MY_CS_NOPAD"     : "");
   
-  if (cs->coll_name.str)
+  if (cs->name)
   {
     CHARSET_INFO *srccs= inheritance_source(cs->number);
-    fprintf_lex_str_member(f, cs->cs_name,   "/* cset name     */");
-    fprintf_lex_str_member(f, cs->coll_name, "/* coll name     */");
+    fprintf(f,"  \"%s\",                     /* cset name     */\n",cs->csname);
+    fprintf(f,"  \"%s\",                     /* coll name     */\n",cs->name);
     fprintf(f,"  \"\",                       /* comment       */\n");
     if (cs->tailoring)
       fprintf(f, "  \"%s\",                    /* tailoring */\n", cs->tailoring);
     else
       fprintf(f,"  NULL,                       /* tailoring     */\n");
 
-    print_array_ref(f, cs, cs->m_ctype, srccs, srccs->m_ctype, "ctype");
+    print_array_ref(f, cs, cs->ctype, srccs, srccs->ctype, "ctype");
     print_array_ref(f, cs, cs->to_lower, srccs, srccs->to_lower, "to_lower");
     print_array_ref(f, cs, cs->to_upper, srccs, srccs->to_upper, "to_upper");
 
     if (cs->sort_order)
-      fprintf(f,"  sort_order_%s,            /* sort_order    */\n", cs->coll_name.str);
+      fprintf(f,"  sort_order_%s,            /* sort_order    */\n",cs->name);
     else
       fprintf(f,"  NULL,                     /* sort_order    */\n");
 
@@ -395,8 +382,8 @@ void dispcset(FILE *f,CHARSET_INFO *cs)
   }
   else
   {
-    fprintf(f,"  {NULL,0},                   /* cset name     */\n");
-    fprintf(f,"  {NULL,0},                   /* coll name     */\n");
+    fprintf(f,"  NULL,                       /* cset name     */\n");
+    fprintf(f,"  NULL,                       /* coll name     */\n");
     fprintf(f,"  NULL,                       /* comment       */\n");
     fprintf(f,"  NULL,                       /* tailoging     */\n");
     fprintf(f,"  NULL,                       /* ctype         */\n");
@@ -408,17 +395,19 @@ void dispcset(FILE *f,CHARSET_INFO *cs)
   }
 
   fprintf(f,"  NULL,                       /* from_uni      */\n");
-  fprintf(f,"  NULL,                       /* casefold      */\n");
+  fprintf(f,"  &my_unicase_default,        /* caseinfo      */\n");
   fprintf(f,"  NULL,                       /* state map     */\n");
   fprintf(f,"  NULL,                       /* ident map     */\n");
   fprintf(f,"  1,                          /* strxfrm_multiply*/\n");
+  fprintf(f,"  1,                          /* caseup_multiply*/\n");
+  fprintf(f,"  1,                          /* casedn_multiply*/\n");
   fprintf(f,"  1,                          /* mbminlen      */\n");
   fprintf(f,"  1,                          /* mbmaxlen      */\n");
   fprintf(f,"  0,                          /* min_sort_char */\n");
   fprintf(f,"  255,                        /* max_sort_char */\n");
   fprintf(f,"  ' ',                        /* pad_char      */\n");
   fprintf(f,"  0,                          /* escape_with_backslash_is_dangerous */\n");
-  fprintf(f,"  MY_CS_COLL_LEVELS_S1,\n");
+  fprintf(f,"  1,                          /* levels_for_order   */\n");
   fprintf(f,"  &my_charset_8bit_handler,\n");
 
   if (cs->state & MY_CS_BINSORT)
@@ -435,7 +424,7 @@ fprint_copyright(FILE *file)
   fprintf(file,
 "/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.\n"
 "   Copyright (c) 2000, 2011, Oracle and/or its affiliates.\n"
-"   Copyright 2008-2023 MariaDB Corporation\n"
+"   Copyright 2008-2016 MariaDB Corporation\n"
 "\n"
 "   This program is free software; you can redistribute it and/or modify\n"
 "   it under the terms of the GNU General Public License as published by\n"
@@ -479,10 +468,9 @@ main(int argc, char **argv  __attribute__((unused)))
   {
     if (cs->number && !(cs->state & MY_CS_COMPILED))
     {
-      if ( (!simple_cs_is_full(cs)) && (cs->cs_name.str))
+      if ( (!simple_cs_is_full(cs)) && (cs->csname))
       {
-        snprintf(filename, sizeof filename, "%s/%.*s.xml",
-                 argv[1], (int) cs->cs_name.length, cs->cs_name.str);
+        snprintf(filename,sizeof(filename),"%s/%s.xml",argv[1],cs->csname);
         my_read_charset_file(filename);
       }
       cs->state|= MY_CS_LOADED;
@@ -516,7 +504,7 @@ main(int argc, char **argv  __attribute__((unused)))
         refids[cs->number]= refcs->number;
         inherit_charset_data(cs, refcs);
       }
-      fprintf(f,"#ifdef HAVE_CHARSET_%s\n", cs->cs_name.str);
+      fprintf(f,"#ifdef HAVE_CHARSET_%s\n",cs->csname);
       print_arrays(f, cs);
       fprintf(f,"#endif\n");
       fprintf(f,"\n");
@@ -530,7 +518,7 @@ main(int argc, char **argv  __attribute__((unused)))
   {
     if (cs->state & MY_CS_LOADED)
     {
-      fprintf(f,"#ifdef HAVE_CHARSET_%s\n", cs->cs_name.str);
+      fprintf(f,"#ifdef HAVE_CHARSET_%s\n",cs->csname);
       dispcset(f,cs);
       fprintf(f,",\n");
       fprintf(f,"#endif\n");

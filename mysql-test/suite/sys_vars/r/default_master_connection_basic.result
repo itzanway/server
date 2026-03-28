@@ -12,13 +12,9 @@ SELECT @@session.default_master_connection = '';
 @@session.default_master_connection = ''
 1
 SET @@global.default_master_connection = 'master1';
+ERROR HY000: Variable 'default_master_connection' is a SESSION variable and can't be used with SET GLOBAL
 SELECT @@global.default_master_connection;
-@@global.default_master_connection
-master1
-SET @@global.default_master_connection = '';
-SELECT @@global.default_master_connection;
-@@global.default_master_connection
-
+ERROR HY000: Variable 'default_master_connection' is a SESSION variable
 SET @@session.default_master_connection = 'master1';
 SELECT @@session.default_master_connection;
 @@session.default_master_connection
@@ -65,8 +61,7 @@ master2
 SELECT @@global.default_master_connection = VARIABLE_VALUE 
 FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES 
 WHERE VARIABLE_NAME='default_master_connection';
-@@global.default_master_connection = VARIABLE_VALUE
-1
+ERROR HY000: Variable 'default_master_connection' is a SESSION variable
 SELECT @@session.default_master_connection = VARIABLE_VALUE 
 FROM INFORMATION_SCHEMA.SESSION_VARIABLES
 WHERE VARIABLE_NAME='default_master_connection';
@@ -93,27 +88,3 @@ SET @@session.default_master_connection = @start_session_value;
 SELECT @@session.default_master_connection;
 @@session.default_master_connection
 
-SET @@global.default_master_connection = 'global';
-connect  con1,localhost,root,,;
-connection con1;
-SELECT @@session.default_master_connection;
-@@session.default_master_connection
-global
-connection default;
-disconnect con1;
-SET @@global.default_master_connection = '';
-# restart: --default-master-connection=master1
-SELECT @@global.default_master_connection;
-@@global.default_master_connection
-master1
-SELECT @@session.default_master_connection;
-@@session.default_master_connection
-master1
-connect  con2,localhost,root,,;
-connection con2;
-SELECT @@session.default_master_connection;
-@@session.default_master_connection
-master1
-connection default;
-disconnect con2;
-# restart

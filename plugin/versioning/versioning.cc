@@ -23,6 +23,7 @@
 #include "sql_class.h"
 #include "item.h"
 #include "table.h"
+#include "vers_string.h"
 
 /* System Versioning: TRT_TRX_ID(), TRT_COMMIT_ID(), TRT_BEGIN_TS(), TRT_COMMIT_TS(), TRT_ISO_LEVEL() */
 template <TR_table::field_id_t TRT_FIELD>
@@ -195,7 +196,7 @@ maria_declare_plugin(versioning)
   &versioning_plugin,
   "test_versioning",
   "MariaDB Corp",
-  "System Versioning testing features",
+  "System Vesioning testing features",
   PLUGIN_LICENSE_GPL,
   versioning_plugin_init, /* Plugin Init */
   versioning_plugin_deinit, /* Plugin Deinit */

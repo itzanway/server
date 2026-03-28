@@ -119,20 +119,13 @@ static int socket_auth(MYSQL_PLUGIN_VIO *vio, MYSQL_SERVER_AUTH_INFO *info)
   u = cred.uid;
 #endif
 
-  /* and find the socket user name for this uid */
+  /* and find the username for this uid */
   getpwuid_r(u, &pwd_buf, buf, sizeof(buf), &pwd);
   if (pwd == NULL)
     return CR_ERROR;
 
-  /* fill in the external user name used */
-  strncpy(info->external_user, pwd->pw_name, sizeof(info->external_user) - 1);
-  info->external_user[sizeof(info->external_user) - 1]= '\0';
-
-  /* compare with auth_string if it's defined, otherwise compare with DB user name*/
-  if (info->auth_string && info->auth_string[0])
-    return !strcmp(pwd->pw_name, info->auth_string) ? CR_OK : CR_ERROR;
-  else
-    return !strcmp(pwd->pw_name, info->user_name) ? CR_OK : CR_ERROR;
+  /* now it's simple as that */
+  return strcmp(pwd->pw_name, info->user_name) ? CR_ERROR : CR_OK;
 }
 
 static struct st_mysql_auth socket_auth_handler=
@@ -153,10 +146,10 @@ maria_declare_plugin(auth_socket)
   PLUGIN_LICENSE_GPL,
   NULL,
   NULL,
-  0x0101,
+  0x0100,
   NULL,
   NULL,
-  "1.1",
+  "1.0",
   MariaDB_PLUGIN_MATURITY_STABLE
 }
 maria_declare_plugin_end;

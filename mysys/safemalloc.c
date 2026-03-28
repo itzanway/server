@@ -372,7 +372,7 @@ int sf_sanity()
   if (count || irem)
   {
     warn("Error: Safemalloc link list destroyed");
-    flag++;
+    flag= 1;
   }
   return flag;
 }
@@ -383,7 +383,7 @@ int sf_sanity()
   @param id	Id of thread to report. 0 if all
 */
 
-my_bool sf_report_leaked_memory(my_thread_id id)
+void sf_report_leaked_memory(my_thread_id id)
 {
   size_t total= 0;
   struct st_irem *irem;
@@ -411,7 +411,7 @@ my_bool sf_report_leaked_memory(my_thread_id id)
   if (total)
     fprintf(stderr, "Memory lost: %lu bytes in %u chunks of %u total chunks\n",
             (ulong) total, chunks, sf_malloc_count);
-  return total != 0;
+  return;
 }
 
 static void sf_terminate()
@@ -420,11 +420,6 @@ static void sf_terminate()
     sf_report_leaked_memory(0);
 
   pthread_mutex_destroy(&sf_mutex);
-}
-
-my_bool sf_have_memory_leak()
-{
-  return sf_malloc_root != 0;
 }
 
 #endif

@@ -35,7 +35,7 @@ Created 10/13/2010 Jimmy Yang
 #include "btr0bulk.h"
 #include "srv0srv.h"
 
-/** This structure defines information the scan thread will fetch
+/** This structure defineds information the scan thread will fetch
 and put to the linked list for parallel tokenization/sort threads
 to process */
 typedef struct fts_doc_item     fts_doc_item_t;
@@ -156,6 +156,19 @@ typedef struct fts_psort_insert	fts_psort_insert_t;
 #define FTS_PARENT_COMPLETE	1
 #define FTS_PARENT_EXITING	2
 #define FTS_CHILD_COMPLETE	1
+
+/** Print some debug information */
+#define	FTSORT_PRINT
+
+#ifdef	FTSORT_PRINT
+#define	DEBUG_FTS_SORT_PRINT(str)		\
+	do {					\
+		ut_print_timestamp(stderr);	\
+		fprintf(stderr, str);		\
+	} while (0)
+#else
+#define DEBUG_FTS_SORT_PRINT(str)
+#endif	/* FTSORT_PRINT */
 
 /*************************************************************//**
 Create a temporary "fts sort index" used to merge sort the

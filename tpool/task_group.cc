@@ -25,28 +25,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111 - 1301 USA*/
 #endif
 namespace tpool
 {
-
-  /**
-    Task_group constructor
-
-     @param max_threads - maximum number of threads allowed to execute
-     tasks from the group at the same time.
-
-     @param enable_task_release - if true (default), task::release() will be
-     called after task execution.'false' should only be used in rare cases
-     when accessing memory, pointed by task structures, would be unsafe after.
-     the callback. Also 'false' is only possible ,if task::release() is a trivial function
-  */
-  task_group::task_group(unsigned int max_concurrency,
-                       bool enable_task_release)
-    :
+  task_group::task_group(unsigned int max_concurrency) :
     m_queue(8),
     m_mtx(),
-    m_total_tasks(0),
-    m_total_enqueues(0),
     m_tasks_running(),
-    m_max_concurrent_tasks(max_concurrency),
-    m_enable_task_release(enable_task_release)
+    m_max_concurrent_tasks(max_concurrency)
   {};
 
   void task_group::set_max_tasks(unsigned int max_concurrency)
@@ -61,7 +44,6 @@ namespace tpool
     {
       /* Queue for later execution by another thread.*/
       m_queue.push(t);
-      m_total_enqueues++;
       return;
     }
     m_tasks_running++;
@@ -71,11 +53,10 @@ namespace tpool
       if (t)
       {
         t->m_func(t->m_arg);
-        if (m_enable_task_release)
-          t->release();
+        t->release();
       }
       lk.lock();
-      m_total_tasks++;
+
       if (m_queue.empty())
         break;
       t = m_queue.front();
@@ -97,15 +78,6 @@ namespace tpool
         (*it) = nullptr;
       }
     }
-  }
-
-  void task_group::get_stats(group_stats *stats)
-  {
-    std::lock_guard<std::mutex> lk(m_mtx);
-    stats->tasks_running= m_tasks_running;
-    stats->queue_size= m_queue.size();
-    stats->total_tasks_executed= m_total_tasks;
-    stats->total_tasks_enqueued= m_total_enqueues;
   }
 
   task_group::~task_group()

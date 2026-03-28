@@ -19,6 +19,10 @@
 
 /* Function items used by mysql */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface			/* gcc class implementation */
+#endif
+
 class MY_LOCALE;
 
 
@@ -58,7 +62,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("period_add") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     max_length=6*MY_CHARSET_BIN_MB_MAXLEN;
     return FALSE;
@@ -82,7 +86,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("period_diff") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     max_length=6*MY_CHARSET_BIN_MB_MAXLEN;
@@ -105,9 +109,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("to_days") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    decimals=0;
+    decimals=0; 
     max_length=6*MY_CHARSET_BIN_MB_MAXLEN;
     set_maybe_null();
     return FALSE;
@@ -139,9 +143,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("to_seconds") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    decimals=0;
+    decimals=0; 
     fix_char_length(12);
     set_maybe_null();
     return FALSE;
@@ -172,9 +176,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("dayofmonth") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    decimals=0;
+    decimals=0; 
     max_length=2*MY_CHARSET_BIN_MB_MAXLEN;
     set_maybe_null();
     return FALSE;
@@ -203,7 +207,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("month") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals= 0;
     fix_char_length(2);
@@ -234,7 +238,7 @@ public:
     return name;
   }
   String *val_str(String *str) override;
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   bool check_partition_func_processor(void *int_arg) override {return TRUE;}
   bool check_valid_arguments_processor(void *int_arg) override
   {
@@ -261,7 +265,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("dayofyear") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals= 0;
     fix_char_length(3);
@@ -291,7 +295,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("hour") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     max_length=2*MY_CHARSET_BIN_MB_MAXLEN;
@@ -321,7 +325,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("minute") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     max_length=2*MY_CHARSET_BIN_MB_MAXLEN;
@@ -351,7 +355,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("quarter") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
      decimals=0;
      max_length=1*MY_CHARSET_BIN_MB_MAXLEN;
@@ -381,7 +385,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("second") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     max_length=2*MY_CHARSET_BIN_MB_MAXLEN;
@@ -417,7 +421,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("week") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     max_length=2*MY_CHARSET_BIN_MB_MAXLEN;
@@ -456,7 +460,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("yearweek") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     max_length=6*MY_CHARSET_BIN_MB_MAXLEN;
@@ -486,10 +490,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("year") };
     return name;
   }
-  enum Functype functype() const override { return YEAR_FUNC; }
   enum_monotonicity_info get_monotonicity_info() const override;
   longlong val_int_endpoint(bool left_endp, bool *incl_endp) override;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     max_length=4*MY_CHARSET_BIN_MB_MAXLEN;
@@ -526,7 +529,7 @@ public:
   {
     return type_handler()->Item_get_date_with_warn(thd, this, ltime, fuzzydate);
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals= 0;
     fix_char_length(1);
@@ -558,7 +561,7 @@ class Item_func_dayname :public Item_str_func
   String *val_str(String *str) override;
   const Type_handler *type_handler() const override
   { return &type_handler_varchar; }
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   bool check_partition_func_processor(void *int_arg) override {return TRUE;}
   bool check_vcol_func_processor(void *arg) override
   {
@@ -631,10 +634,10 @@ public:
       return FALSE;
     return mark_unsupported_function(func_name(), "()", arg, VCOL_TIME_FUNC);
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     fix_length_and_dec_generic(arg_count ?
-                               args[0]->datetime_precision(thd) : 0);
+                               args[0]->datetime_precision(current_thd) : 0);
     return FALSE;
   }
   longlong int_op() override;
@@ -662,9 +665,9 @@ public:
   {
     return !has_time_args();
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    fix_length_and_dec_generic(args[0]->time_precision(thd));
+    fix_length_and_dec_generic(args[0]->time_precision(current_thd));
     return FALSE;
   }
   longlong int_op() override;
@@ -695,7 +698,7 @@ public:
   { return Date(this).to_string(to); }
   my_decimal *val_decimal(my_decimal *to) override
   { return Date(this).to_decimal(to); }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     fix_attributes_date();
     set_maybe_null(arg_count > 0);
@@ -752,50 +755,6 @@ public:
 };
 
 
-class Item_timestampfunc: public Item_func
-{
-protected:
-  Datetime to_datetime(THD *thd)
-  {
-    return Timestamp_or_zero_datetime_native_null(thd, this).to_datetime(thd);
-  }
-public:
-  Item_timestampfunc(THD *thd) :Item_func(thd) {}
-  Item_timestampfunc(THD *thd, decimal_digits_t dec) :Item_func(thd) { decimals= dec; }
-  Item_timestampfunc(THD *thd, Item *a) :Item_func(thd, a) {}
-  const Type_handler *type_handler() const override
-  { return &type_handler_timestamp2; }
-  bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate) override
-  {
-    return null_value= to_datetime(thd).copy_to_mysql_time(ltime);
-  }
-  double val_real() override
-  {
-    const Datetime dt= to_datetime(current_thd);
-    null_value= !dt.is_valid_datetime();
-    return dt.to_double();
-  }
-  longlong val_int() override
-  {
-    const Datetime dt= to_datetime(current_thd);
-    null_value= !dt.is_valid_datetime();
-    return dt.to_longlong();
-  }
-  my_decimal *val_decimal(my_decimal *to) override
-  {
-    const Datetime dt= to_datetime(current_thd);
-    null_value= !dt.is_valid_datetime();
-    return dt.to_decimal(to);
-  }
-  String *val_str(String *to) override
-  {
-    const Datetime dt= to_datetime(current_thd);
-    null_value= !dt.is_valid_datetime();
-    return dt.to_string(to, decimals);
-  }
-};
-
-
 /* Abstract CURTIME function. Children should define what time zone is used */
 
 class Item_func_curtime :public Item_timefunc
@@ -807,10 +766,10 @@ public:
     Item_timefunc(thd), last_query_id(0)
   { decimals= dec; }
   bool fix_fields(THD *, Item **) override;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { fix_attributes_time(decimals); return FALSE; }
   bool get_date(THD *thd, MYSQL_TIME *res, date_mode_t fuzzydate) override;
-  /*
+  /* 
     Abstract method that defines which time zone is used for conversion.
     Converts time current time in my_time_t representation to broken-down
     MYSQL_TIME representation using UTC-SYSTEM or per-thread time zone.
@@ -922,7 +881,7 @@ public:
     Item_datetimefunc(thd), last_query_id(0)
   { decimals= dec; }
   bool fix_fields(THD *, Item **) override;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   { fix_attributes_datetime(decimals); return FALSE;}
   bool get_date(THD *thd, MYSQL_TIME *res, date_mode_t fuzzydate) override;
   virtual void store_now_in_TIME(THD *thd, MYSQL_TIME *now_time)=0;
@@ -938,43 +897,6 @@ public:
 };
 
 
-class Item_func_current_timestamp: public Item_timestampfunc
-{
-public:
-  Item_func_current_timestamp(THD *thd, decimal_digits_t dec)
-   :Item_timestampfunc(thd, dec)
-  { }
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("current_timestamp") };
-    return name;
-  }
-  void print(String *str, enum_query_type query_type) override
-  {
-    str->append(func_name_cstring());
-    str->append('(');
-    if (decimals)
-      str->append_ulonglong(decimals);
-    str->append(')');
-  }
-  bool fix_length_and_dec(THD *thd) override
-  {
-    if (check_fsp_or_error())
-      return true;
-    fix_attributes_datetime(decimals);
-    return false;
-  }
-  bool val_native(THD *thd, Native *to) override;
-  bool check_vcol_func_processor(void *arg) override
-  {
-    return mark_unsupported_function(func_name(), "()", arg, VCOL_TIME_FUNC);
-  }
-  enum Functype functype() const override { return NOW_FUNC; }
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_current_timestamp>(thd, this); }
-};
-
-
 class Item_func_now_local :public Item_func_now
 {
 public:
@@ -982,10 +904,12 @@ public:
     Item_func_now(thd, dec) {}
   LEX_CSTRING func_name_cstring() const override
   {
-    static LEX_CSTRING name= {STRING_WITH_LEN("localtimestamp") };
+    static LEX_CSTRING name= {STRING_WITH_LEN("current_timestamp") };
     return name;
   }
+  int save_in_field(Field *field, bool no_conversions) override;
   void store_now_in_TIME(THD *thd, MYSQL_TIME *now_time) override;
+  enum Functype functype() const override { return NOW_FUNC; }
 
 protected:
   Item *shallow_copy(THD *thd) const override
@@ -1020,34 +944,19 @@ protected:
   This is like NOW(), but always uses the real current time, not the
   query_start(). This matches the Oracle behavior.
 */
-class Item_func_sysdate_local :public Item_timestampfunc
+class Item_func_sysdate_local :public Item_func_now
 {
 public:
   Item_func_sysdate_local(THD *thd, decimal_digits_t dec):
-   Item_timestampfunc(thd, dec)
-  { }
+    Item_func_now(thd, dec) {}
   bool const_item() const override { return 0; }
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("sysdate") };
     return name;
   }
-  void print(String *str, enum_query_type query_type) override
-  {
-    str->append(func_name_cstring());
-    str->append('(');
-    if (decimals)
-      str->append_ulonglong(decimals);
-    str->append(')');
-  }
-  bool fix_length_and_dec(THD *thd) override
-  {
-    if (check_fsp_or_error())
-      return true;
-    fix_attributes_datetime(decimals);
-    return false;
-  }
-  bool val_native(THD *thd, Native *to) override;
+  void store_now_in_TIME(THD *thd, MYSQL_TIME *now_time) override;
+  bool get_date(THD *thd, MYSQL_TIME *res, date_mode_t fuzzydate) override;
   table_map used_tables() const override { return RAND_TABLE_BIT; }
   bool check_vcol_func_processor(void *arg) override
   {
@@ -1110,9 +1019,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("date_format") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   uint format_length(const String *format);
-  bool eq(const Item *item, const Eq_config &config) const override;
+  bool eq(const Item *item, bool binary_cmp) const override;
   bool check_vcol_func_processor(void *arg) override
   {
     if (arg_count > 2)
@@ -1182,7 +1091,8 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("to_char") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
+  bool parse_format_string(const String *format, uint *fmt_len);
 
   bool check_vcol_func_processor(void *arg) override
   {
@@ -1197,20 +1107,20 @@ protected:
 };
 
 
-class Item_func_from_unixtime :public Item_timestampfunc
+class Item_func_from_unixtime :public Item_datetimefunc
 {
   bool check_arguments() const override
   { return args[0]->check_type_can_return_decimal(func_name_cstring()); }
   Time_zone *tz;
  public:
-  Item_func_from_unixtime(THD *thd, Item *a): Item_timestampfunc(thd, a) {}
+  Item_func_from_unixtime(THD *thd, Item *a): Item_datetimefunc(thd, a) {}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("from_unixtime") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override;
-  bool val_native(THD *thd, Native *to) override;
+  bool fix_length_and_dec() override;
+  bool get_date(THD *thd, MYSQL_TIME *res, date_mode_t fuzzydate) override;
   bool check_vcol_func_processor(void *arg) override
   {
     return mark_unsupported_function(func_name(), "()", arg, VCOL_SESSION_FUNC);
@@ -1222,7 +1132,7 @@ protected:
 };
 
 
-/*
+/* 
   We need Time_zone class declaration for storing pointers in
   Item_func_convert_tz.
 */
@@ -1259,9 +1169,9 @@ class Item_func_convert_tz :public Item_datetimefunc
     static LEX_CSTRING name= {STRING_WITH_LEN("convert_tz") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
-    fix_attributes_datetime(args[0]->datetime_precision(thd));
+    fix_attributes_datetime(args[0]->datetime_precision(current_thd));
     set_maybe_null();
     return FALSE;
   }
@@ -1281,7 +1191,7 @@ class Item_func_sec_to_time :public Item_timefunc
 public:
   Item_func_sec_to_time(THD *thd, Item *item): Item_timefunc(thd, item) {}
   bool get_date(THD *thd, MYSQL_TIME *res, date_mode_t fuzzydate) override;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     fix_attributes_time(args[0]->decimals);
     set_maybe_null();
@@ -1313,8 +1223,8 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("date_add_interval") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override;
-  bool eq(const Item *item, const Eq_config &config) const override;
+  bool fix_length_and_dec() override;
+  bool eq(const Item *item, bool binary_cmp) const override;
   void print(String *str, enum_query_type query_type) override;
   enum precedence precedence() const override { return INTERVAL_PRECEDENCE; }
   bool need_parentheses_in_default() override { return true; }
@@ -1386,8 +1296,8 @@ class Item_extract :public Item_int_func,
     return name;
   }
   bool check_arguments() const override;
-  bool fix_length_and_dec(THD *thd) override;
-  bool eq(const Item *item, const Eq_config &config) const override;
+  bool fix_length_and_dec() override;
+  bool eq(const Item *item, bool binary_cmp) const override;
   void print(String *str, enum_query_type query_type) override;
   bool check_partition_func_processor(void *int_arg) override {return FALSE;}
   bool check_vcol_func_processor(void *arg) override
@@ -1462,7 +1372,7 @@ public:
     Item_handled_func(thd, a), cast_length(length_arg), cast_cs(cs_arg),
     m_suppress_warning_to_error_escalation(false) {}
   enum Functype functype() const override { return CHAR_TYPECAST_FUNC; }
-  bool eq(const Item *item, const Eq_config &config) const override;
+  bool eq(const Item *item, bool binary_cmp) const override;
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("cast_as_char") };
@@ -1470,17 +1380,15 @@ public:
   }
   CHARSET_INFO *cast_charset() const { return cast_cs; }
   String *val_str_generic(String *a);
-  String *val_str_generic_finalize(String *res, String *str);
   String *val_str_binary_from_native(String *a);
   void fix_length_and_dec_generic();
   void fix_length_and_dec_numeric();
   void fix_length_and_dec_str();
   void fix_length_and_dec_native_to_binary(uint32 octet_length);
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     return args[0]->type_handler()->Item_char_typecast_fix_length_and_dec(this);
   }
-  void print_charset(String *str);
   void print(String *str, enum_query_type query_type) override;
   bool need_parentheses_in_default() override { return true; }
 
@@ -1521,9 +1429,8 @@ public:
   {
     print_cast_temporal(str, query_type);
   }
-  enum Functype functype() const override { return DATE_FUNC; }
   bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate) override;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     return args[0]->type_handler()->Item_date_typecast_fix_length_and_dec(this);
   }
@@ -1549,7 +1456,7 @@ public:
     print_cast_temporal(str, query_type);
   }
   bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate) override;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     return args[0]->type_handler()->
            Item_time_typecast_fix_length_and_dec(this);
@@ -1577,7 +1484,7 @@ public:
     print_cast_temporal(str, query_type);
   }
   bool get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate) override;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     return args[0]->type_handler()->
            Item_datetime_typecast_fix_length_and_dec(this);
@@ -1626,8 +1533,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("timestamp") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
+    THD *thd= current_thd;
     decimal_digits_t dec0= args[0]->datetime_precision(thd);
     decimal_digits_t dec1= Interval_DDhhmmssff::fsp(thd, args[1]);
     fix_attributes_datetime(MY_MAX(dec0, dec1));
@@ -1673,7 +1581,7 @@ public:
   Item_func_add_time(THD *thd, Item *a, Item *b, bool neg_arg)
    :Item_handled_func(thd, a, b), sign(neg_arg ? -1 : 1)
   { }
-  bool fix_length_and_dec(THD *thd) override;
+  bool fix_length_and_dec() override;
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING addtime= { STRING_WITH_LEN("addtime") };
@@ -1698,8 +1606,9 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("timediff") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
+    THD *thd= current_thd;
     decimal_digits_t dec= MY_MAX(args[0]->time_precision(thd),
                                  args[1]->time_precision(thd));
     fix_attributes_time(dec);
@@ -1724,7 +1633,7 @@ public:
   Item_func_maketime(THD *thd, Item *a, Item *b, Item *c):
     Item_timefunc(thd, a, b, c)
   {}
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     fix_attributes_time(args[2]->decimals);
     set_maybe_null();
@@ -1753,7 +1662,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("microsecond") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     set_maybe_null();
@@ -1790,7 +1699,7 @@ public:
     return name;
   }
   longlong val_int() override;
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     decimals=0;
     set_maybe_null();
@@ -1822,7 +1731,7 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("get_format") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
+  bool fix_length_and_dec() override
   {
     set_maybe_null();
     decimals=0;
@@ -1839,139 +1748,27 @@ protected:
 
 class Item_func_str_to_date :public Item_handled_func
 {
-  bool check_arguments() const override
-  {
-    return check_argument_types_can_return_text(0, arg_count);
-  }
   bool const_item;
   String subject_converter;
   String format_converter;
   CHARSET_INFO *internal_charset;
-  const MY_LOCALE *locale;
 public:
   Item_func_str_to_date(THD *thd, Item *a, Item *b):
     Item_handled_func(thd, a, b), const_item(false),
-    internal_charset(NULL),locale(0)
-  {}
-  Item_func_str_to_date(THD *thd, Item *a, Item *b, Item *c):
-    Item_handled_func(thd, a, b, c), const_item(false),
-    internal_charset(NULL), locale(0)
+    internal_charset(NULL)
   {}
   bool get_date_common(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate,
-                       timestamp_type) override;
+                       timestamp_type);
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("str_to_date") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override;
-  bool check_vcol_func_processor(void *arg) override
-  {
-    if (arg_count > 2)
-      return false;
-    return mark_unsupported_function(func_name(), "()", arg, VCOL_SESSION_FUNC);
-  }
+  bool fix_length_and_dec() override;
 
 protected:
   Item *shallow_copy(THD *thd) const override
   { return get_item_copy<Item_func_str_to_date>(thd, this); }
-};
-
-
-/* Oracle TO_DATE() function */
-
-
-/* Flags used by parse_format_string() */
-
-enum PARSE_TYPE_FLAGS
-{
-  PARSE_TYPE_NONE= 0,
-  PARSE_TYPE_YEAR= 1,
-  PARSE_TYPE_MONTH= 2,
-  PARSE_TYPE_DAY= 4,
-  PARSE_TYPE_HH= 8,
-  PARSE_TYPE_MM= 16,
-  PARSE_TYPE_SS= 32,
-  PARSE_TYPE_SUBSECONDS= 64,
-  PARSE_TYPE_WEEKDAY= 128,
-  PARSE_TYPE_PART_YEAR= 256,
-  PARSE_TYPE_NON_DETERMINISTIC= 512,
-  PARSE_TYPE_NULL= 1024,
-  PARSE_TYPE_NO_FORMAT= 2048
-};
-
-#define PARSE_TYPE_DATE (PARSE_TYPE_YEAR | PARSE_TYPE_MONTH | PARSE_TYPE_DAY)
-#define PARSE_TYPE_FULLDATE (PARSE_TYPE_YEAR | PARSE_TYPE_HH | \
-                             PARSE_TYPE_MM | PARSE_TYPE_SS)
-
-class Item_func_to_date :public Item_handled_func
-{
-  bool const_item;
-  String subject_converter;
-  String format_converter;
-  CHARSET_INFO *internal_charset;
-  MYSQL_TIME now_time;                    // Used for incomplete dates
-  THD *thd;
-  const MY_LOCALE *locale;
-  PARSE_TYPE_FLAGS format_flags;
-  String warning_message;
-  LEX_CSTRING nls_param;
-  bool nls_param_error;
-
-  /*
-    When datetime format models is parsed, use uint16 integers to
-    represent the format models and store in fmt_array.
-  */
-  uint16 fmt_array[MAX_DATETIME_FORMAT_MODEL_LEN+1];
-
-public:
-  Item_func_to_date(THD *thd, Item *a, Item *b, LEX_CSTRING *nls):
-    Item_handled_func(thd, a, b), const_item(false),
-    internal_charset(NULL), locale(0), format_flags(PARSE_TYPE_NONE),
-    nls_param(*nls), nls_param_error(0)
-  {
-    /* NOTE: max length of warning message is 64 */
-    warning_message.alloc(64);
-    warning_message.length(0);
-    parse_nls_param(&nls_param);
-  }
-  Item_func_to_date(THD *thd, Item *a, Item *b, Item *c, LEX_CSTRING *nls):
-    Item_handled_func(thd, a, b, c),  const_item(false),
-      internal_charset(NULL), locale(0), format_flags(PARSE_TYPE_NONE),
-    nls_param(*nls), nls_param_error(0)
-  {
-    /* NOTE: max length of warning message is 64 */
-    warning_message.alloc(64);
-    warning_message.length(0);
-    parse_nls_param(&nls_param);
-  }
-  bool get_date_common(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate,
-                       timestamp_type) override;
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("to_date") };
-    return name;
-  }
-  bool fix_length_and_dec(THD *thd) override;
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_to_date>(thd, this); }
-
-  bool check_vcol_func_processor(void *arg) override
-  {
-    /*
-      We have to mark this as non deterministic as when this
-      function is called, fix_length_and_dec() has not been run
-      and we do not know if this usage is deterministic or not.
-      If the item would be const and format_flags says all
-      fields is used, we would know if the function would be
-      deterministic or not.
-    */
-    return mark_unsupported_function(func_name(), "()", arg,
-                                     VCOL_NON_DETERMINISTIC);
-  }
-  PARSE_TYPE_FLAGS get_format();
-  void parse_nls_param(LEX_CSTRING *);
-  void print(String *str, enum_query_type query_type) override;
 };
 
 
@@ -2276,7 +2073,8 @@ public:
   bool get_date(THD *thd, Item_handled_func *item,
                 MYSQL_TIME *to, date_mode_t fuzzy) const override
   {
-    return item->get_date_common(thd, to, fuzzy, MYSQL_TIMESTAMP_DATETIME);
+    return static_cast<Item_func_str_to_date*>(item)->
+             get_date_common(thd, to, fuzzy, MYSQL_TIMESTAMP_DATETIME);
   }
 };
 
@@ -2293,7 +2091,8 @@ public:
   bool get_date(THD *thd, Item_handled_func *item,
                 MYSQL_TIME *to, date_mode_t fuzzy) const override
   {
-    return item->get_date_common(thd, to, fuzzy, MYSQL_TIMESTAMP_DATETIME);
+    return static_cast<Item_func_str_to_date*>(item)->
+             get_date_common(thd, to, fuzzy, MYSQL_TIMESTAMP_DATETIME);
   }
 };
 
@@ -2304,7 +2103,8 @@ public:
   bool get_date(THD *thd, Item_handled_func *item,
                 MYSQL_TIME *to, date_mode_t fuzzy) const override
   {
-    return item->get_date_common(thd, to, fuzzy, MYSQL_TIMESTAMP_DATE);
+    return static_cast<Item_func_str_to_date*>(item)->
+             get_date_common(thd, to, fuzzy, MYSQL_TIMESTAMP_DATE);
   }
 };
 
@@ -2315,7 +2115,8 @@ public:
   bool get_date(THD *thd, Item_handled_func *item,
                 MYSQL_TIME *to, date_mode_t fuzzy) const override
   {
-    if (item->get_date_common(thd, to, fuzzy, MYSQL_TIMESTAMP_TIME))
+    if (static_cast<Item_func_str_to_date*>(item)->
+         get_date_common(thd, to, fuzzy, MYSQL_TIMESTAMP_TIME))
       return true;
     if (to->day)
     {
@@ -2353,61 +2154,5 @@ public:
   }
 };
 
-
-class Item_func_trunc :public Item_datetimefunc
-{
-public:
-  enum enum_trunc
-  {
-    TRUNC_UNINIT,
-    TRUNC_IMPOSSIBLE,
-    TRUNC_YEAR,
-    TRUNC_MONTH,
-    TRUNC_DAY
-  };
-private:
-  enum_trunc const_format;
-  bool error_given;
-  bool check_arguments() const override
-  {
-    return args[0]->check_type_can_return_date(func_name_cstring()) ||
-           args[1]->check_type_can_return_text(func_name_cstring());
-  }
-  enum_trunc get_trunc_option(const LEX_CSTRING format);
-
-public:
-  Item_func_trunc(THD *thd, Item *a, Item *b):
-    Item_datetimefunc(thd, a, b),
-    const_format(TRUNC_UNINIT),
-    error_given(false)
-  {}
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("trunc") };
-    return name;
-  }
-  bool fix_length_and_dec(THD *thd) override;
-  bool get_date(THD *thd, MYSQL_TIME *res, date_mode_t fuzzydate) override;
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_trunc>(thd, this); }
-};
-
-
-class Item_func_months_between : public Item_real_func
-{
-  bool check_arguments() const override
-  { return check_argument_types_can_return_date(0, arg_count); }
-public:
-  Item_func_months_between(THD *thd, Item *a, Item *b):
-    Item_real_func(thd, a, b) {}
-  double val_real() override;
-  LEX_CSTRING func_name_cstring() const override
-  {
-    static LEX_CSTRING name= {STRING_WITH_LEN("months_between") };
-    return name;
-  }
-  Item *shallow_copy(THD *thd) const override
-  { return get_item_copy<Item_func_months_between>(thd, this); }
-};
 
 #endif /* ITEM_TIMEFUNC_INCLUDED */

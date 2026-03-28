@@ -2,9 +2,24 @@
 // $Id: ha_sphinx.h 4818 2014-09-24 08:53:38Z tomat $
 //
 
-#define TABLE_ARG	TABLE_SHARE
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface // gcc class implementation
+#endif
 
+
+#if MYSQL_VERSION_ID>=50515
+#define TABLE_ARG	TABLE_SHARE
+#elif MYSQL_VERSION_ID>50100
+#define TABLE_ARG	st_table_share
+#else
+#define TABLE_ARG	st_table
+#endif
+
+
+#if MYSQL_VERSION_ID>=50120
 typedef uchar byte;
+#endif
+
 
 /// forward decls
 class THD;
@@ -33,14 +48,22 @@ protected:
 	bool			m_bUnpackError;			///< any errors while unpacking response
 
 public:
+#if MYSQL_VERSION_ID<50100
+					ha_sphinx ( TABLE_ARG * table_arg ); // NOLINT
+#else
 					ha_sphinx ( handlerton * hton, TABLE_ARG * table_arg );
+#endif
 					~ha_sphinx ();
 
 	const char *	table_type () const override		{ return "SPHINX"; }	///< SE name for display purposes
 	const char *	index_type ( uint ) override		{ return "HASH"; }		///< index type name for display purposes
 
+	#if MYSQL_VERSION_ID>50100
 	ulonglong		table_flags () const override	{ return HA_CAN_INDEX_BLOBS | 
                                                                  HA_CAN_TABLE_CONDITION_PUSHDOWN; } ///< bitmap of implemented flags (see handler.h for more info)
+	#else
+	ulong			table_flags () const	{ return HA_CAN_INDEX_BLOBS; }			///< bitmap of implemented flags (see handler.h for more info)
+	#endif
 
 	ulong			index_flags ( uint, uint, bool ) const override	{ return 0; }	///< bitmap of flags that says how SE implements indexes
 	uint			max_supported_record_length () const override	{ return HA_MAX_REC_LENGTH; }
@@ -49,28 +72,14 @@ public:
 	uint			max_supported_key_length () const override		{ return MAX_KEY_LENGTH; }
 	uint			max_supported_key_part_length () const override	{ return MAX_KEY_LENGTH; }
 
-	IO_AND_CPU_COST	scan_time () override
-	{
-          IO_AND_CPU_COST cost;
-          cost.io= 0;
-          cost.cpu= (double) (stats.records+stats.deleted) * DISK_READ_COST;
-          return cost;
-        }
-        IO_AND_CPU_COST keyread_time(uint index, ulong ranges, ha_rows rows,
-                                    ulonglong blocks) override
-	{
-          IO_AND_CPU_COST cost;
-          cost.io= ranges;
-          cost.cpu= 0;
-          return cost;
-        }
-        IO_AND_CPU_COST rnd_pos_time(ha_rows rows) override
-	{
-          IO_AND_CPU_COST cost;
-          cost.io= 0;
-          cost.cpu= 0;
-          return cost;
-        }
+	#if MYSQL_VERSION_ID>50100
+	double	scan_time () override	{ return (double)( stats.records+stats.deleted )/20.0 + 10; }	///< called in test_quick_select to determine if indexes should be used
+	#else
+	virtual double	scan_time ()	{ return (double)( records+deleted )/20.0 + 10; }				///< called in test_quick_select to determine if indexes should be used
+	#endif
+
+        double read_time(uint index, uint ranges, ha_rows rows) override
+	{ return ranges + (double)rows/20.0 + 1; }					///< index read time estimate
 
 public:
 	int				open ( const char * name, int mode, uint test_if_locked ) override;
@@ -99,8 +108,14 @@ public:
 	int				rnd_end () override;
 	int				rnd_next ( byte * buf ) override;
 	int				rnd_pos ( byte * buf, byte * pos ) override;
-	void				position ( const byte * record ) override;
+	void			position ( const byte * record ) override;
+
+#if MYSQL_VERSION_ID>=50030
 	int				info ( uint ) override;
+#else
+	void			info ( uint );
+#endif
+
 	int				reset() override;
 	int				external_lock ( THD * thd, int lock_type ) override;
 	int				delete_all_rows () override;
@@ -113,7 +128,11 @@ public:
 	THR_LOCK_DATA **		store_lock ( THD * thd, THR_LOCK_DATA ** to, enum thr_lock_type lock_type ) override;
 
 public:
+#if MYSQL_VERSION_ID<50610
+	virtual const COND *	cond_push ( const COND *cond );
+#else
 	const Item *		cond_push ( const Item *cond ) override;
+#endif	
 	void			cond_pop () override;
 
 private:
@@ -139,6 +158,11 @@ private:
 
 	CSphSEThreadTable *	GetTls ();
 };
+
+
+#if MYSQL_VERSION_ID < 50100
+bool sphinx_show_status ( THD * thd );
+#endif
 
 //
 // $Id: ha_sphinx.h 4818 2014-09-24 08:53:38Z tomat $

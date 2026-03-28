@@ -6,7 +6,6 @@
 # ==== Usage ====
 #
 # --let $rpl_server_number= N
-# [--let $shutdown_timeout= 60]
 # [--let $rpl_server_parameters= --flag1 --flag2 ...]
 # [--let $rpl_debug= 1]
 # --source include/rpl_restart_server.inc

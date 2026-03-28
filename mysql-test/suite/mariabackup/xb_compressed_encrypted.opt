@@ -5,3 +5,4 @@
 --loose-file-key-management
 --loose-file-key-management-filename=$MYSQL_TEST_DIR/std_data/logkey.txt
 --innodb_strict_mode
+--innodb_file_per_table

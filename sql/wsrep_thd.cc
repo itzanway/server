@@ -1,4 +1,4 @@
-/* Copyright (C) 2013-2025 Codership Oy <info@codership.com>
+/* Copyright (C) 2013-2023 Codership Oy <info@codership.com>
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 #include "rpl_rli.h"
 #include "rpl_mi.h"
 
+extern "C" pthread_key(struct st_my_thread_var*, THR_KEY_mysys);
 
 static Wsrep_thd_queue* wsrep_rollback_queue= 0;
 static Atomic_counter<uint64_t> wsrep_bf_aborts_counter;
@@ -367,7 +368,7 @@ void wsrep_abort_thd(THD *bf_thd,
   /* Note that when you use RSU node is desynced from cluster, thus WSREP(thd)
   might not be true.
   */
-  if ((WSREP_NNULL(bf_thd)
+  if ((WSREP(bf_thd)
        || ((WSREP_ON || bf_thd->variables.wsrep_OSU_method == WSREP_OSU_RSU)
            &&  wsrep_thd_is_toi(bf_thd))
        || bf_thd->lex->sql_command == SQLCOM_KILL)
@@ -464,6 +465,8 @@ uint wsrep_kill_thd(THD *thd, THD *victim_thd, killed_state kill_signal)
   DEBUG_SYNC(thd, "wsrep_kill_before_awake_no_mutex");
   victim_thd->wsrep_abort_by_kill= kill_signal;
   victim_thd->awake_no_mutex(kill_signal);
+  /* ha_abort_transaction() releases tmp->LOCK_thd_kill, so tmp
+     is not safe to access anymore. */
   ha_abort_transaction(thd, victim_thd, 1);
   DBUG_RETURN(0);
 }
@@ -510,8 +513,8 @@ int wsrep_create_threadvars()
   {
     /* Caller should have called wsrep_reset_threadvars() before this
        method. */
-    DBUG_ASSERT(!my_thread_var);
-    set_mysys_var(0);
+    DBUG_ASSERT(!pthread_getspecific(THR_KEY_mysys));
+    pthread_setspecific(THR_KEY_mysys, 0);
     ret= my_thread_init();
   }
   return ret;
@@ -523,7 +526,7 @@ void wsrep_delete_threadvars()
   {
     /* The caller should have called wsrep_store_threadvars() before
        this method. */
-    DBUG_ASSERT(my_thread_var);
+    DBUG_ASSERT(pthread_getspecific(THR_KEY_mysys));
     /* Reset psi state to avoid deallocating applier thread
        psi_thread. */
 #ifdef HAVE_PSI_INTERFACE
@@ -535,7 +538,7 @@ void wsrep_delete_threadvars()
 #endif /* HAVE_PSI_INTERFACE */
     my_thread_end();
     PSI_CALL_set_thread(psi_thread);
-    set_mysys_var(0);
+    pthread_setspecific(THR_KEY_mysys, 0);
   }
 }
 
@@ -543,7 +546,9 @@ void wsrep_assign_from_threadvars(THD *thd)
 {
   if (thread_handling == SCHEDULER_TYPES_COUNT)
   {
-    thd->set_mysys_var(my_thread_var);
+    st_my_thread_var *mysys_var= (st_my_thread_var *)pthread_getspecific(THR_KEY_mysys);
+    DBUG_ASSERT(mysys_var);
+    thd->set_mysys_var(mysys_var);
   }
 }
 
@@ -551,21 +556,21 @@ Wsrep_threadvars wsrep_save_threadvars()
 {
   return Wsrep_threadvars{
     current_thd,
-    my_thread_var
+    (st_my_thread_var*) pthread_getspecific(THR_KEY_mysys)
   };
 }
 
 void wsrep_restore_threadvars(const Wsrep_threadvars& globals)
 {
   set_current_thd(globals.cur_thd);
-  set_mysys_var(globals.mysys_var);
+  pthread_setspecific(THR_KEY_mysys, globals.mysys_var);
 }
 
 void wsrep_store_threadvars(THD *thd)
 {
   if (thread_handling ==  SCHEDULER_TYPES_COUNT)
   {
-    set_mysys_var(thd->mysys_var);
+    pthread_setspecific(THR_KEY_mysys, thd->mysys_var);
   }
   thd->store_globals();
 }
@@ -574,7 +579,7 @@ void wsrep_reset_threadvars(THD *thd)
 {
   if (thread_handling == SCHEDULER_TYPES_COUNT)
   {
-    set_mysys_var(0);
+    pthread_setspecific(THR_KEY_mysys, 0);
   }
   else
   {

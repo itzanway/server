@@ -16,6 +16,8 @@
 
 #include "mysys_priv.h"
 
+#ifndef HAVE_GETPAGESIZE
+
 #if defined _WIN32
 
 int my_getpagesize(void)
@@ -23,13 +25,6 @@ int my_getpagesize(void)
   SYSTEM_INFO si;
   GetSystemInfo(&si);
   return si.dwPageSize;
-}
-
-#elif defined _SC_PAGESIZE
-
-int my_getpagesize(void)
-{
-  return (int)sysconf(_SC_PAGESIZE);
 }
 
 #else
@@ -41,3 +36,6 @@ int my_getpagesize(void)
 }
 
 #endif
+
+#endif
+

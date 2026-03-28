@@ -40,10 +40,11 @@ static int s3_read_file_from_disk(const char *filename, uchar **to,
 /* Used by ha_s3.cc and tools to define different protocol options */
 
 static const char *protocol_types[]= {"Auto", "Original", "Amazon", "Legacy", "Path", "Domain", NullS};
-TYPELIB s3_protocol_typelib= CREATE_TYPELIB_FOR(protocol_types);
+TYPELIB s3_protocol_typelib= {array_elements(protocol_types)-1,"",
+                              protocol_types, NULL};
 
 static const char *providers[]= {"Default", "Amazon", "Huawei", NullS};
-TYPELIB s3_provider_typelib = CREATE_TYPELIB_FOR(providers);
+TYPELIB s3_provider_typelib = {array_elements(providers)-1,"",providers, NULL};
 
 /******************************************************************************
  Allocations handler for libmarias3
@@ -410,7 +411,7 @@ int aria_copy_to_s3(ms3_st *s3_client, const char *aws_bucket,
                      O_RDONLY | O_SHARE | O_NOFOLLOW | O_CLOEXEC,
                      MYF(MY_WME))) < 0)
     DBUG_RETURN(1);
-  if ((error= aria_get_capabilities(file, table_name, &cap)))
+  if ((error= aria_get_capabilities(file, &cap)))
   {
     fprintf(stderr, "Got error %d when reading Aria header from %s\n",
             error, path);
@@ -882,7 +883,7 @@ int partition_copy_to_s3(ms3_st *s3_client, const char *aws_bucket,
   if ((error= s3_read_file_from_disk(filename, &alloc_block, &frm_length, 0)))
   {
     /*
-      In case of ADD PARTITION the .frm file is already renamed.
+      In case of ADD PARTITION PARTITON the .frm file is already renamed.
       Copy the renamed file if it exists.
     */
     fn_format(filename, path, "", ".frm", MY_REPLACE_EXT);

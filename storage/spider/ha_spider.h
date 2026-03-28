@@ -14,6 +14,10 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335 USA */
 
+#ifdef USE_PRAGMA_INTERFACE
+#pragma interface
+#endif
+
 #define SPIDER_CONNECT_INFO_MAX_LEN 64
 #define SPIDER_CONNECT_INFO_PATH_MAX_LEN FN_REFLEN
 #define SPIDER_LONGLONG_LEN 20
@@ -55,6 +59,8 @@ public:
   const char         *mem_calc_func_name;
   const char         *mem_calc_file_name;
   ulong              mem_calc_line_no;
+  uint               sql_kinds;
+  uint               *sql_kind;
   ulonglong          *connection_ids;
   char               *conn_keys_first_ptr;
   char               **conn_keys;
@@ -152,11 +158,15 @@ public:
   bool               mrr_with_cnt;
   uint               multi_range_cnt;
   uint               multi_range_hit_point;
+#ifdef HA_MRR_USE_DEFAULT_IMPL
   int                multi_range_num;
   bool               have_second_range;
   KEY_MULTI_RANGE    mrr_second_range;
   spider_string      *mrr_key_buff;
   range_id_t         *multi_range_keys;
+#else
+  KEY_MULTI_RANGE    *multi_range_ranges;
+#endif
 
   char               *append_tblnm_alias;
   uint               append_tblnm_alias_length;
@@ -184,6 +194,15 @@ public:
 
   ulonglong          *db_request_id;
   uchar              *db_request_phase;
+  uchar              *m_handler_opened;
+  /* ids for use in HANDLER command */
+  uint               *m_handler_id;
+  /*
+    aliases for use in HANDLER command, in the format of t%5u on
+    m_handler_id. So for example, if m_handler_id is 3, then the
+    corresponding m_handler_cid is t00003
+  */
+  char               **m_handler_cid;
   bool               do_direct_update;
   uint               direct_update_kinds;
   spider_index_rnd_init prev_index_rnd_init;
@@ -251,7 +270,10 @@ public:
   int extra(
     enum ha_extra_function operation
   ) override;
-  int index_init(uint idx, bool sorted) override;
+  int index_init(
+    uint idx,
+    bool sorted
+  ) override;
   int index_end() override;
   int index_read_map(
     uchar *buf,
@@ -290,6 +312,7 @@ public:
   int read_range_next() override;
   void reset_no_where_cond();
   bool check_no_where_cond();
+#ifdef HA_MRR_USE_DEFAULT_IMPL
   ha_rows multi_range_read_info_const(
     uint keyno,
     RANGE_SEQ_IF *seq,
@@ -297,7 +320,6 @@ public:
     uint n_ranges,
     uint *bufsz,
     uint *flags,
-    ha_rows limit,
     Cost_estimate *cost
   ) override;
   ha_rows multi_range_read_info(
@@ -325,7 +347,21 @@ public:
   int multi_range_read_next_next(
     range_id_t *range_info
   );
-  int rnd_init(bool scan) override;
+#else
+  int read_multi_range_first(
+    KEY_MULTI_RANGE **found_range_p,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    HANDLER_BUFFER *buffer
+  );
+  int read_multi_range_next(
+    KEY_MULTI_RANGE **found_range_p
+  );
+#endif
+  int rnd_init(
+    bool scan
+  ) override;
   int rnd_end() override;
   int rnd_next(
     uchar *buf
@@ -364,7 +400,20 @@ public:
     key_part_map keypart_map,
     bool use_parallel
   ) override;
-  int pre_multi_range_read_next(bool use_parallel) override;
+#ifdef HA_MRR_USE_DEFAULT_IMPL
+  int pre_multi_range_read_next(
+    bool use_parallel
+  ) override;
+#else
+  int pre_read_multi_range_first(
+    KEY_MULTI_RANGE **found_range_p,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    HANDLER_BUFFER *buffer,
+    bool use_parallel
+  );
+#endif
   int pre_read_range_first(
     const key_range *start_key,
     const key_range *end_key,
@@ -391,8 +440,14 @@ public:
   const char *table_type() const override;
   ulonglong table_flags() const override;
   ulong table_flags_for_partition();
-  const char *index_type(uint key_number) override;
-  ulong index_flags(uint idx, uint part, bool all_parts) const override;
+  const char *index_type(
+    uint key_number
+  ) override;
+  ulong index_flags(
+    uint idx,
+    uint part,
+    bool all_parts
+  ) const override;
   uint max_supported_record_length() const override;
   uint max_supported_keys() const override;
   uint max_supported_key_parts() const override;
@@ -409,17 +464,26 @@ public:
     ulonglong *first_value,
     ulonglong *nb_reserved_values
   ) override;
-  int reset_auto_increment(ulonglong value) override;
+  int reset_auto_increment(
+    ulonglong value
+  ) override;
   void release_auto_increment() override;
-  void start_bulk_insert(ha_rows rows, uint flags) override;
+  void start_bulk_insert(
+    ha_rows rows,
+    uint flags
+  ) override;
   int end_bulk_insert() override;
-  int write_row(const uchar *buf) override;
+  int write_row(
+    const uchar *buf
+  ) override;
   void direct_update_init(
     THD *thd,
     bool hs_request
   );
   bool start_bulk_update() override;
-  int exec_bulk_update(ha_rows *dup_key_found) override;
+  int exec_bulk_update(
+    ha_rows *dup_key_found
+  ) override;
   int end_bulk_update() override;
   int bulk_update_row(
     const uchar *old_data,
@@ -435,26 +499,92 @@ public:
     longlong select_limit,
     longlong offset_limit
   );
-  int direct_update_rows_init(List<Item> *update_fields) override;
-  int direct_update_rows(ha_rows *update_rows, ha_rows *found_row) override;
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS_WITH_HS
+  inline int direct_update_rows_init(
+    List<Item> *update_fields
+  ) {
+    return direct_update_rows_init(update_fields, 2, NULL, 0, FALSE, NULL);
+  }
+  int direct_update_rows_init(
+    List<Item> *update_fields,
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data
+  );
+#else
+  int direct_update_rows_init(
+    List<Item> *update_fields
+  ) override;
+#endif
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS_WITH_HS
+  inline int direct_update_rows(ha_rows *update_rows, ha_rows *found_rows)
+  {
+    return direct_update_rows(NULL, 0, FALSE, NULL, update_rows, found_rows);
+  }
+  int direct_update_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data,
+    ha_rows *update_rows,
+    ha_rows *found_row
+  );
+#else
+  int direct_update_rows(
+    ha_rows *update_rows,
+    ha_rows *found_row
+  ) override;
+#endif
   bool start_bulk_delete() override;
   int end_bulk_delete() override;
-  int delete_row(const uchar *buf) override;
+  int delete_row(
+    const uchar *buf
+  ) override;
   bool check_direct_delete_sql_part(
     st_select_lex *select_lex,
     longlong select_limit,
     longlong offset_limit
   );
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS_WITH_HS
+  inline int direct_delete_rows_init()
+  {
+    return direct_delete_rows_init(2, NULL, 0, FALSE);
+  }
+  int direct_delete_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted
+  );
+#else
   int direct_delete_rows_init() override;
+#endif
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS_WITH_HS
+  inline int direct_delete_rows(ha_rows *delete_rows)
+  {
+    return direct_delete_rows(NULL, 0, FALSE, delete_rows);
+  }
+  int direct_delete_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    ha_rows *delete_rows
+  );
+#else
   int direct_delete_rows(
     ha_rows *delete_rows
   ) override;
+#endif
   int delete_all_rows() override;
   int truncate() override;
-  IO_AND_CPU_COST scan_time() override;
-  IO_AND_CPU_COST rnd_pos_time(ha_rows rows) override;
-  IO_AND_CPU_COST keyread_time(uint index, ulong ranges, ha_rows rows,
-                               ulonglong blocks) override;
+  double scan_time() override;
+  double read_time(
+    uint index,
+    uint ranges,
+    ha_rows rows
+  ) override;
   const key_map *keys_to_use_for_scanning() override;
   ha_rows estimate_rows_upper_bound() override;
   void print_error(
@@ -522,7 +652,10 @@ public:
     const COND* cond
   ) override;
   void cond_pop() override;
-  int info_push(uint info_type, void *info) override;
+  int info_push(
+    uint info_type,
+    void *info
+  ) override;
   void return_record_by_parent() override;
   TABLE *get_table();
   void set_ft_discard_bitmap();
@@ -543,7 +676,23 @@ public:
   bool is_sole_projection_field(
     uint16 field_index
   );
+  int check_ha_range_eof();
   int drop_tmp_tables();
+  bool handler_opened(
+    int link_idx
+  );
+  void set_handler_opened(
+    int link_idx
+  );
+  void clear_handler_opened(
+    int link_idx
+  );
+  int close_opened_handler(
+    int link_idx,
+    bool release_conn
+  );
+  int index_handler_init();
+  int rnd_handler_init();
   void set_error_mode();
   void backup_error_status();
   int check_error_mode(
@@ -572,6 +721,17 @@ public:
     bool eq_range,
     bool sorted
   );
+#ifdef HA_MRR_USE_DEFAULT_IMPL
+#else
+  int read_multi_range_first_internal(
+    uchar *buf,
+    KEY_MULTI_RANGE **found_range_p,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    HANDLER_BUFFER *buffer
+  );
+#endif
   int ft_read_internal(uchar *buf);
   int rnd_next_internal(uchar *buf);
   void check_pre_call(
@@ -786,6 +946,9 @@ public:
     spider_string *str,
     const char *alias,
     uint alias_length
+  );
+  bool support_use_handler_sql(
+    int use_handler
   );
   int init_union_table_name_pos_sql();
   int set_union_table_name_pos_sql();

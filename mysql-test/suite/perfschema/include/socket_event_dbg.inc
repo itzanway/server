@@ -115,7 +115,9 @@ if($is_connect)
 {
    if(!$my_errno)
    {
+      --connection con1
       --disconnect con1
+      --source include/wait_until_disconnected.inc
       --connection default
    }
 }
