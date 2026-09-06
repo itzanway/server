@@ -1,0 +1,9 @@
+#
+# MDEV-38891 Innodb crash at shutdown/dict_stats
+#
+SET GLOBAL debug_dbug="+d,mdev_38891_sleep_in_bg_thread";
+CREATE TABLE t1 (a INT PRIMARY KEY) ENGINE=InnoDB
+STATS_PERSISTENT=1 STATS_AUTO_RECALC=1;
+INSERT INTO t1 VALUES (1),(2),(3);
+# restart
+DROP TABLE t1;

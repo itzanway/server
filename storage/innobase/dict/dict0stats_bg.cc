@@ -95,7 +95,10 @@ static void dict_stats_recalc_pool_deinit()
 	defrag_pool.swap(defrag_empty_pool);
 
 	if (dict_stats_thd)
+	{
 		destroy_background_thd(dict_stats_thd);
+		dict_stats_thd= 0;
+	}
 }
 
 /*****************************************************************//**
@@ -387,8 +390,9 @@ static bool is_recalc_pool_empty()
 static tpool::timer* dict_stats_timer;
 static void dict_stats_func(void*)
 {
-  if (!dict_stats_thd)
-    dict_stats_thd= innobase_create_background_thd("InnoDB statistics");
+  DBUG_EXECUTE_IF("mdev_38891_sleep_in_bg_thread",
+                  my_sleep(2000000););
+  DBUG_ASSERT(dict_stats_thd);
   set_current_thd(dict_stats_thd);
 
   while (dict_stats_process_entry_from_recalc_pool(dict_stats_thd)) {}
@@ -404,6 +408,17 @@ static void dict_stats_func(void*)
 void dict_stats_start()
 {
   DBUG_ASSERT(!dict_stats_timer);
+
+  if (!dict_stats_thd)
+    dict_stats_thd= innobase_create_background_thd("InnoDB statistics");
+
+  if (!dict_stats_thd)
+  {
+    ib::warn() << "Failed to create background THD for statistics. "
+                  "Automatic statistics recalculation will be disabled.";
+    return;
+  }
+
   dict_stats_timer= srv_thread_pool->create_timer(dict_stats_func);
 }
 
@@ -424,4 +439,10 @@ void dict_stats_shutdown()
 {
   delete dict_stats_timer;
   dict_stats_timer= 0;
+
+  if (dict_stats_thd)
+  {
+    destroy_background_thd(dict_stats_thd);
+    dict_stats_thd= 0;
+  }
 }
